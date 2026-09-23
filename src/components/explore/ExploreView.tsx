@@ -1,11 +1,13 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Hash, TrendingUp, Play, Heart, MessageCircle, Flame } from 'lucide-react';
+import { Search, Hash, TrendingUp, Play, Heart, MessageCircle, Flame, Users, CheckCircle2, UserPlus, UserCheck } from 'lucide-react';
 import { Post, Reel, User } from '../../types';
 import { calculateTrendingTopics } from '../../services/trendingService';
 
 interface ExploreViewProps {
   posts: Post[];
   reels: Reel[];
+  suggestedUsers?: User[];
+  onToggleFollowUser?: (userId: string) => void;
   onSelectPost: (post: Post) => void;
   onSelectReel: (reel: Reel) => void;
   onOpenUserProfile: (user: User) => void;
@@ -14,6 +16,8 @@ interface ExploreViewProps {
 export const ExploreView: React.FC<ExploreViewProps> = ({
   posts,
   reels,
+  suggestedUsers = [],
+  onToggleFollowUser,
   onSelectPost,
   onSelectReel,
   onOpenUserProfile,
@@ -50,13 +54,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               setSearchQuery(e.target.value);
               setSelectedTag(null);
             }}
-            placeholder="Search creators, hashtags, projects..."
+            placeholder="Search creators, hashtags, projects on aura.ai.studio..."
             className="w-full bg-[#F1F5F2] border border-transparent focus:border-[#8FA89B] focus:bg-[#FAFAF9] rounded-2xl pl-11 pr-4 py-3 text-sm text-[#2D3732] placeholder-[#7A8A82] shadow-soft focus:outline-none transition-all"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-[#7A8A82] hover:text-[#2D3732]"
+              className="absolute right-4 top-1/2 -translate-y-1/2 text-xs text-[#7A8A82] hover:text-[#2D3732] cursor-pointer"
             >
               Clear
             </button>
@@ -67,7 +71,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           <button
             onClick={() => setSelectedTag(null)}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
               !selectedTag && !searchQuery
                 ? 'bg-[#2D3732] text-white'
                 : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732]'
@@ -79,7 +83,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             <button
               key={ch.tag}
               onClick={() => setSelectedTag(ch.tag)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 cursor-pointer ${
                 selectedTag === ch.tag
                   ? 'bg-[#8FA89B] text-white shadow-soft'
                   : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9]'
@@ -91,6 +95,89 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           ))}
         </div>
       </div>
+
+      {/* Suggested Creators to Follow Section */}
+      {suggestedUsers.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-[#2D3732] flex items-center gap-2">
+              <Users size={16} className="text-[#8FA89B]" />
+              <span>Suggested Creators to Follow</span>
+            </h2>
+            <span className="text-[11px] text-[#7A8A82]">
+              Real active studios on Aura
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {suggestedUsers.slice(0, 4).map((user) => (
+              <div
+                key={user.id}
+                className="bg-[#F1F5F2] rounded-3xl p-4 border border-[#E6EDE9] shadow-soft flex flex-col justify-between hover:border-[#8FA89B]/40 transition-all"
+              >
+                <div
+                  className="flex items-start gap-3 cursor-pointer mb-3"
+                  onClick={() => onOpenUserProfile(user)}
+                >
+                  <img
+                    src={user.avatar}
+                    alt={user.name}
+                    className="w-12 h-12 rounded-full object-cover ring-2 ring-[#8FA89B]/30 shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs font-semibold text-[#2D3732] truncate hover:underline">
+                        {user.name}
+                      </span>
+                      {user.verified && (
+                        <CheckCircle2 size={12} className="text-[#8FA89B] shrink-0" />
+                      )}
+                    </div>
+                    <span className="text-[11px] text-[#7A8A82] block truncate font-mono">
+                      @{user.username}
+                    </span>
+                    {user.isFollower && !user.isFollowing && (
+                      <span className="inline-block mt-0.5 text-[9px] px-1.5 py-0.2 rounded-full bg-[#E6EDE9] text-[#55635C] font-semibold">
+                        Follows you
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <p className="text-[11px] text-[#55635C] line-clamp-2 leading-relaxed mb-3">
+                  {user.bio || 'Exploring ideas and craft on aura.ai.studio.'}
+                </p>
+
+                <div className="flex items-center justify-between pt-2 border-t border-[#E6EDE9]/60">
+                  <span className="text-[10px] text-[#7A8A82]">
+                    {user.followersCount} followers
+                  </span>
+
+                  {onToggleFollowUser && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleFollowUser(user.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 cursor-pointer active:scale-95 ${
+                        user.isFollowing
+                          ? 'bg-[#E6EDE9] text-[#2D3732] hover:bg-neutral-200'
+                          : user.isFollower
+                          ? 'bg-[#2D3732] text-white hover:bg-[#3d4a43]'
+                          : 'bg-[#8FA89B] text-white hover:bg-[#7e9689]'
+                      }`}
+                    >
+                      {user.isFollowing
+                        ? 'Following'
+                        : user.isFollower
+                        ? 'Follow Back'
+                        : 'Follow'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Featured Reels Strip */}
       <div className="space-y-3">
@@ -221,7 +308,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {/* Mandatory Developer Footer */}
       <div className="py-6 text-center border-t border-[#E6EDE9]">
         <p className="text-xs text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
-          app developed by reponsekdz
+          app developed by reponsekdz · aura.ai.studio
         </p>
       </div>
     </div>

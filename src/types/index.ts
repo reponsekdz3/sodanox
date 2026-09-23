@@ -1,3 +1,17 @@
+export interface NotificationPreferences {
+  likes: boolean;
+  comments: boolean;
+  directChats: boolean;
+  calls: boolean;
+  follows: boolean;
+}
+
+export interface MediaPreferences {
+  autoPlayReels: boolean;
+  highQualityUploads: boolean;
+  soundEffects: boolean;
+}
+
 export interface User {
   id: string;
   name: string;
@@ -12,11 +26,20 @@ export interface User {
   joinedDate: string;
   followersCount: number;
   followingCount: number;
-  isFollowing: boolean;
+  followers?: string[];
+  following?: string[];
+  isFollowing?: boolean;
+  isFollower?: boolean;
+  isMutual?: boolean;
   verified?: boolean;
   privateAccount?: boolean;
-  themePreference?: 'light' | 'dark' | 'cream';
+  themePreference?: 'light' | 'dark' | 'cream' | 'nordic' | 'alabaster' | 'dusk';
   allowMessagesFrom?: 'everyone' | 'followers';
+  showOnlineStatus?: boolean;
+  allowReshare?: boolean;
+  notificationPreferences?: NotificationPreferences;
+  mediaPreferences?: MediaPreferences;
+  blockedUsers?: string[];
 }
 
 export type StoryFilter = 'none' | 'vintage' | 'nordic' | 'noir' | 'golden' | 'sepia' | 'emerald';

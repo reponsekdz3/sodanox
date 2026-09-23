@@ -265,8 +265,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* Bottom: Genuine Member Guarantee */}
-        <div className="relative z-10 pt-6 border-t border-white/10">
+        {/* Bottom: Genuine Member Guarantee & Developer Credit */}
+        <div className="relative z-10 pt-6 border-t border-white/10 space-y-3">
           <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
             <div className="w-8 h-8 rounded-xl bg-[#8FA89B]/20 flex items-center justify-center shrink-0">
               <ShieldCheck size={18} className="text-[#8FA89B]" />
@@ -277,6 +277,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 100% genuine member accounts. All stories, posts, and conversations are created in real time.
               </p>
             </div>
+          </div>
+          <div className="text-center">
+            <p className="text-[11px] text-white/60 font-medium tracking-wide">
+              app developed by reponsekdz · aura.ai.studio
+            </p>
           </div>
         </div>
       </div>
@@ -649,7 +654,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 <button
                   type="button"
                   onClick={() => setMode('signup')}
-                  className="font-semibold text-[#2D3732] hover:underline"
+                  className="font-semibold text-[#2D3732] hover:underline cursor-pointer"
                 >
                   Create one now
                 </button>
@@ -660,12 +665,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 <button
                   type="button"
                   onClick={() => setMode('signin')}
-                  className="font-semibold text-[#2D3732] hover:underline"
+                  className="font-semibold text-[#2D3732] hover:underline cursor-pointer"
                 >
                   Sign in
                 </button>
               </p>
             )}
+          </div>
+
+          {/* Mandatory Developer Footer Attribution */}
+          <div className="mt-8 pt-6 border-t border-[#2D3732]/10 text-center space-y-1">
+            <p className="text-xs font-semibold text-[#55635C] tracking-wide hover:text-[#2D3732] transition-colors">
+              developed by reponsekdz
+            </p>
+            <p className="text-[11px] text-[#7A8A82]">
+              aura.ai.studio · Mindful Modern Social Platform
+            </p>
           </div>
         </div>
       </div>

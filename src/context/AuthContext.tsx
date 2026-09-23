@@ -125,23 +125,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     try {
       const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      provider.addScope('profile');
+      provider.addScope('email');
+      
       const res = await signInWithPopup(auth, provider);
       const fbUser = res.user;
       let profile = await getUserProfile(fbUser.uid);
       if (!profile) {
+        const highResPhoto = fbUser.photoURL
+          ? fbUser.photoURL.replace('s96-c', 's400-c')
+          : '';
+        const baseUsername = fbUser.email
+          ? fbUser.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '')
+          : `aura_${fbUser.uid.slice(0, 5)}`;
+
         profile = await createUserProfile(fbUser.uid, {
           name: fbUser.displayName || 'Aura Member',
-          username: fbUser.email ? fbUser.email.split('@')[0] : `aura_${fbUser.uid.slice(0, 5)}`,
+          username: baseUsername,
           avatar:
-            fbUser.photoURL ||
+            highResPhoto ||
             'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-          bio: 'Exploring architecture, craft, and slow reflections on Aura.',
+          bio: 'Exploring design, craft, and quiet conversations on aura.ai.studio.',
           email: fbUser.email || '',
         });
+      } else if (fbUser.photoURL && (!profile.avatar || profile.avatar.includes('unsplash.com'))) {
+        const highResPhoto = fbUser.photoURL.replace('s96-c', 's400-c');
+        await updateUserProfile(fbUser.uid, { avatar: highResPhoto });
+        profile.avatar = highResPhoto;
       }
       setUserProfile(profile);
-    } catch (err) {
+    } catch (err: unknown) {
       console.error('Google Sign In Error:', err);
+      const authErr = err as { code?: string; message?: string };
+      if (authErr.code === 'auth/popup-blocked') {
+        throw new Error('Google Sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
+      } else if (authErr.code === 'auth/popup-closed-by-user') {
+        throw new Error('Google Sign-in was cancelled before completion.');
+      }
       throw err;
     } finally {
       setLoading(false);

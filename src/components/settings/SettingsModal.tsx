@@ -17,10 +17,14 @@ import {
   Download,
   AlertTriangle,
   Smartphone,
+  Copy,
+  UserX,
+  CheckCircle2,
+  Sparkles,
 } from 'lucide-react';
 import { User as UserType } from '../../types';
 import { useAuth } from '../../context/AuthContext';
-import { updateUserProfile } from '../../services/userService';
+import { updateUserProfile, toggleBlockUser } from '../../services/userService';
 
 interface SettingsModalProps {
   currentUser: UserType;
@@ -28,36 +32,41 @@ interface SettingsModalProps {
   onOpenEditProfile: () => void;
 }
 
-type SettingsSection = 'account' | 'privacy' | 'notifications' | 'preferences' | 'data';
+type SettingsSection = 'account' | 'privacy' | 'notifications' | 'preferences' | 'safety' | 'data';
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentUser,
   onClose,
   onOpenEditProfile,
 }) => {
-  const { signOut, sendPasswordReset } = useAuth();
+  const { signOut, sendPasswordReset, updateUser } = useAuth();
   const [activeSection, setActiveSection] = useState<SettingsSection>('account');
   const [isResetSent, setIsResetSent] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [copiedStudioLink, setCopiedStudioLink] = useState(false);
 
   // Privacy states
   const [isPrivate, setIsPrivate] = useState(currentUser.privateAccount || false);
-  const [showActivity, setShowActivity] = useState(true);
-  const [allowReshare, setAllowReshare] = useState(true);
+  const [showActivity, setShowActivity] = useState(currentUser.showOnlineStatus !== false);
+  const [allowReshare, setAllowReshare] = useState(currentUser.allowReshare !== false);
 
   // Preferences states
-  const [autoPlayReels, setAutoPlayReels] = useState(true);
-  const [highQualityUploads, setHighQualityUploads] = useState(true);
-  const [soundEffects, setSoundEffects] = useState(true);
-  const [selectedTheme, setSelectedTheme] = useState<'nordic' | 'alabaster' | 'dusk'>('nordic');
+  const [autoPlayReels, setAutoPlayReels] = useState(currentUser.mediaPreferences?.autoPlayReels ?? true);
+  const [highQualityUploads, setHighQualityUploads] = useState(currentUser.mediaPreferences?.highQualityUploads ?? true);
+  const [soundEffects, setSoundEffects] = useState(currentUser.mediaPreferences?.soundEffects ?? true);
+  const [selectedTheme, setSelectedTheme] = useState<'nordic' | 'alabaster' | 'dusk'>((currentUser.themePreference as any) || 'nordic');
 
   // Notification toggles
-  const [notifyLikes, setNotifyLikes] = useState(true);
-  const [notifyComments, setNotifyComments] = useState(true);
-  const [notifyDirectChats, setNotifyDirectChats] = useState(true);
-  const [notifyCalls, setNotifyCalls] = useState(true);
+  const [notifyLikes, setNotifyLikes] = useState(currentUser.notificationPreferences?.likes ?? true);
+  const [notifyComments, setNotifyComments] = useState(currentUser.notificationPreferences?.comments ?? true);
+  const [notifyDirectChats, setNotifyDirectChats] = useState(currentUser.notificationPreferences?.directChats ?? true);
+  const [notifyCalls, setNotifyCalls] = useState(currentUser.notificationPreferences?.calls ?? true);
+  const [notifyFollows, setNotifyFollows] = useState(currentUser.notificationPreferences?.follows ?? true);
 
-  const [savingPrivacy, setSavingPrivacy] = useState(false);
+  // Blocked users
+  const [blockedUsers, setBlockedUsers] = useState<string[]>(currentUser.blockedUsers || []);
+
+  const [savingSettings, setSavingSettings] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   const handlePasswordReset = async () => {
@@ -76,17 +85,87 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
+  const handleCopyStudioUrl = () => {
+    const url = `https://aura.ai.studio/@${currentUser.username}`;
+    navigator.clipboard?.writeText(url);
+    setCopiedStudioLink(true);
+    setTimeout(() => setCopiedStudioLink(false), 2500);
+  };
+
+  const saveSettingsToFirestore = async (updates: Partial<UserType>) => {
+    setSavingSettings(true);
+    try {
+      await updateUserProfile(currentUser.id, updates);
+      await updateUser(updates);
+      setSavedSuccess(true);
+      setTimeout(() => setSavedSuccess(false), 2000);
+    } catch (err) {
+      console.error('Error saving settings to Firestore:', err);
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   const handleTogglePrivacy = async (newVal: boolean) => {
     setIsPrivate(newVal);
-    setSavingPrivacy(true);
+    await saveSettingsToFirestore({ privateAccount: newVal });
+  };
+
+  const handleToggleActivity = async (newVal: boolean) => {
+    setShowActivity(newVal);
+    await saveSettingsToFirestore({ showOnlineStatus: newVal });
+  };
+
+  const handleToggleReshare = async (newVal: boolean) => {
+    setAllowReshare(newVal);
+    await saveSettingsToFirestore({ allowReshare: newVal });
+  };
+
+  const handleUpdateNotification = async (key: keyof NonNullable<UserType['notificationPreferences']>, value: boolean) => {
+    const updated = {
+      likes: notifyLikes,
+      comments: notifyComments,
+      directChats: notifyDirectChats,
+      calls: notifyCalls,
+      follows: notifyFollows,
+      [key]: value,
+    };
+    if (key === 'likes') setNotifyLikes(value);
+    if (key === 'comments') setNotifyComments(value);
+    if (key === 'directChats') setNotifyDirectChats(value);
+    if (key === 'calls') setNotifyCalls(value);
+    if (key === 'follows') setNotifyFollows(value);
+
+    await saveSettingsToFirestore({ notificationPreferences: updated });
+  };
+
+  const handleUpdateMediaPref = async (key: keyof NonNullable<UserType['mediaPreferences']>, value: boolean) => {
+    const updated = {
+      autoPlayReels,
+      highQualityUploads,
+      soundEffects,
+      [key]: value,
+    };
+    if (key === 'autoPlayReels') setAutoPlayReels(value);
+    if (key === 'highQualityUploads') setHighQualityUploads(value);
+    if (key === 'soundEffects') setSoundEffects(value);
+
+    await saveSettingsToFirestore({ mediaPreferences: updated });
+  };
+
+  const handleSelectTheme = async (theme: 'nordic' | 'alabaster' | 'dusk') => {
+    setSelectedTheme(theme);
+    await saveSettingsToFirestore({ themePreference: theme });
+  };
+
+  const handleUnblockUser = async (targetUid: string) => {
     try {
-      await updateUserProfile(currentUser.id, { privateAccount: newVal });
-      setSavedSuccess(true);
-      setTimeout(() => setSavedSuccess(false), 2500);
+      await toggleBlockUser(currentUser.id, targetUid, true);
+      const nextList = blockedUsers.filter((uid) => uid !== targetUid);
+      setBlockedUsers(nextList);
+      await updateUser({ blockedUsers: nextList });
     } catch (err) {
-      console.error(err);
-    } finally {
-      setSavingPrivacy(false);
+      console.error('Error unblocking user:', err);
     }
   };
 
@@ -95,7 +174,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       {
         account: currentUser,
         exportDate: new Date().toISOString(),
-        auraVersion: '2.4.0',
+        network: 'aura.ai.studio',
+        authorAttribution: 'reponsekdz',
       },
       null,
       2
@@ -104,7 +184,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `aura-data-backup-${currentUser.username}.json`;
+    a.download = `aura-studio-backup-${currentUser.username}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -118,12 +198,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center justify-between md:mb-6">
               <div>
                 <h3 className="text-base font-serif font-semibold text-[#2D3732]">Settings</h3>
-                <p className="text-[11px] text-[#7A8A82]">Account & studio controls</p>
+                <p className="text-[11px] text-[#7A8A82]">Account & aura.ai.studio controls</p>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                className="md:hidden p-1.5 rounded-full hover:bg-black/5"
+                className="md:hidden p-1.5 rounded-full hover:bg-black/5 cursor-pointer"
               >
                 <X size={18} />
               </button>
@@ -140,8 +220,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/50'
                 }`}
               >
-                <User size={16} className={activeSection === 'account' ? 'text-[#8FA89B]' : ''} />
-                <span>Account & Security</span>
+                <User size={15} />
+                <span>Account Profile</span>
               </button>
 
               <button
@@ -153,8 +233,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/50'
                 }`}
               >
-                <Shield size={16} className={activeSection === 'privacy' ? 'text-[#8FA89B]' : ''} />
-                <span>Privacy & Sharing</span>
+                <Shield size={15} />
+                <span>Privacy & Access</span>
               </button>
 
               <button
@@ -166,7 +246,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/50'
                 }`}
               >
-                <Bell size={16} className={activeSection === 'notifications' ? 'text-[#8FA89B]' : ''} />
+                <Bell size={15} />
                 <span>Notifications</span>
               </button>
 
@@ -179,8 +259,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/50'
                 }`}
               >
-                <Sliders size={16} className={activeSection === 'preferences' ? 'text-[#8FA89B]' : ''} />
-                <span>Studio Experience</span>
+                <Sliders size={15} />
+                <span>Studio & Media</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveSection('safety')}
+                className={`flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl text-xs font-medium transition-all text-left whitespace-nowrap cursor-pointer ${
+                  activeSection === 'safety'
+                    ? 'bg-[#FAFAF9] text-[#2D3732] shadow-sm font-semibold'
+                    : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/50'
+                }`}
+              >
+                <UserX size={15} />
+                <span>Safety & Blocks</span>
               </button>
 
               <button
@@ -192,14 +285,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/50'
                 }`}
               >
-                <Database size={16} className={activeSection === 'data' ? 'text-[#8FA89B]' : ''} />
+                <Database size={15} />
                 <span>Data & Backup</span>
               </button>
             </div>
           </div>
 
           {/* Sign out button */}
-          <div className="pt-4 border-t border-[#2D3732]/10 hidden md:block">
+          <div className="pt-4 border-t border-[#2D3732]/10 hidden md:block space-y-3">
             <button
               type="button"
               onClick={async () => {
@@ -211,16 +304,38 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <LogOut size={16} />
               <span>Sign Out</span>
             </button>
+
+            <div className="px-2 text-center">
+              <p className="text-[10px] text-[#7A8A82]">
+                developed by reponsekdz
+              </p>
+              <p className="text-[9px] text-[#A1B0A8]">
+                aura.ai.studio
+              </p>
+            </div>
           </div>
         </div>
 
         {/* Section Content Area */}
         <div className="flex-1 p-6 sm:p-8 overflow-y-auto">
-          <div className="hidden md:flex justify-end mb-2">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              {savingSettings && (
+                <span className="text-[11px] text-[#8FA89B] animate-pulse">
+                  Syncing to Firestore...
+                </span>
+              )}
+              {savedSuccess && (
+                <span className="text-[11px] text-emerald-600 flex items-center gap-1 animate-fade-in">
+                  <CheckCircle2 size={12} />
+                  <span>Saved to cloud</span>
+                </span>
+              )}
+            </div>
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-full text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2] transition-colors"
+              className="p-1.5 rounded-full text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2] transition-colors cursor-pointer"
             >
               <X size={20} />
             </button>
@@ -232,7 +347,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <h4 className="text-base font-semibold text-[#2D3732]">Account Details</h4>
                 <p className="text-xs text-[#7A8A82]">
-                  Manage your credentials, authenticated email, and public profile
+                  Manage your credentials, authenticated profile, and public aura.ai.studio link
                 </p>
               </div>
 
@@ -264,6 +379,27 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
 
+              {/* Official studio address */}
+              <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-[#2D3732] flex items-center gap-1.5">
+                    <Sparkles size={14} className="text-[#8FA89B]" />
+                    <span>Your Official Studio Domain</span>
+                  </div>
+                  <div className="text-xs font-mono text-[#55635C] truncate mt-0.5">
+                    https://aura.ai.studio/@{currentUser.username}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyStudioUrl}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#2D3732]/10 text-xs font-medium text-[#2D3732] hover:bg-[#FAFAF9] shadow-xs cursor-pointer shrink-0"
+                >
+                  {copiedStudioLink ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                  <span>{copiedStudioLink ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+
               {/* Password reset action */}
               <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 space-y-3">
                 <div className="flex items-center justify-between">
@@ -279,39 +415,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <button
                     type="button"
                     onClick={handlePasswordReset}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#2D3732] text-white text-xs font-medium hover:bg-[#3d4a43] transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-white border border-[#2D3732]/10 text-xs font-medium text-[#2D3732] hover:bg-[#FAFAF9] shadow-xs cursor-pointer"
                   >
-                    Reset Password
+                    Send Reset Link
                   </button>
                 </div>
 
                 {isResetSent && (
-                  <div className="p-2.5 rounded-xl bg-green-50 border border-green-200 text-xs text-green-800 flex items-center gap-2 animate-fade-in">
+                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2">
                     <Check size={14} />
-                    <span>Password reset email dispatched! Please check your inbox.</span>
+                    <span>Password reset instructions sent to your email.</span>
                   </div>
                 )}
                 {resetError && (
-                  <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-xs text-red-800 animate-fade-in">
+                  <div className="p-2.5 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs">
                     {resetError}
                   </div>
                 )}
-              </div>
-
-              {/* Two-Factor Auth badge */}
-              <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  <Smartphone size={18} className="text-[#8FA89B]" />
-                  <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Two-Step Verification</div>
-                    <div className="text-[11px] text-[#7A8A82]">
-                      Secured via Firebase Identity Provider
-                    </div>
-                  </div>
-                </div>
-                <span className="text-xs px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 font-medium">
-                  Active
-                </span>
               </div>
             </div>
           )}
@@ -322,83 +442,73 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <h4 className="text-base font-semibold text-[#2D3732]">Privacy & Visibility</h4>
                 <p className="text-xs text-[#7A8A82]">
-                  Control who can see your studio posts, stories, and active presence
+                  Configure who can see your reflections, stories, and activity
                 </p>
               </div>
 
-              {savedSuccess && (
-                <div className="p-2.5 rounded-xl bg-green-50 border border-green-200 text-xs text-green-800 flex items-center gap-2">
-                  <Check size={14} />
-                  <span>Privacy settings saved successfully!</span>
-                </div>
-              )}
-
-              {/* Private account toggle */}
-              <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <Lock size={18} className="text-[#8FA89B] mt-0.5" />
-                  <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Private Account</div>
-                    <div className="text-[11px] text-[#7A8A82] max-w-sm">
-                      When your account is private, only users you approve can view your posts,
-                      reels, and full follower lists.
+              <div className="space-y-4">
+                <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Lock size={18} className="text-[#8FA89B]" />
+                    <div>
+                      <div className="text-xs font-semibold text-[#2D3732]">Private Studio Account</div>
+                      <div className="text-[11px] text-[#7A8A82]">
+                        Only your accepted followers can read your full reflections and stories
+                      </div>
                     </div>
                   </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={isPrivate}
+                      onChange={(e) => handleTogglePrivacy(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                  </label>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={isPrivate}
-                    disabled={savingPrivacy}
-                    onChange={(e) => handleTogglePrivacy(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
-                </label>
-              </div>
 
-              {/* Activity Status */}
-              <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <Eye size={18} className="text-[#8FA89B] mt-0.5" />
-                  <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Show Active Presence</div>
-                    <div className="text-[11px] text-[#7A8A82] max-w-sm">
-                      Allow people you follow and message to see when you are currently online in the studio.
+                <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Eye size={18} className="text-[#8FA89B]" />
+                    <div>
+                      <div className="text-xs font-semibold text-[#2D3732]">Active Presence & Status</div>
+                      <div className="text-[11px] text-[#7A8A82]">
+                        Allow mutual followers to see when you are active on Aura
+                      </div>
                     </div>
                   </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showActivity}
+                      onChange={(e) => handleToggleActivity(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                  </label>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={showActivity}
-                    onChange={(e) => setShowActivity(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
-                </label>
-              </div>
 
-              {/* Allow Story Resharing */}
-              <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
-                <div className="flex items-start gap-3">
-                  <Shield size={18} className="text-[#8FA89B] mt-0.5" />
-                  <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Allow Post Quoting & Resharing</div>
-                    <div className="text-[11px] text-[#7A8A82] max-w-sm">
-                      Let other creators quote your public posts and share stories to their feeds.
+                <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Shield size={18} className="text-[#8FA89B]" />
+                    <div>
+                      <div className="text-xs font-semibold text-[#2D3732]">Allow Reflection Reshares</div>
+                      <div className="text-[11px] text-[#7A8A82]">
+                        Permit other members to repost and quote your reflections to their streams
+                      </div>
                     </div>
                   </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={allowReshare}
+                      onChange={(e) => handleToggleReshare(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                  </label>
                 </div>
-                <label className="relative inline-flex items-center cursor-pointer shrink-0">
-                  <input
-                    type="checkbox"
-                    checked={allowReshare}
-                    onChange={(e) => setAllowReshare(e.target.checked)}
-                    className="sr-only peer"
-                  />
-                  <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
-                </label>
               </div>
             </div>
           )}
@@ -407,23 +517,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeSection === 'notifications' && (
             <div className="space-y-6">
               <div>
-                <h4 className="text-base font-semibold text-[#2D3732]">Push & In-App Alerts</h4>
+                <h4 className="text-base font-semibold text-[#2D3732]">Notification Alerts</h4>
                 <p className="text-xs text-[#7A8A82]">
-                  Customize which events send real-time notifications to your device
+                  Customize which live community interactions ping your activity drawer
                 </p>
               </div>
 
               <div className="space-y-3">
                 <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Likes & Reactions</div>
-                    <div className="text-[11px] text-[#7A8A82]">When someone loves your post or reacts to your story</div>
+                    <div className="text-xs font-semibold text-[#2D3732]">Likes & Appreciations</div>
+                    <div className="text-[11px] text-[#7A8A82]">Alerts when members like your posts or reels</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={notifyLikes}
-                      onChange={(e) => setNotifyLikes(e.target.checked)}
+                      onChange={(e) => handleUpdateNotification('likes', e.target.checked)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
@@ -432,14 +542,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Comments & Mentions</div>
-                    <div className="text-[11px] text-[#7A8A82]">When somebody replies or mentions you in a thread</div>
+                    <div className="text-xs font-semibold text-[#2D3732]">Comments & Replies</div>
+                    <div className="text-[11px] text-[#7A8A82]">Alerts when creators reply to your discussions</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={notifyComments}
-                      onChange={(e) => setNotifyComments(e.target.checked)}
+                      onChange={(e) => handleUpdateNotification('comments', e.target.checked)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
@@ -448,14 +558,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Direct Messages</div>
-                    <div className="text-[11px] text-[#7A8A82]">Incoming chat messages and photo attachments</div>
+                    <div className="text-xs font-semibold text-[#2D3732]">New Followers & Follow Backs</div>
+                    <div className="text-[11px] text-[#7A8A82]">Alerts when someone follows your studio</div>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={notifyFollows}
+                      onChange={(e) => handleUpdateNotification('follows', e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                  </label>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
+                  <div>
+                    <div className="text-xs font-semibold text-[#2D3732]">Direct Messages & Voice Notes</div>
+                    <div className="text-[11px] text-[#7A8A82]">In-app notification badge on new direct messages</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={notifyDirectChats}
-                      onChange={(e) => setNotifyDirectChats(e.target.checked)}
+                      onChange={(e) => handleUpdateNotification('directChats', e.target.checked)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
@@ -464,14 +590,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Voice & Video Calls</div>
-                    <div className="text-[11px] text-[#7A8A82]">Incoming audio and high-definition video calls</div>
+                    <div className="text-xs font-semibold text-[#2D3732]">Incoming Voice & Video Calls</div>
+                    <div className="text-[11px] text-[#7A8A82]">Ring and trigger call dialogs for direct peer calls</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={notifyCalls}
-                      onChange={(e) => setNotifyCalls(e.target.checked)}
+                      onChange={(e) => handleUpdateNotification('calls', e.target.checked)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
@@ -481,53 +607,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* 4. Studio Experience & Preferences */}
+          {/* 4. Preferences Section */}
           {activeSection === 'preferences' && (
             <div className="space-y-6">
               <div>
-                <h4 className="text-base font-semibold text-[#2D3732]">Studio Experience</h4>
-                <p className="text-xs text-[#7A8A82]">
-                  Fine-tune playback, aesthetic palette, and media resolution
-                </p>
+                <h4 className="text-base font-semibold text-[#2D3732]">Studio & Media Preferences</h4>
+                <p className="text-xs text-[#7A8A82]">Adjust theme aesthetics and rich content playback</p>
               </div>
 
-              {/* Aesthetic Palette */}
-              <div className="space-y-2">
-                <span className="text-xs font-semibold text-[#2D3732]">Color Harmony Theme</span>
+              {/* Theme Palette Selection */}
+              <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 space-y-3">
+                <div className="text-xs font-semibold text-[#2D3732]">Aura Palette Aesthetic</div>
                 <div className="grid grid-cols-3 gap-3">
                   {[
-                    { id: 'nordic', name: 'Nordic Moss', bg: 'bg-[#FAFAF9]', border: 'border-[#8FA89B]' },
-                    { id: 'alabaster', name: 'Warm Alabaster', bg: 'bg-[#FDFCFA]', border: 'border-[#E0D8CB]' },
-                    { id: 'dusk', name: 'Dusk Slate', bg: 'bg-[#F2F4F3]', border: 'border-[#94A3B8]' },
-                  ].map((theme) => (
+                    { id: 'nordic', label: 'Nordic Sage', bg: 'bg-[#FAFAF9]', border: 'border-[#8FA89B]' },
+                    { id: 'alabaster', label: 'Alabaster Warm', bg: 'bg-[#FDFCFA]', border: 'border-[#D9DFD5]' },
+                    { id: 'dusk', label: 'Quiet Dusk', bg: 'bg-[#2D3732]', text: 'text-white', border: 'border-[#5C7567]' },
+                  ].map((t) => (
                     <button
-                      key={theme.id}
+                      key={t.id}
                       type="button"
-                      onClick={() => setSelectedTheme(theme.id as any)}
-                      className={`p-3 rounded-2xl border text-left cursor-pointer transition-all ${
-                        selectedTheme === theme.id
-                          ? `${theme.border} ring-2 ring-[#8FA89B]/30 shadow-xs font-semibold`
-                          : 'border-transparent bg-[#F1F5F2] hover:bg-[#E6EDE9]'
-                      }`}
+                      onClick={() => handleSelectTheme(t.id as any)}
+                      className={`p-3 rounded-xl border text-center transition-all cursor-pointer ${
+                        selectedTheme === t.id
+                          ? 'border-[#2D3732] ring-2 ring-[#8FA89B]'
+                          : 'border-transparent hover:border-black/10'
+                      } ${t.bg} ${t.text || 'text-[#2D3732]'}`}
                     >
-                      <div className={`w-full h-8 rounded-lg mb-2 ${theme.bg} border border-[#2D3732]/10`} />
-                      <div className="text-xs text-[#2D3732]">{theme.name}</div>
+                      <div className="text-xs font-semibold">{t.label}</div>
+                      {selectedTheme === t.id && (
+                        <Check size={12} className="mx-auto mt-1 text-[#8FA89B]" />
+                      )}
                     </button>
                   ))}
                 </div>
               </div>
 
-              <div className="space-y-3 pt-2">
+              <div className="space-y-3">
                 <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">Autoplay Reels & Videos</div>
-                    <div className="text-[11px] text-[#7A8A82]">Instantly preview vertical reel clips while scrolling</div>
+                    <div className="text-xs font-semibold text-[#2D3732]">Autoplay Reels on Scroll</div>
+                    <div className="text-[11px] text-[#7A8A82]">Smoothly begin short cinema reels as you browse</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={autoPlayReels}
-                      onChange={(e) => setAutoPlayReels(e.target.checked)}
+                      onChange={(e) => handleUpdateMediaPref('autoPlayReels', e.target.checked)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
@@ -536,14 +662,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                 <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                   <div>
-                    <div className="text-xs font-semibold text-[#2D3732]">High Fidelity Media Uploads</div>
-                    <div className="text-[11px] text-[#7A8A82]">Preserve maximum photography resolution for stories & posts</div>
+                    <div className="text-xs font-semibold text-[#2D3732]">High-Fidelity Media Uploads</div>
+                    <div className="text-[11px] text-[#7A8A82]">Preserve original resolution and color profiles</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={highQualityUploads}
-                      onChange={(e) => setHighQualityUploads(e.target.checked)}
+                      onChange={(e) => handleUpdateMediaPref('highQualityUploads', e.target.checked)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
@@ -554,15 +680,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center gap-2">
                     <Volume2 size={16} className="text-[#8FA89B]" />
                     <div>
-                      <div className="text-xs font-semibold text-[#2D3732]">Tactile Sound Cues</div>
-                      <div className="text-[11px] text-[#7A8A82]">Subtle acoustic tones on likes and story completions</div>
+                      <div className="text-xs font-semibold text-[#2D3732]">Tactile Acoustic Tones</div>
+                      <div className="text-[11px] text-[#7A8A82]">Subtle synthesized acoustic tones on interactions</div>
                     </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
                       type="checkbox"
                       checked={soundEffects}
-                      onChange={(e) => setSoundEffects(e.target.checked)}
+                      onChange={(e) => handleUpdateMediaPref('soundEffects', e.target.checked)}
                       className="sr-only peer"
                     />
                     <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
@@ -572,13 +698,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             </div>
           )}
 
-          {/* 5. Data & Backup Section */}
+          {/* 5. Safety & Blocked Accounts Section */}
+          {activeSection === 'safety' && (
+            <div className="space-y-6">
+              <div>
+                <h4 className="text-base font-semibold text-[#2D3732]">Safety & Blocked Accounts</h4>
+                <p className="text-xs text-[#7A8A82]">
+                  Manage restricted users and community boundaries
+                </p>
+              </div>
+
+              <div className="space-y-3">
+                {blockedUsers.length === 0 ? (
+                  <div className="p-8 text-center bg-[#F1F5F2] rounded-2xl border border-[#2D3732]/10 text-xs text-[#7A8A82]">
+                    No accounts are currently blocked. You have an open community feed.
+                  </div>
+                ) : (
+                  blockedUsers.map((uid) => (
+                    <div
+                      key={uid}
+                      className="p-3.5 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <UserX size={16} className="text-red-500" />
+                        <span className="text-xs font-mono text-[#2D3732]">User ID: {uid.slice(0, 10)}...</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleUnblockUser(uid)}
+                        className="px-3 py-1 rounded-xl bg-white border border-[#2D3732]/10 text-xs font-medium text-red-600 hover:bg-red-50 cursor-pointer"
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 6. Data & Backup Section */}
           {activeSection === 'data' && (
             <div className="space-y-6">
               <div>
                 <h4 className="text-base font-semibold text-[#2D3732]">Data, Backup & Export</h4>
                 <p className="text-xs text-[#7A8A82]">
-                  Download a complete copy of your profile archive or reset temporary cache
+                  Download a complete copy of your studio profile archive or manage cloud storage
                 </p>
               </div>
 
@@ -600,7 +765,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </div>
 
               {/* Mobile sign out for smaller screens */}
-              <div className="pt-4 border-t border-[#2D3732]/10 md:hidden">
+              <div className="pt-4 border-t border-[#2D3732]/10 md:hidden space-y-3">
                 <button
                   type="button"
                   onClick={async () => {
@@ -612,6 +777,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <LogOut size={16} />
                   <span>Sign Out of Aura</span>
                 </button>
+                <div className="text-center text-[10px] text-[#7A8A82]">
+                  developed by reponsekdz · aura.ai.studio
+                </div>
               </div>
             </div>
           )}

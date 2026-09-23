@@ -72,6 +72,7 @@ import {
 import {
   toggleFollowUser,
   getAllUsers,
+  getSuggestedUsers,
 } from './services/userService';
 
 export default function App() {
@@ -88,6 +89,7 @@ export default function App() {
   const [reels, setReels] = useState<Reel[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [communityUsers, setCommunityUsers] = useState<User[]>([]);
+  const [suggestedUsers, setSuggestedUsers] = useState<User[]>([]);
 
   // Calling state
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
@@ -118,13 +120,24 @@ export default function App() {
     }
   }, [userProfile]);
 
+  const refreshCommunity = async (uid: string) => {
+    try {
+      const [all, suggested] = await Promise.all([
+        getAllUsers(uid, uid),
+        getSuggestedUsers(uid, 12),
+      ]);
+      setCommunityUsers(all);
+      setSuggestedUsers(suggested);
+    } catch (err) {
+      console.error('Error fetching community users:', err);
+    }
+  };
+
   // Load registered community creators from Firestore
   useEffect(() => {
     if (!currentUser) return;
-    getAllUsers(currentUser.id).then((users) => {
-      setCommunityUsers(users);
-    });
-  }, [currentUser]);
+    refreshCommunity(currentUser.id);
+  }, [currentUser?.id]);
 
   // Real-time subscription to Posts in Firestore
   useEffect(() => {
@@ -501,21 +514,90 @@ export default function App() {
 
   // ---------------- Handlers for Following & Profile ----------------
   const handleToggleFollow = async (userId: string) => {
-    if (!currentUser) return;
-    const isTargetFollowing = viewingUser?.id === userId ? viewingUser.isFollowing : false;
+    if (!currentUser || userId === currentUser.id) return;
+
+    // Accurately determine whether current user follows this target across all state sources
+    const inCommunity = communityUsers.find((u) => u.id === userId);
+    const inSuggested = suggestedUsers.find((u) => u.id === userId);
+    const inViewing = viewingUser?.id === userId ? viewingUser : null;
+    const isTargetFollowing = Boolean(
+      inCommunity?.isFollowing ??
+      inSuggested?.isFollowing ??
+      inViewing?.isFollowing ??
+      (currentUser.following || []).includes(userId)
+    );
+
+    const nextFollowing = !isTargetFollowing;
+
+    // Optimistically update community users
+    setCommunityUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          return {
+            ...u,
+            isFollowing: nextFollowing,
+            followersCount: nextFollowing
+              ? u.followersCount + 1
+              : Math.max(0, u.followersCount - 1),
+            isMutual: Boolean(nextFollowing && u.isFollower),
+          };
+        }
+        return u;
+      })
+    );
+
+    // Optimistically update suggested users
+    setSuggestedUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          return {
+            ...u,
+            isFollowing: nextFollowing,
+            followersCount: nextFollowing
+              ? u.followersCount + 1
+              : Math.max(0, u.followersCount - 1),
+            isMutual: Boolean(nextFollowing && u.isFollower),
+          };
+        }
+        return u;
+      })
+    );
+
+    // Optimistically update viewingUser if currently looking at this user's profile
+    if (viewingUser && viewingUser.id === userId) {
+      setViewingUser({
+        ...viewingUser,
+        isFollowing: nextFollowing,
+        followersCount: nextFollowing
+          ? viewingUser.followersCount + 1
+          : Math.max(0, viewingUser.followersCount - 1),
+        isMutual: Boolean(nextFollowing && viewingUser.isFollower),
+      });
+    }
+
+    // Optimistically update posts author status
+    setPosts((prev) =>
+      prev.map((p) => {
+        if (p.author.id === userId) {
+          return {
+            ...p,
+            author: {
+              ...p.author,
+              isFollowing: nextFollowing,
+            },
+          };
+        }
+        return p;
+      })
+    );
+
     try {
       await toggleFollowUser(currentUser.id, userId, isTargetFollowing, currentUser);
-      if (viewingUser && viewingUser.id === userId) {
-        setViewingUser({
-          ...viewingUser,
-          isFollowing: !isTargetFollowing,
-          followersCount: isTargetFollowing
-            ? Math.max(0, viewingUser.followersCount - 1)
-            : viewingUser.followersCount + 1,
-        });
-      }
+      // Background reload to sync exact counts
+      refreshCommunity(currentUser.id);
     } catch (err) {
       console.error('Error toggling follow:', err);
+      refreshCommunity(currentUser.id);
     }
   };
 
@@ -675,7 +757,7 @@ export default function App() {
             posts={posts}
             stories={stories}
             currentUser={currentUser}
-            suggestedUsers={communityUsers.filter((c) => c.id !== currentUser.id)}
+            suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id && !c.isFollowing)}
             onSelectStory={handleSelectStory}
             onOpenCreateStory={() => setIsCreateStoryOpen(true)}
             onLikePost={handleLikePost}
@@ -722,6 +804,8 @@ export default function App() {
           <ExploreView
             posts={posts}
             reels={reels}
+            suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id && !c.isFollowing)}
+            onToggleFollowUser={handleToggleFollow}
             onSelectPost={() => setCurrentTab('feed')}
             onSelectReel={() => setCurrentTab('reels')}
             onOpenUserProfile={handleOpenUserProfile}
@@ -735,7 +819,7 @@ export default function App() {
             userPosts={viewingUserPosts}
             userReels={reels.filter((r) => r.author.id === viewingUser.id)}
             savedPosts={posts.filter((p) => p.isBookmarked)}
-            suggestedUsers={communityUsers}
+            suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id)}
             onToggleFollow={handleToggleFollow}
             onOpenEditProfile={() => setIsEditProfileOpen(true)}
             onStartCall={handleStartCall}

@@ -18,6 +18,13 @@
         "followingCount": { "type": "number" },
         "followers": { "type": "array" },
         "following": { "type": "array" },
+        "blockedUsers": { "type": "array" },
+        "privateAccount": { "type": "boolean" },
+        "showOnlineStatus": { "type": "boolean" },
+        "allowReshare": { "type": "boolean" },
+        "themePreference": { "type": "string" },
+        "notificationPreferences": { "type": "object" },
+        "mediaPreferences": { "type": "object" },
         "verified": { "type": "boolean" },
         "isOnline": { "type": "boolean" },
         "createdAt": { "type": "string" }

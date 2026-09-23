@@ -252,47 +252,69 @@ export const Feed: React.FC<FeedProps> = ({
                 <Users size={15} className="text-[#8FA89B]" />
                 <span>Suggested Creators</span>
               </h3>
+              <span className="text-[10px] text-[#7A8A82] font-mono">
+                {suggestedUsers.length} available
+              </span>
             </div>
 
             <div className="space-y-3.5">
-              {suggestedUsers.map((user) => (
-                <div key={user.id} className="flex items-center justify-between gap-3">
-                  <div
-                    className="flex items-center gap-2.5 min-w-0 cursor-pointer group"
-                    onClick={() => onOpenUserProfile(user)}
-                  >
-                    <img
-                      src={user.avatar}
-                      alt={user.name}
-                      className="w-9 h-9 rounded-full object-cover shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1">
-                        <span className="text-xs font-medium text-[#2D3732] truncate group-hover:underline">
-                          {user.name}
-                        </span>
-                        {user.verified && (
-                          <CheckCircle2 size={12} className="text-[#8FA89B] shrink-0" />
-                        )}
+              {suggestedUsers.length === 0 ? (
+                <p className="text-xs text-[#7A8A82] italic py-2">
+                  You are following everyone in the community!
+                </p>
+              ) : (
+                suggestedUsers.slice(0, 6).map((user) => (
+                  <div key={user.id} className="flex items-center justify-between gap-3">
+                    <div
+                      className="flex items-center gap-2.5 min-w-0 cursor-pointer group"
+                      onClick={() => onOpenUserProfile(user)}
+                    >
+                      <img
+                        src={user.avatar}
+                        alt={user.name}
+                        className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-[#8FA89B]/30"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs font-medium text-[#2D3732] truncate group-hover:underline">
+                            {user.name}
+                          </span>
+                          {user.verified && (
+                            <CheckCircle2 size={12} className="text-[#8FA89B] shrink-0" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[11px] text-[#7A8A82] block truncate font-mono">
+                            @{user.username}
+                          </span>
+                          {user.isFollower && !user.isFollowing && (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-[#E6EDE9] text-[#55635C] font-semibold shrink-0">
+                              Follows you
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="text-[11px] text-[#7A8A82] block truncate">
-                        @{user.username}
-                      </span>
                     </div>
-                  </div>
 
-                  <button
-                    onClick={() => onToggleFollowUser(user.id)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 ${
-                      user.isFollowing
-                        ? 'bg-[#E6EDE9] text-[#2D3732] hover:bg-neutral-200'
-                        : 'bg-[#8FA89B] text-white hover:bg-[#7e9689]'
-                    }`}
-                  >
-                    {user.isFollowing ? 'Following' : 'Follow'}
-                  </button>
-                </div>
-              ))}
+                    <button
+                      onClick={() => onToggleFollowUser(user.id)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 cursor-pointer active:scale-95 ${
+                        user.isFollowing
+                          ? 'bg-[#E6EDE9] text-[#2D3732] hover:bg-neutral-200'
+                          : user.isFollower
+                          ? 'bg-[#2D3732] text-white hover:bg-[#3d4a43]'
+                          : 'bg-[#8FA89B] text-white hover:bg-[#7e9689]'
+                      }`}
+                    >
+                      {user.isFollowing
+                        ? 'Following'
+                        : user.isFollower
+                        ? 'Follow Back'
+                        : 'Follow'}
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
@@ -341,7 +363,7 @@ export const Feed: React.FC<FeedProps> = ({
           {/* Mandatory Developer Footer Attribution */}
           <div className="py-4 text-center">
             <p className="text-xs text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
-              app developed by reponsekdz
+              app developed by reponsekdz · aura.ai.studio
             </p>
           </div>
         </aside>
