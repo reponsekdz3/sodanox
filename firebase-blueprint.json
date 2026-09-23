@@ -1,0 +1,159 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with social counts and status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "username": { "type": "string" },
+        "avatar": { "type": "string" },
+        "bio": { "type": "string" },
+        "location": { "type": "string" },
+        "website": { "type": "string" },
+        "joinedDate": { "type": "string" },
+        "followersCount": { "type": "number" },
+        "followingCount": { "type": "number" },
+        "followers": { "type": "array" },
+        "following": { "type": "array" },
+        "verified": { "type": "boolean" },
+        "isOnline": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "username"]
+    },
+    "Post": {
+      "title": "Post",
+      "description": "Community posts with real likes, bookmarks, reposts, comments, and shares",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "author": { "type": "object" },
+        "content": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "tags": { "type": "array" },
+        "likesCount": { "type": "number" },
+        "likedBy": { "type": "array" },
+        "bookmarksCount": { "type": "number" },
+        "bookmarkedBy": { "type": "array" },
+        "repostsCount": { "type": "number" },
+        "repostedBy": { "type": "array" },
+        "sharesCount": { "type": "number" },
+        "commentsCount": { "type": "number" },
+        "comments": { "type": "array" },
+        "poll": { "type": "object" },
+        "repostAuthor": { "type": "object" },
+        "quotedPost": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["authorId", "content"]
+    },
+    "Story": {
+      "title": "Story",
+      "description": "Real-time user stories with visual slides, mood tags, views, and replies",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "userUsername": { "type": "string" },
+        "userAvatar": { "type": "string" },
+        "items": { "type": "array" },
+        "viewers": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "expiresAt": { "type": "string" }
+      },
+      "required": ["userId", "items"]
+    },
+    "Reel": {
+      "title": "Reel",
+      "description": "Short-form video reel with real likes, bookmarks, comments, and shares",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "author": { "type": "object" },
+        "videoUrl": { "type": "string" },
+        "posterUrl": { "type": "string" },
+        "caption": { "type": "string" },
+        "tags": { "type": "array" },
+        "audioTrack": { "type": "object" },
+        "likesCount": { "type": "number" },
+        "likedBy": { "type": "array" },
+        "bookmarksCount": { "type": "number" },
+        "bookmarkedBy": { "type": "array" },
+        "sharesCount": { "type": "number" },
+        "commentsCount": { "type": "number" },
+        "comments": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["videoUrl", "caption"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "Real-time social interaction notification",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "actorId": { "type": "string" },
+        "actor": { "type": "object" },
+        "type": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetTitle": { "type": "string" },
+        "text": { "type": "string" },
+        "read": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["recipientId", "type"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Direct message conversation thread",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "participantIds": { "type": "array" },
+        "participants": { "type": "object" },
+        "lastMessage": { "type": "object" },
+        "updatedAt": { "type": "string" },
+        "unreadCounts": { "type": "object" },
+        "typing": { "type": "object" }
+      },
+      "required": ["participantIds"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile collection"
+    },
+    "/posts/{postId}": {
+      "schema": "Post",
+      "description": "Posts collection with social engagements"
+    },
+    "/stories/{storyId}": {
+      "schema": "Story",
+      "description": "Ephemeral user stories collection"
+    },
+    "/reels/{reelId}": {
+      "schema": "Reel",
+      "description": "Reels video feed collection"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User notifications collection"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Direct messaging threads"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": { "$ref": "#/entities/Message" },
+      "description": "Messages inside conversation"
+    }
+  }
+}

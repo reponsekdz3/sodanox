@@ -1,0 +1,6 @@
+{
+  "name": "Aura Social",
+  "description": "A soft, minimalist social platform featuring messaging, audio & video calling, voice notes, file sharing, stories, and reels.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

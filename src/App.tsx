@@ -1,0 +1,794 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { useAuth } from './context/AuthContext';
+import {
+  User,
+  Post,
+  Reel,
+  Story,
+  StoryItem,
+  ChatConversation,
+  ActiveCall,
+  NotificationItem,
+  StoryHighlight,
+} from './types';
+
+import { Navbar } from './components/layout/Navbar';
+import { BottomNav } from './components/layout/BottomNav';
+import { Feed } from './components/feed/Feed';
+import { ReelsFeed } from './components/reels/ReelsFeed';
+import { MessagesView } from './components/messages/MessagesView';
+import { ExploreView } from './components/explore/ExploreView';
+import { ProfileView } from './components/profile/ProfileView';
+import { StoryViewerModal } from './components/story/StoryViewerModal';
+import { CreateStoryModal } from './components/story/CreateStoryModal';
+import { CreatePostModal } from './components/feed/CreatePostModal';
+import { CreateReelModal } from './components/reels/CreateReelModal';
+import { EditProfileModal } from './components/profile/EditProfileModal';
+import { SettingsModal } from './components/settings/SettingsModal';
+import { ActiveCallModal } from './components/calls/ActiveCallModal';
+import { FloatingCallPill } from './components/calls/FloatingCallPill';
+import { NotificationsDrawer } from './components/notifications/NotificationsDrawer';
+import { AuthPage } from './components/auth/AuthPage';
+
+import {
+  subscribeToPosts,
+  createNewPost,
+  toggleLikePost,
+  toggleBookmarkPost,
+  toggleRepostPost,
+  incrementPostShareCount,
+  addCommentToPost,
+  toggleLikeComment,
+  voteInPoll,
+  deletePostFromFirestore,
+  updatePostContent,
+} from './services/postService';
+import {
+  subscribeToStories,
+  createStoryInFirestore,
+  recordStoryView,
+  deleteStory,
+} from './services/storyService';
+import {
+  subscribeToReels,
+  createNewReel,
+  toggleLikeReel,
+  toggleBookmarkReel,
+  addCommentToReel,
+  incrementReelShareCount,
+} from './services/reelService';
+import {
+  subscribeToNotifications,
+  markAllNotificationsAsRead,
+} from './services/notificationService';
+import {
+  subscribeToUserConversations,
+  getOrCreateConversation,
+  sendChatMessage,
+} from './services/chatService';
+import {
+  toggleFollowUser,
+  getAllUsers,
+} from './services/userService';
+
+export default function App() {
+  const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
+
+  // Navigation & View state
+  const [currentTab, setCurrentTab] = useState<'feed' | 'reels' | 'messages' | 'explore' | 'profile'>('feed');
+  const [targetChatUser, setTargetChatUser] = useState<User | null>(null);
+
+  // Firestore Real-time Data state
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [stories, setStories] = useState<Story[]>([]);
+  const [reels, setReels] = useState<Reel[]>([]);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [communityUsers, setCommunityUsers] = useState<User[]>([]);
+
+  // Calling state
+  const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+
+  // Modals state
+  const [isStoryViewerOpen, setIsStoryViewerOpen] = useState(false);
+  const [activeStoryIndex, setActiveStoryIndex] = useState(0);
+  const [viewerStories, setViewerStories] = useState<Story[]>([]);
+  const [isCreateStoryOpen, setIsCreateStoryOpen] = useState(false);
+  const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
+  const [isCreateReelOpen, setIsCreateReelOpen] = useState(false);
+  const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
+
+  // Current active user
+  const currentUser: User | null = useMemo(() => {
+    return userProfile;
+  }, [userProfile]);
+
+  // Profile currently being viewed
+  const [viewingUser, setViewingUser] = useState<User | null>(null);
+
+  // Sync viewing user on mount or when user updates own profile
+  useEffect(() => {
+    if (userProfile && (!viewingUser || viewingUser.id === userProfile.id)) {
+      setViewingUser(userProfile);
+    }
+  }, [userProfile]);
+
+  // Load registered community creators from Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+    getAllUsers(currentUser.id).then((users) => {
+      setCommunityUsers(users);
+    });
+  }, [currentUser]);
+
+  // Real-time subscription to Posts in Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubPosts = subscribeToPosts(
+      currentUser.id,
+      (fetchedPosts) => {
+        setPosts(fetchedPosts);
+      },
+      (err) => console.warn('Posts sync error:', err)
+    );
+    return () => unsubPosts();
+  }, [currentUser]);
+
+  // Real-time subscription to Stories in Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubStories = subscribeToStories(
+      currentUser.id,
+      (fetchedStories) => {
+        setStories(fetchedStories);
+      },
+      (err) => console.warn('Stories sync error:', err)
+    );
+    return () => unsubStories();
+  }, [currentUser]);
+
+  // Real-time subscription to Reels in Firestore
+  useEffect(() => {
+    if (!currentUser) return;
+    const unsubReels = subscribeToReels(
+      currentUser.id,
+      (fetchedReels) => {
+        setReels(fetchedReels);
+      },
+      (err) => console.warn('Reels sync error:', err)
+    );
+    return () => unsubReels();
+  }, [currentUser]);
+
+  // Real-time subscription to Notifications in Firestore
+  useEffect(() => {
+    if (!isAuthenticated || !fbAuthUser?.uid) return;
+    const unsubNotifs = subscribeToNotifications(
+      fbAuthUser.uid,
+      (fetchedNotifs) => {
+        setNotifications(fetchedNotifs);
+      },
+      (err) => console.warn('Notifications sync error:', err)
+    );
+    return () => unsubNotifs();
+  }, [isAuthenticated, fbAuthUser?.uid]);
+
+  // Real-time subscription to Conversations in Firestore
+  useEffect(() => {
+    if (!isAuthenticated || !fbAuthUser?.uid) return;
+    const unsubConvs = subscribeToUserConversations(
+      fbAuthUser.uid,
+      (convs) => {
+        setConversations(convs);
+      },
+      (err) => console.warn('Convs sync error:', err)
+    );
+    return () => unsubConvs();
+  }, [isAuthenticated, fbAuthUser?.uid]);
+
+  // Derived counts
+  const totalUnreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+  const totalUnreadNotifications = notifications.filter((n) => !n.read).length;
+
+  // ---------------- Handlers for Navigation ----------------
+  const handleOpenUserProfile = (user: User) => {
+    setViewingUser(user);
+    setCurrentTab('profile');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleOpenDirectChat = (user: User) => {
+    setTargetChatUser(user);
+    setCurrentTab('messages');
+  };
+
+  // ---------------- Handlers for Stories ----------------
+  const handleSelectStory = (index: number) => {
+    setViewerStories(stories);
+    setActiveStoryIndex(index);
+    setIsStoryViewerOpen(true);
+  };
+
+  const handleSelectHighlight = (hl: StoryHighlight) => {
+    if (!viewingUser) return;
+    const hlStory: Story = {
+      id: hl.id,
+      userId: hl.userId,
+      userName: `${viewingUser.name} · ${hl.title}`,
+      userUsername: viewingUser.username,
+      userAvatar: hl.coverUrl,
+      items: hl.items,
+      hasUnseen: false,
+      createdAt: hl.createdAt,
+    };
+    setViewerStories([hlStory]);
+    setActiveStoryIndex(0);
+    setIsStoryViewerOpen(true);
+  };
+
+  const handleAddStory = async (newItem: StoryItem) => {
+    if (!currentUser) return;
+    await createStoryInFirestore(currentUser, newItem);
+  };
+
+  const handleRecordStoryView = async (storyId: string) => {
+    if (!currentUser) return;
+    try {
+      await recordStoryView(storyId, currentUser.id);
+    } catch (err) {
+      console.error('Error recording story view:', err);
+    }
+  };
+
+  const handleDeleteStory = async (storyId: string) => {
+    try {
+      await deleteStory(storyId);
+    } catch (err) {
+      console.error('Error deleting story:', err);
+    }
+  };
+
+  const handleSendStoryReply = async (storyOwnerId: string, text: string) => {
+    if (!currentUser) return;
+    try {
+      const targetUser = communityUsers.find((u) => u.id === storyOwnerId) || {
+        id: storyOwnerId,
+        name: 'Story Author',
+        username: 'creator',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        bio: '',
+        joinedDate: '',
+        followersCount: 0,
+        followingCount: 0,
+        isFollowing: false,
+      };
+      const convId = await getOrCreateConversation(currentUser, targetUser);
+      await sendChatMessage(
+        convId,
+        { text: `Replying to story: ${text}`, type: 'text' },
+        currentUser,
+        storyOwnerId
+      );
+    } catch (err) {
+      console.error('Error sending story reply:', err);
+    }
+  };
+
+  // ---------------- Handlers for Posts ----------------
+  const handleLikePost = async (postId: string) => {
+    if (!currentUser) return;
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    try {
+      await toggleLikePost(
+        postId,
+        currentUser.id,
+        post.hasLiked,
+        post.author.id,
+        currentUser
+      );
+    } catch (err) {
+      console.error('Error liking post:', err);
+    }
+  };
+
+  const handleBookmarkPost = async (postId: string) => {
+    if (!currentUser) return;
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    try {
+      await toggleBookmarkPost(postId, currentUser.id, post.isBookmarked);
+    } catch (err) {
+      console.error('Error bookmarking post:', err);
+    }
+  };
+
+  const handleRepostPost = async (postId: string, quoteComment?: string) => {
+    if (!currentUser) return;
+    const post = posts.find((p) => p.id === postId);
+    if (!post) return;
+    try {
+      await toggleRepostPost(
+        postId,
+        currentUser,
+        post.hasReposted,
+        quoteComment,
+        post.author.id
+      );
+    } catch (err) {
+      console.error('Error reposting:', err);
+    }
+  };
+
+  const handleIncrementShare = async (postId: string) => {
+    try {
+      await incrementPostShareCount(postId);
+    } catch (err) {
+      console.error('Error incrementing share count:', err);
+    }
+  };
+
+  const handleSendPostToChat = async (recipientId: string, messageText: string) => {
+    if (!currentUser) return;
+    try {
+      const conv = await getOrCreateConversation(currentUser.id, recipientId);
+      await sendChatMessage(conv.id, currentUser.id, messageText, 'post_share');
+    } catch (err) {
+      console.error('Error sending post in chat:', err);
+    }
+  };
+
+  const handleAddComment = async (
+    postId: string,
+    text: string,
+    replyToCommentId?: string
+  ) => {
+    if (!currentUser) return;
+    const post = posts.find((p) => p.id === postId);
+    try {
+      await addCommentToPost(
+        postId,
+        currentUser,
+        text,
+        replyToCommentId,
+        post?.author.id
+      );
+    } catch (err) {
+      console.error('Error adding comment:', err);
+    }
+  };
+
+  const handleLikeComment = async (postId: string, commentId: string) => {
+    if (!currentUser) return;
+    try {
+      await toggleLikeComment(postId, commentId, currentUser.id);
+    } catch (err) {
+      console.error('Error liking comment:', err);
+    }
+  };
+
+  const handleVotePoll = async (postId: string, optionId: string) => {
+    if (!currentUser) return;
+    try {
+      await voteInPoll(postId, optionId, currentUser.id);
+    } catch (err) {
+      console.error('Error voting in poll:', err);
+    }
+  };
+
+  const handleDeletePost = async (postId: string) => {
+    try {
+      await deletePostFromFirestore(postId);
+    } catch (err) {
+      console.error('Error deleting post:', err);
+    }
+  };
+
+  const handleEditPost = async (postId: string, newContent: string) => {
+    try {
+      await updatePostContent(postId, newContent);
+    } catch (err) {
+      console.error('Error editing post:', err);
+    }
+  };
+
+  const handleCreatePost = async (newPostData: Partial<Post>) => {
+    if (!currentUser) return;
+    try {
+      await createNewPost(
+        currentUser,
+        newPostData.content || '',
+        newPostData.mediaUrl,
+        newPostData.mediaType || 'image',
+        newPostData.tags || [],
+        newPostData.poll,
+        newPostData.mediaUrls,
+        newPostData.location,
+        newPostData.audience,
+        newPostData.commentsDisabled
+      );
+    } catch (err) {
+      console.error('Error creating post in Firestore:', err);
+    }
+  };
+
+  // ---------------- Handlers for Reels ----------------
+  const handleLikeReel = async (reelId: string) => {
+    if (!currentUser) return;
+    const reel = reels.find((r) => r.id === reelId);
+    if (!reel) return;
+    try {
+      await toggleLikeReel(
+        reelId,
+        currentUser.id,
+        reel.hasLiked,
+        reel.author.id,
+        currentUser
+      );
+    } catch (err) {
+      console.error('Error liking reel:', err);
+    }
+  };
+
+  const handleBookmarkReel = async (reelId: string) => {
+    if (!currentUser) return;
+    const reel = reels.find((r) => r.id === reelId);
+    if (!reel) return;
+    try {
+      await toggleBookmarkReel(reelId, currentUser.id, reel.isSaved);
+    } catch (err) {
+      console.error('Error bookmarking reel:', err);
+    }
+  };
+
+  const handleAddReelComment = async (reelId: string, text: string) => {
+    if (!currentUser) return;
+    const reel = reels.find((r) => r.id === reelId);
+    try {
+      await addCommentToReel(reelId, currentUser, text, reel?.author.id);
+    } catch (err) {
+      console.error('Error adding reel comment:', err);
+    }
+  };
+
+  const handleCreateReel = async (data: {
+    videoUrl: string;
+    posterUrl: string;
+    caption: string;
+    tags: string[];
+    audioTitle: string;
+    audioArtist: string;
+  }) => {
+    if (!currentUser) return;
+    try {
+      await createNewReel(currentUser, data);
+    } catch (err) {
+      console.error('Error creating reel in Firestore:', err);
+    }
+  };
+
+  // ---------------- Handlers for Following & Profile ----------------
+  const handleToggleFollow = async (userId: string) => {
+    if (!currentUser) return;
+    const isTargetFollowing = viewingUser?.id === userId ? viewingUser.isFollowing : false;
+    try {
+      await toggleFollowUser(currentUser.id, userId, isTargetFollowing, currentUser);
+      if (viewingUser && viewingUser.id === userId) {
+        setViewingUser({
+          ...viewingUser,
+          isFollowing: !isTargetFollowing,
+          followersCount: isTargetFollowing
+            ? Math.max(0, viewingUser.followersCount - 1)
+            : viewingUser.followersCount + 1,
+        });
+      }
+    } catch (err) {
+      console.error('Error toggling follow:', err);
+    }
+  };
+
+  const handleSaveProfile = async (updatedUser: Partial<User>) => {
+    try {
+      await updateUser(updatedUser);
+      if (viewingUser && currentUser && viewingUser.id === currentUser.id) {
+        setViewingUser((prev) => (prev ? { ...prev, ...updatedUser } : null));
+      }
+    } catch (err) {
+      console.error('Error saving profile to Firestore:', err);
+      throw err;
+    }
+  };
+
+  // ---------------- Handlers for Notifications ----------------
+  const handleMarkAllNotificationsRead = async () => {
+    if (!currentUser) return;
+    try {
+      await markAllNotificationsAsRead(currentUser.id);
+    } catch (err) {
+      console.error('Error marking notifications read:', err);
+    }
+  };
+
+  // ---------------- Handlers for Calling ----------------
+  const handleStartCall = (participant: User, type: 'audio' | 'video') => {
+    setActiveCall({
+      id: `call_${Date.now()}`,
+      participant,
+      type,
+      status: 'ringing',
+      durationSeconds: 0,
+      isMuted: false,
+      isCameraOff: false,
+      isSpeakerOn: true,
+      isMinimized: false,
+    });
+  };
+
+  const handleEndCall = () => {
+    setActiveCall(null);
+  };
+
+  const handleToggleMute = () => {
+    if (!activeCall) return;
+    setActiveCall({ ...activeCall, isMuted: !activeCall.isMuted });
+  };
+
+  const handleToggleCamera = () => {
+    if (!activeCall) return;
+    setActiveCall({ ...activeCall, isCameraOff: !activeCall.isCameraOff });
+  };
+
+  const handleToggleSpeaker = () => {
+    if (!activeCall) return;
+    setActiveCall({ ...activeCall, isSpeakerOn: !activeCall.isSpeakerOn });
+  };
+
+  const handleMinimizeCall = () => {
+    if (!activeCall) return;
+    setActiveCall({ ...activeCall, isMinimized: true });
+  };
+
+  const handleMaximizeCall = () => {
+    if (!activeCall) return;
+    setActiveCall({ ...activeCall, isMinimized: false });
+  };
+
+  // 1. Initial Auth Loading Screen
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[#FAFAF9] flex flex-col items-center justify-center p-4">
+        <div className="flex flex-col items-center gap-4 animate-fade-in">
+          <div className="w-12 h-12 rounded-full border-2 border-[#8FA89B] border-t-transparent animate-spin" />
+          <div className="text-center">
+            <h1 className="font-serif text-2xl font-medium text-[#2D3732] tracking-wide">Aura</h1>
+            <p className="text-xs text-[#7A8A82] mt-1 font-mono">Entering studio workspace...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Auth Gating: Unauthenticated users MUST see only Login / Register page
+  if (!isAuthenticated || !currentUser) {
+    return <AuthPage onSuccess={() => setCurrentTab('feed')} />;
+  }
+
+  // 3. Authenticated App Experience
+  const viewingUserPosts = posts.filter(
+    (p) => p.author.id === (viewingUser?.id || currentUser.id)
+  );
+
+  return (
+    <div className="min-h-screen bg-[#FAFAF9] text-[#2D3732] pb-16 md:pb-6 font-sans antialiased">
+      {/* Top Navbar */}
+      <Navbar
+        currentTab={currentTab}
+        currentUser={currentUser}
+        unreadMessagesCount={totalUnreadMessages}
+        unreadNotificationsCount={totalUnreadNotifications}
+        onSelectTab={(tab) => {
+          if (tab === 'profile') {
+            setViewingUser(currentUser);
+          }
+          setCurrentTab(tab);
+        }}
+        onOpenCreatePost={() => setIsCreatePostOpen(true)}
+        onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
+        onOpenAuth={() => setIsSettingsOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+      />
+
+      {/* Main Content Area based on Tab */}
+      <main className="w-full">
+        {currentTab === 'feed' && (
+          <Feed
+            posts={posts}
+            stories={stories}
+            currentUser={currentUser}
+            suggestedUsers={communityUsers.filter((c) => c.id !== currentUser.id)}
+            onSelectStory={handleSelectStory}
+            onOpenCreateStory={() => setIsCreateStoryOpen(true)}
+            onLikePost={handleLikePost}
+            onBookmarkPost={handleBookmarkPost}
+            onRepostPost={handleRepostPost}
+            onIncrementShare={handleIncrementShare}
+            onSendToChat={handleSendPostToChat}
+            onAddComment={handleAddComment}
+            onLikeComment={handleLikeComment}
+            onVotePoll={handleVotePoll}
+            onDeletePost={handleDeletePost}
+            onEditPost={handleEditPost}
+            onToggleFollowUser={handleToggleFollow}
+            onOpenUserProfile={handleOpenUserProfile}
+            onOpenCreatePost={() => setIsCreatePostOpen(true)}
+          />
+        )}
+
+        {currentTab === 'reels' && (
+          <ReelsFeed
+            reels={reels}
+            currentUser={currentUser}
+            onLikeReel={handleLikeReel}
+            onBookmarkReel={handleBookmarkReel}
+            onAddReelComment={handleAddReelComment}
+            onOpenUserProfile={handleOpenUserProfile}
+            onToggleFollowUser={handleToggleFollow}
+            onOpenCreateReel={() => setIsCreateReelOpen(true)}
+          />
+        )}
+
+        {currentTab === 'messages' && (
+          <MessagesView
+            currentUser={currentUser}
+            onStartCall={handleStartCall}
+            onOpenUserProfile={handleOpenUserProfile}
+            initialTargetUser={targetChatUser}
+            onOpenAuth={() => setIsSettingsOpen(true)}
+          />
+        )}
+
+        {currentTab === 'explore' && (
+          <ExploreView
+            posts={posts}
+            reels={reels}
+            onSelectPost={() => setCurrentTab('feed')}
+            onSelectReel={() => setCurrentTab('reels')}
+            onOpenUserProfile={handleOpenUserProfile}
+          />
+        )}
+
+        {currentTab === 'profile' && viewingUser && (
+          <ProfileView
+            user={viewingUser}
+            currentUser={currentUser}
+            userPosts={viewingUserPosts}
+            userReels={reels.filter((r) => r.author.id === viewingUser.id)}
+            savedPosts={posts.filter((p) => p.isBookmarked)}
+            suggestedUsers={communityUsers}
+            onToggleFollow={handleToggleFollow}
+            onOpenEditProfile={() => setIsEditProfileOpen(true)}
+            onStartCall={handleStartCall}
+            onOpenDirectChat={handleOpenDirectChat}
+            onLikePost={handleLikePost}
+            onBookmarkPost={handleBookmarkPost}
+            onRepostPost={handleRepostPost}
+            onIncrementShare={handleIncrementShare}
+            onSendToChat={handleSendPostToChat}
+            onDeletePost={handleDeletePost}
+            onEditPost={handleEditPost}
+            onAddComment={handleAddComment}
+            onLikeComment={handleLikeComment}
+            onSelectReel={() => setCurrentTab('reels')}
+            onSelectHighlight={handleSelectHighlight}
+            onNavigateToUser={handleOpenUserProfile}
+          />
+        )}
+      </main>
+
+      {/* Mobile Bottom Navigation */}
+      <BottomNav
+        currentTab={currentTab}
+        unreadMessagesCount={totalUnreadMessages}
+        onSelectTab={(tab) => {
+          if (tab === 'profile') {
+            setViewingUser(currentUser);
+          }
+          setCurrentTab(tab);
+        }}
+        onOpenCreatePost={() => setIsCreatePostOpen(true)}
+      />
+
+      {/* Modals & Overlays */}
+      {isStoryViewerOpen && (
+        <StoryViewerModal
+          stories={viewerStories}
+          initialStoryIndex={activeStoryIndex}
+          currentUser={currentUser}
+          onClose={() => setIsStoryViewerOpen(false)}
+          onSendStoryReply={handleSendStoryReply}
+          onRecordStoryView={handleRecordStoryView}
+          onDeleteStory={handleDeleteStory}
+        />
+      )}
+
+      {isCreateStoryOpen && (
+        <CreateStoryModal
+          currentUser={currentUser}
+          onClose={() => setIsCreateStoryOpen(false)}
+          onAddStory={handleAddStory}
+        />
+      )}
+
+      {isCreatePostOpen && (
+        <CreatePostModal
+          currentUser={currentUser}
+          onClose={() => setIsCreatePostOpen(false)}
+          onCreatePost={handleCreatePost}
+        />
+      )}
+
+      {isCreateReelOpen && (
+        <CreateReelModal
+          currentUser={currentUser}
+          onClose={() => setIsCreateReelOpen(false)}
+          onSubmitReel={handleCreateReel}
+        />
+      )}
+
+      {isEditProfileOpen && (
+        <EditProfileModal
+          currentUser={currentUser}
+          onClose={() => setIsEditProfileOpen(false)}
+          onSave={handleSaveProfile}
+        />
+      )}
+
+      {isSettingsOpen && (
+        <SettingsModal
+          currentUser={currentUser}
+          onClose={() => setIsSettingsOpen(false)}
+          onOpenEditProfile={() => {
+            setIsSettingsOpen(false);
+            setIsEditProfileOpen(true);
+          }}
+        />
+      )}
+
+      {isNotificationsDrawerOpen && (
+        <NotificationsDrawer
+          notifications={notifications}
+          onClose={() => setIsNotificationsDrawerOpen(false)}
+          onMarkAllAsRead={handleMarkAllNotificationsRead}
+          onOpenUserProfile={handleOpenUserProfile}
+        />
+      )}
+
+      {/* Active Call Floating Pill (when minimized) */}
+      {activeCall && activeCall.isMinimized && (
+        <FloatingCallPill
+          call={activeCall}
+          onMaximize={handleMaximizeCall}
+          onEndCall={handleEndCall}
+        />
+      )}
+
+      {/* Active Call Modal (when maximized) */}
+      {activeCall && !activeCall.isMinimized && (
+        <ActiveCallModal
+          call={activeCall}
+          currentUser={currentUser}
+          onEndCall={handleEndCall}
+          onToggleMute={handleToggleMute}
+          onToggleCamera={handleToggleCamera}
+          onToggleSpeaker={handleToggleSpeaker}
+          onMinimize={handleMinimizeCall}
+          onStatusConnected={() =>
+            setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null))
+          }
+        />
+      )}
+    </div>
+  );
+}
