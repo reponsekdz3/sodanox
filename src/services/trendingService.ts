@@ -122,25 +122,5 @@ export function calculateTrendingTopics(posts: Post[]): TrendingTopic[] {
   // Sort descending by score then by count
   trendingList.sort((a, b) => b.score - a.score || b.count - a.count);
 
-  // If few or no user hashtags exist yet, provide organic starter tags
-  if (trendingList.length === 0) {
-    const fallbackTags = [
-      { tag: 'aura', count: 1, score: 30, category: 'Community' },
-      { tag: 'mindfulness', count: 1, score: 25, category: 'Wellness' },
-      { tag: 'minimalism', count: 1, score: 20, category: 'Aesthetics' },
-      { tag: 'reflections', count: 1, score: 18, category: 'Thoughts' },
-      { tag: 'slowliving', count: 1, score: 15, category: 'Lifestyle' },
-    ];
-    return fallbackTags.map((t) => ({
-      tag: t.tag,
-      name: `#${t.tag}`,
-      count: t.count,
-      score: t.score,
-      category: t.category,
-      formattedCount: `${t.count} reflection`,
-      isHot: true,
-    }));
-  }
-
   return trendingList;
 }

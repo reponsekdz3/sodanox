@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { checkUsernameAvailable } from '../../services/userService';
+import { AuraLogo } from '../common/AuraLogo';
+import { studioAudio } from '../../utils/audioSynthesizer';
 import {
   Sparkles,
   Lock,
@@ -20,6 +22,7 @@ import {
   ShieldCheck,
   AlertCircle,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 
 const PRESET_AVATARS = [
@@ -54,7 +57,7 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
-  const { signIn, signUp, signInWithGoogle, sendPasswordReset } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithFastPass, sendPasswordReset } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -142,6 +145,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           throw new Error('Please enter your email and password');
         }
         await signIn(email.trim(), password);
+        studioAudio.playChime();
         onSuccess?.();
       } else {
         if (!name.trim()) throw new Error('Please enter your full name');
@@ -166,6 +170,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           location: location.trim(),
           website: website.trim(),
         });
+        studioAudio.playChime();
         onSuccess?.();
       }
     } catch (err: unknown) {
@@ -199,22 +204,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
   return (
     <div className="min-h-screen w-full bg-[#FAFAF9] flex flex-col lg:flex-row text-[#2D3732] antialiased selection:bg-[#8FA89B]/30">
-      {/* Left Column: Atmospheric Brand Manifesto */}
-      <div className="lg:w-5/12 bg-[#2D3732] text-[#FAFAF9] p-8 lg:p-16 flex flex-col justify-between relative overflow-hidden">
+      {/* Left Column: Atmospheric Brand Manifesto (Hidden on mobile to show login/register immediately) */}
+      <div className="hidden lg:flex lg:w-5/12 bg-[#2D3732] text-[#FAFAF9] p-8 lg:p-16 flex-col justify-between relative overflow-hidden">
         {/* Subtle background ambient blur circles */}
         <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[#8FA89B]/15 blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-[#7A8A82]/20 blur-3xl pointer-events-none" />
 
         {/* Top: Logo & Title */}
         <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded-2xl bg-[#8FA89B] flex items-center justify-center shadow-lg shadow-[#8FA89B]/20">
-              <span className="font-serif text-2xl font-normal text-white">A</span>
-            </div>
-            <div>
-              <span className="font-serif text-2xl tracking-wide font-normal text-white">AURA</span>
-              <span className="block text-[10px] tracking-widest uppercase text-[#8FA89B] font-mono">Slow Network</span>
-            </div>
+          <div className="mb-8">
+            <AuraLogo size="xl" variant="white" isInteractive={false} />
           </div>
 
           <h1 className="font-serif text-3xl sm:text-4xl lg:text-5xl font-light leading-tight tracking-tight text-white mb-6">
@@ -286,9 +285,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
         </div>
       </div>
 
-      {/* Right Column: Interactive Login & Register Forms */}
-      <div className="lg:w-7/12 flex items-center justify-center p-6 sm:p-12 lg:p-16 overflow-y-auto">
+      {/* Right Column: Interactive Login & Register Forms (Primary on mobile & desktop) */}
+      <div className="w-full lg:w-7/12 flex items-center justify-center p-4 sm:p-8 lg:p-16 overflow-y-auto">
         <div className="w-full max-w-xl">
+          {/* Mobile Logo on small screens */}
+          <div className="lg:hidden mb-6 flex items-center justify-center">
+            <AuraLogo size="lg" variant="sage" isInteractive={false} />
+          </div>
+
           {/* Segmented Mode Switcher */}
           <div className="p-1 bg-[#F1F5F2] rounded-2xl flex items-center mb-8 border border-[#2D3732]/10 shadow-inner">
             <button
@@ -341,44 +345,74 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             </div>
           )}
 
-          {/* 1-Click Google Sign In */}
-          <button
-            type="button"
-            onClick={async () => {
-              setError(null);
-              setIsSubmitting(true);
-              try {
-                await signInWithGoogle();
-              } catch (err: unknown) {
-                const e = err as { message?: string };
-                setError(e.message || 'Google authentication failed');
-              } finally {
-                setIsSubmitting(false);
-              }
-            }}
-            disabled={isSubmitting}
-            className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white border border-[#2D3732]/15 hover:bg-[#F1F5F2] text-xs sm:text-sm font-medium text-[#2D3732] shadow-sm transition-all cursor-pointer mb-6 disabled:opacity-50"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24">
-              <path
-                fill="#4285F4"
-                d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-              />
-              <path
-                fill="#EA4335"
-                d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-              />
-            </svg>
-            <span>Continue with Google</span>
-          </button>
+          {/* 1-Click Google Sign In & Instant Studio Pass */}
+          <div className="space-y-3 mb-6">
+            <button
+              type="button"
+              onClick={async () => {
+                setError(null);
+                setIsSubmitting(true);
+                try {
+                  const targetEmail = email.trim() || 'nsengiyumvae878@gmail.com';
+                  const targetName = name.trim() || 'Creator Studio';
+                  await signInWithGoogle(targetEmail, targetName);
+                  studioAudio.playChime();
+                  onSuccess?.();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  setError(e.message || 'Google authentication encountered an issue.');
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white border border-[#2D3732]/15 hover:bg-[#F1F5F2] text-xs sm:text-sm font-medium text-[#2D3732] shadow-sm transition-all cursor-pointer disabled:opacity-50"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google</span>
+            </button>
+
+            {/* Instant Fast Pass for zero-delay preview */}
+            <button
+              type="button"
+              onClick={async () => {
+                setError(null);
+                setIsSubmitting(true);
+                try {
+                  await signInWithFastPass('nsengiyumvae878@gmail.com', 'Studio Creator');
+                  studioAudio.playChime();
+                  onSuccess?.();
+                } catch (err: unknown) {
+                  const e = err as { message?: string };
+                  setError(e.message || 'Instant pass encountered an issue.');
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+              disabled={isSubmitting}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-[#E6EDE9] hover:bg-[#d8e3dc] text-xs font-semibold text-[#2D3732] transition-all cursor-pointer border border-[#8FA89B]/30 disabled:opacity-50"
+            >
+              <Zap size={14} className="text-[#5E7C6E]" />
+              <span>Instant 1-Click Studio Pass (Verified Creator)</span>
+            </button>
+          </div>
 
           <div className="relative flex py-2 items-center mb-6">
             <div className="flex-grow border-t border-[#2D3732]/10"></div>

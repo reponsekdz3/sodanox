@@ -16,6 +16,7 @@ import {
 import { db } from '../firebase/config';
 import { Story, StoryItem, User, StoryHighlight } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
+import { isMockArtifact } from './postService';
 
 const STORIES_COLLECTION = 'stories';
 const HIGHLIGHTS_COLLECTION = 'highlights';
@@ -42,6 +43,16 @@ export function subscribeToStories(
       const list: Story[] = [];
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
+
+        // Purge mock/seed stories
+        if (
+          isMockArtifact(d.userId, d.userUsername) ||
+          docSnap.id.startsWith('demo_') ||
+          docSnap.id.startsWith('starter_')
+        ) {
+          return;
+        }
+
         const viewers: string[] = d.viewers || [];
         const hasUnseen = !viewers.includes(currentUid);
 

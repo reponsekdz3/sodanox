@@ -18,6 +18,7 @@ import { db } from '../firebase/config';
 import { Reel, Comment, User } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
+import { isMockArtifact } from './postService';
 
 const REELS_COLLECTION = 'reels';
 
@@ -38,6 +39,16 @@ export function subscribeToReels(
       const list: Reel[] = [];
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
+
+        // Purge mock/seed reels
+        if (
+          isMockArtifact(d.author?.id, d.author?.username) ||
+          docSnap.id.startsWith('demo_') ||
+          docSnap.id.startsWith('starter_')
+        ) {
+          return;
+        }
+
         const likedBy: string[] = d.likedBy || [];
         const bookmarkedBy: string[] = d.bookmarkedBy || [];
 

@@ -105,10 +105,45 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
 
-  // Current active user
+  // Current active user (guaranteed non-null when authenticated)
   const currentUser: User | null = useMemo(() => {
-    return userProfile;
-  }, [userProfile]);
+    if (userProfile) return userProfile;
+    if (fbAuthUser) {
+      const rawName = fbAuthUser.displayName || (fbAuthUser.email ? fbAuthUser.email.split('@')[0] : 'Aura Creator');
+      const cleanUsername = (fbAuthUser.email ? fbAuthUser.email.split('@')[0] : `aura_${fbAuthUser.uid.slice(0, 5)}`)
+        .toLowerCase()
+        .replace(/[^a-z0-9_.]/g, '');
+      return {
+        id: fbAuthUser.uid,
+        name: rawName,
+        username: cleanUsername,
+        avatar:
+          fbAuthUser.photoURL ||
+          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+        bannerUrl:
+          'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+        bio: 'Exploring architecture, craft, and slow reflections on aura.ai.studio.',
+        pronouns: '',
+        location: '',
+        website: '',
+        joinedDate: `Joined ${new Date().toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`,
+        followersCount: 0,
+        followingCount: 0,
+        followers: [],
+        following: [],
+        isFollowing: false,
+        isFollower: false,
+        isMutual: false,
+        verified: true,
+        email: fbAuthUser.email || '',
+        privateAccount: false,
+        showOnlineStatus: true,
+        allowReshare: true,
+        themePreference: 'nordic',
+      };
+    }
+    return null;
+  }, [userProfile, fbAuthUser]);
 
   // Profile currently being viewed
   const [viewingUser, setViewingUser] = useState<User | null>(null);
@@ -180,29 +215,29 @@ export default function App() {
 
   // Real-time subscription to Notifications in Firestore
   useEffect(() => {
-    if (!isAuthenticated || !fbAuthUser?.uid) return;
+    if (!isAuthenticated || !currentUser?.id) return;
     const unsubNotifs = subscribeToNotifications(
-      fbAuthUser.uid,
+      currentUser.id,
       (fetchedNotifs) => {
         setNotifications(fetchedNotifs);
       },
       (err) => console.warn('Notifications sync error:', err)
     );
     return () => unsubNotifs();
-  }, [isAuthenticated, fbAuthUser?.uid]);
+  }, [isAuthenticated, currentUser?.id]);
 
   // Real-time subscription to Conversations in Firestore
   useEffect(() => {
-    if (!isAuthenticated || !fbAuthUser?.uid) return;
+    if (!isAuthenticated || !currentUser?.id) return;
     const unsubConvs = subscribeToUserConversations(
-      fbAuthUser.uid,
+      currentUser.id,
       (convs) => {
         setConversations(convs);
       },
       (err) => console.warn('Convs sync error:', err)
     );
     return () => unsubConvs();
-  }, [isAuthenticated, fbAuthUser?.uid]);
+  }, [isAuthenticated, currentUser?.id]);
 
   // Derived counts
   const totalUnreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);

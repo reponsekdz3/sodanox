@@ -21,8 +21,24 @@ import { createNotification } from './notificationService';
 
 const POSTS_COLLECTION = 'posts';
 
+export function isMockArtifact(id?: string, username?: string): boolean {
+  if (!id && !username) return false;
+  const lowerId = (id || '').toLowerCase();
+  const lowerUser = (username || '').toLowerCase();
+  return (
+    lowerId.startsWith('creator_') ||
+    lowerId.startsWith('mock_') ||
+    lowerId.startsWith('demo_') ||
+    lowerId.startsWith('starter_') ||
+    lowerUser === 'clarachen' ||
+    lowerUser === 'marcuslind' ||
+    lowerUser === 'soren.studio' ||
+    lowerUser === 'elena_arch'
+  );
+}
+
 /**
- * Real-time subscription to community posts from Firestore
+ * Real-time subscription to community posts from Firestore (100% real user content)
  */
 export function subscribeToPosts(
   currentUid: string,
@@ -38,6 +54,16 @@ export function subscribeToPosts(
       const postList: Post[] = [];
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
+
+        // Strictly purge and ignore mock / seed posts
+        if (
+          isMockArtifact(d.author?.id, d.author?.username) ||
+          docSnap.id.startsWith('starter_') ||
+          docSnap.id.startsWith('demo_')
+        ) {
+          return;
+        }
+
         const likedBy: string[] = d.likedBy || [];
         const bookmarkedBy: string[] = d.bookmarkedBy || [];
         const repostedBy: string[] = d.repostedBy || [];

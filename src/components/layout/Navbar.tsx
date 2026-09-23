@@ -58,13 +58,14 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="sticky top-0 z-40 w-full bg-[#FAFAF9]/90 backdrop-blur-md border-b border-[#F1F5F2]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
         {/* Zone 1: Modern Aura Brand Logo */}
-        <button
-          type="button"
-          onClick={() => onSelectTab('feed')}
-          className="hover:opacity-85 transition-opacity focus-visible:outline-none flex items-center cursor-pointer"
-        >
-          <AuraLogo size="md" showWordmark={true} />
-        </button>
+        <div className="flex items-center">
+          <AuraLogo
+            size="md"
+            showWordmark={true}
+            currentUser={currentUser}
+            onOpenCreatePost={onOpenCreatePost}
+          />
+        </div>
 
         {/* Zone 2: Navigation Links */}
         <nav className="hidden md:flex items-center gap-7 text-sm font-medium">

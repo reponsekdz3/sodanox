@@ -45,12 +45,14 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
     <aside className="w-64 xl:w-72 shrink-0 h-screen sticky top-0 flex flex-col justify-between py-6 px-4 sm:px-6 border-r border-[#E6EDE9] bg-[#FAFAF9]/95 backdrop-blur-md select-none">
       {/* Top Header & Navigation Links */}
       <div className="space-y-6">
-        {/* Brand Wordmark & Aura Icon */}
-        <div
-          onClick={() => onSelectTab('feed')}
-          className="cursor-pointer py-1 px-2.5 rounded-2xl hover:bg-[#F1F5F2] transition-colors inline-block"
-        >
-          <AuraLogo size="md" showWordmark={true} />
+        {/* Advanced Functional Brand Wordmark & Aura Icon */}
+        <div className="py-1 px-2.5 rounded-2xl hover:bg-[#F1F5F2] transition-colors inline-block">
+          <AuraLogo
+            size="md"
+            showWordmark={true}
+            currentUser={currentUser}
+            onOpenCreatePost={onOpenCreatePost}
+          />
         </div>
 
         {/* Navigation Items */}

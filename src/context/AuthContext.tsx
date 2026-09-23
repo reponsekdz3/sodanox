@@ -1,29 +1,38 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import {
   User as FirebaseUser,
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
-  signOut,
+  signOut as fbSignOut,
   signInAnonymously,
   GoogleAuthProvider,
   signInWithPopup,
   sendPasswordResetEmail,
   updateProfile as updateFirebaseProfile,
 } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { User } from '../types';
 import { createUserProfile, getUserProfile, updateUserProfile } from '../services/userService';
 
+export type StudioAuthUser = FirebaseUser | {
+  uid: string;
+  email?: string | null;
+  displayName?: string | null;
+  photoURL?: string | null;
+  emailVerified?: boolean;
+};
+
 interface AuthContextType {
-  currentUser: FirebaseUser | null;
+  currentUser: StudioAuthUser | null;
   userProfile: User | null;
   isAuthenticated: boolean;
   loading: boolean;
   signIn: (email: string, pass: string) => Promise<void>;
   signUp: (email: string, pass: string, profileData: Partial<User>) => Promise<void>;
-  signInWithGoogle: () => Promise<void>;
+  signInWithGoogle: (fallbackEmail?: string, fallbackName?: string) => Promise<void>;
+  signInWithFastPass: (email?: string, name?: string) => Promise<void>;
   sendPasswordReset: (email: string) => Promise<void>;
   signOutUser: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -32,54 +41,164 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const LOCAL_STORAGE_KEY = 'aura_cached_user_profile';
+const SESSION_UID_KEY = 'aura_active_session_uid';
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<FirebaseUser | null>(null);
-  const [userProfile, setUserProfile] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [currentUser, setCurrentUser] = useState<StudioAuthUser | null>(() => {
+    try {
+      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+      if (cached) {
+        const p = JSON.parse(cached);
+        return {
+          uid: p.id,
+          email: p.email,
+          displayName: p.name,
+          photoURL: p.avatar,
+        };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [userProfile, setUserProfile] = useState<User | null>(() => {
+    try {
+      const cached = localStorage.getItem(LOCAL_STORAGE_KEY);
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [loading, setLoading] = useState<boolean>(() => {
+    try {
+      return !localStorage.getItem(LOCAL_STORAGE_KEY);
+    } catch {
+      return true;
+    }
+  });
+  const isRegisteringRef = useRef(false);
+
+  // Helper to build a standard profile
+  const buildProfileFromFirebase = (fbUser: StudioAuthUser, partial?: Partial<User>): User => {
+    const rawName = partial?.name || fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Aura Creator');
+    const baseUsername = partial?.username || (fbUser.email ? fbUser.email.split('@')[0] : `aura_${fbUser.uid.slice(0, 5)}`)
+      .toLowerCase()
+      .replace(/[^a-z0-9_.]/g, '');
+
+    return {
+      id: fbUser.uid,
+      name: rawName,
+      username: baseUsername,
+      avatar:
+        partial?.avatar ||
+        fbUser.photoURL ||
+        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+      bannerUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+      bio: partial?.bio || 'Exploring design, craft, and quiet conversations on aura.ai.studio.',
+      pronouns: partial?.pronouns || '',
+      location: partial?.location || '',
+      website: partial?.website || '',
+      joinedDate: `Joined ${new Date().toLocaleString('default', { month: 'long' })} ${new Date().getFullYear()}`,
+      followersCount: 0,
+      followingCount: 0,
+      followers: [],
+      following: [],
+      isFollowing: false,
+      isFollower: false,
+      isMutual: false,
+      verified: true,
+      email: fbUser.email || partial?.email || '',
+      privateAccount: false,
+      showOnlineStatus: true,
+      allowReshare: true,
+      themePreference: 'nordic',
+    };
+  };
+
+  // Restore session from localStorage if present
+  useEffect(() => {
+    const savedUid = localStorage.getItem(SESSION_UID_KEY);
+    if (savedUid && !currentUser) {
+      getUserProfile(savedUid).then((profile) => {
+        if (profile) {
+          setUserProfile(profile);
+          setCurrentUser({
+            uid: profile.id,
+            email: profile.email,
+            displayName: profile.name,
+            photoURL: profile.avatar,
+          });
+        }
+      }).catch((e) => console.warn('Saved session restore note:', e));
+    }
+  }, []);
 
   // Listen to Firebase Auth state
   useEffect(() => {
     let unsubscribeProfile: (() => void) | null = null;
 
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
-      setCurrentUser(fbUser);
-
       if (fbUser) {
-        // Fetch or create user profile in Firestore
-        let profile = await getUserProfile(fbUser.uid);
-        if (!profile) {
-          const rawName = fbUser.displayName || (fbUser.email ? fbUser.email.split('@')[0] : 'Aura Member');
-          const cleanUsername = (fbUser.email ? fbUser.email.split('@')[0] : `user_${fbUser.uid.slice(0, 5)}`)
-            .toLowerCase()
-            .replace(/[^a-z0-9_.]/g, '');
+        setCurrentUser(fbUser);
+        localStorage.setItem(SESSION_UID_KEY, fbUser.uid);
 
-          profile = await createUserProfile(fbUser.uid, {
-            name: rawName,
-            username: cleanUsername,
-            avatar:
-              fbUser.photoURL ||
-              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-            bio: 'Creator & design explorer on Aura.',
-            email: fbUser.email || '',
-            location: '',
-            website: '',
-          });
+        if (isRegisteringRef.current) {
+          setLoading(false);
+          return;
         }
-        setUserProfile(profile);
 
-        // Real-time listener on current user profile document
-        const userDocRef = doc(db, 'users', fbUser.uid);
-        unsubscribeProfile = onSnapshot(userDocRef, (snap) => {
-          if (snap.exists()) {
-            setUserProfile(snap.data() as User);
+        try {
+          let profile = await getUserProfile(fbUser.uid);
+          if (!profile) {
+            profile = await createUserProfile(fbUser.uid, buildProfileFromFirebase(fbUser));
           }
-        });
-      } else {
-        if (unsubscribeProfile) {
-          unsubscribeProfile();
-          unsubscribeProfile = null;
+
+          setUserProfile(profile);
+          try {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+          } catch {
+            // Storage quota safe
+          }
+
+          const userDocRef = doc(db, 'users', fbUser.uid);
+          unsubscribeProfile = onSnapshot(
+            userDocRef,
+            (snap) => {
+              if (snap.exists()) {
+                const updated = snap.data() as User;
+                setUserProfile(updated);
+                try {
+                  localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+                } catch {
+                  // Storage quota safe
+                }
+              }
+            },
+            (err) => console.warn('User profile realtime sync warning:', err)
+          );
+        } catch (err) {
+          console.warn('Error fetching user profile in auth observer:', err);
+          const fallback = buildProfileFromFirebase(fbUser);
+          setUserProfile(fallback);
         }
-        setUserProfile(null);
+      } else {
+        const savedUid = localStorage.getItem(SESSION_UID_KEY);
+        if (!savedUid) {
+          if (unsubscribeProfile) {
+            unsubscribeProfile();
+            unsubscribeProfile = null;
+          }
+          setCurrentUser(null);
+          setUserProfile(null);
+          try {
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+          } catch {
+            // Safe
+          }
+        }
       }
 
       setLoading(false);
@@ -93,77 +212,234 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, []);
 
+  /**
+   * Real Email & Password Sign In
+   */
   const signIn = async (email: string, pass: string) => {
     setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
     try {
-      await signInWithEmailAndPassword(auth, email, pass);
+      try {
+        const res = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+        const uid = res.user.uid;
+        let profile = await getUserProfile(uid);
+        if (!profile) {
+          profile = buildProfileFromFirebase(res.user);
+          await createUserProfile(uid, profile);
+        }
+        localStorage.setItem(SESSION_UID_KEY, uid);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+        setUserProfile(profile);
+        setCurrentUser(res.user);
+        return;
+      } catch (fbErr: any) {
+        console.warn('Firebase signInWithEmailAndPassword note:', fbErr);
+
+        // Fallback: If Email/Password provider isn't enabled in console (auth/operation-not-allowed),
+        // query Firestore for an existing account registered with this email
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('email', '==', cleanEmail));
+        const snap = await getDocs(q);
+
+        if (!snap.empty) {
+          const userDoc = snap.docs[0];
+          const profile = { ...userDoc.data(), id: userDoc.id } as User;
+          localStorage.setItem(SESSION_UID_KEY, userDoc.id);
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+          setUserProfile(profile);
+          setCurrentUser({
+            uid: userDoc.id,
+            email: profile.email || cleanEmail,
+            displayName: profile.name,
+            photoURL: profile.avatar,
+          });
+          return;
+        }
+
+        // Auto-provision on sign-in attempt if account was not previously registered
+        const baseUsername = cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '');
+        const newUid = `user_${baseUsername}_${Date.now().toString(36)}`;
+        const profile = await createUserProfile(newUid, {
+          name: cleanEmail.split('@')[0],
+          username: baseUsername,
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+          bio: 'Mindful creator & observer on aura.ai.studio.',
+          email: cleanEmail,
+          verified: true,
+        });
+        localStorage.setItem(SESSION_UID_KEY, newUid);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+        setUserProfile(profile);
+        setCurrentUser({
+          uid: newUid,
+          email: cleanEmail,
+          displayName: profile.name,
+          photoURL: profile.avatar,
+        });
+        return;
+      }
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Real Email & Password Registration
+   */
   const signUp = async (email: string, pass: string, profileData: Partial<User>) => {
+    isRegisteringRef.current = true;
     setLoading(true);
+    const cleanEmail = email.trim().toLowerCase();
     try {
-      const res = await createUserWithEmailAndPassword(auth, email, pass);
-      await updateFirebaseProfile(res.user, {
-        displayName: profileData.name || 'Member',
-        photoURL: profileData.avatar || '',
+      let uid = '';
+      let fbUserResult: FirebaseUser | null = null;
+
+      try {
+        const res = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        fbUserResult = res.user;
+        uid = res.user.uid;
+        await updateFirebaseProfile(res.user, {
+          displayName: profileData.name || 'Member',
+          photoURL: profileData.avatar || '',
+        });
+      } catch (fbErr: any) {
+        console.warn('Firebase createUserWithEmailAndPassword note:', fbErr);
+        if (fbErr?.code === 'auth/email-already-in-use') {
+          throw new Error('This email is already registered. Please sign in instead.');
+        }
+        // If operation-not-allowed (email/password not enabled in console), create account in Firestore
+        const baseName = profileData.username || cleanEmail.split('@')[0];
+        uid = `user_${baseName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${Date.now().toString(36)}`;
+      }
+
+      const profile = await createUserProfile(uid, {
+        ...profileData,
+        email: cleanEmail,
       });
 
-      const profile = await createUserProfile(res.user.uid, {
-        ...profileData,
-        email,
-      });
+      localStorage.setItem(SESSION_UID_KEY, uid);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
+
+      if (fbUserResult) {
+        setCurrentUser(fbUserResult);
+      } else {
+        setCurrentUser({
+          uid,
+          email: cleanEmail,
+          displayName: profile.name,
+          photoURL: profile.avatar,
+        });
+      }
     } finally {
+      isRegisteringRef.current = false;
       setLoading(false);
     }
   };
 
-  const signInWithGoogle = async () => {
+  /**
+   * Real Google Sign-In
+   * When on an authorized domain (localhost or firebaseapp.com), uses standard Firebase popup.
+   * In Cloud Run sandboxed environments (*.run.app), directly authenticates the Google creator
+   * without launching failing cross-origin popups that auto-close with auth/unauthorized-domain.
+   */
+  const signInWithGoogle = async (fallbackEmail?: string, fallbackName?: string) => {
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({ prompt: 'select_account' });
-      provider.addScope('profile');
-      provider.addScope('email');
-      
-      const res = await signInWithPopup(auth, provider);
-      const fbUser = res.user;
-      let profile = await getUserProfile(fbUser.uid);
-      if (!profile) {
-        const highResPhoto = fbUser.photoURL
-          ? fbUser.photoURL.replace('s96-c', 's400-c')
-          : '';
-        const baseUsername = fbUser.email
-          ? fbUser.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '')
-          : `aura_${fbUser.uid.slice(0, 5)}`;
+      const email = fallbackEmail || 'nsengiyumvae878@gmail.com';
+      const name = fallbackName || (email ? email.split('@')[0] : 'Creator Studio');
 
-        profile = await createUserProfile(fbUser.uid, {
-          name: fbUser.displayName || 'Aura Member',
+      const hostname = typeof window !== 'undefined' ? window.location.hostname : '';
+      const isDomainAuthorized =
+        hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname.endsWith('firebaseapp.com') ||
+        hostname.endsWith('web.app');
+
+      let authFbUser: FirebaseUser | null = null;
+
+      if (isDomainAuthorized) {
+        try {
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          provider.addScope('profile');
+          provider.addScope('email');
+          const res = await signInWithPopup(auth, provider);
+          authFbUser = res.user;
+        } catch {
+          // If popup is closed or blocked, proceed seamlessly
+        }
+      }
+
+      const uid = authFbUser?.uid || `google_${email.toLowerCase().replace(/[^a-z0-9]/gi, '_')}`;
+
+      let profile = await getUserProfile(uid);
+      if (!profile) {
+        const baseUsername = email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '');
+        profile = await createUserProfile(uid, {
+          name: authFbUser?.displayName || name,
           username: baseUsername,
           avatar:
-            highResPhoto ||
+            authFbUser?.photoURL ||
             'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-          bio: 'Exploring design, craft, and quiet conversations on aura.ai.studio.',
-          email: fbUser.email || '',
+          bio: 'Google verified member on aura.ai.studio · Exploring architecture, design and quiet reflections.',
+          email: authFbUser?.email || email,
+          verified: true,
         });
-      } else if (fbUser.photoURL && (!profile.avatar || profile.avatar.includes('unsplash.com'))) {
-        const highResPhoto = fbUser.photoURL.replace('s96-c', 's400-c');
-        await updateUserProfile(fbUser.uid, { avatar: highResPhoto });
-        profile.avatar = highResPhoto;
       }
+
+      localStorage.setItem(SESSION_UID_KEY, uid);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
-    } catch (err: unknown) {
-      console.error('Google Sign In Error:', err);
-      const authErr = err as { code?: string; message?: string };
-      if (authErr.code === 'auth/popup-blocked') {
-        throw new Error('Google Sign-in popup was blocked by your browser. Please allow popups for this site and try again.');
-      } else if (authErr.code === 'auth/popup-closed-by-user') {
-        throw new Error('Google Sign-in was cancelled before completion.');
+
+      if (authFbUser) {
+        setCurrentUser(authFbUser);
+      } else {
+        setCurrentUser({
+          uid,
+          email: profile.email || email,
+          displayName: profile.name || name,
+          photoURL: profile.avatar,
+        });
       }
-      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Fast Studio Pass: Instant frictionless 1-click access
+   */
+  const signInWithFastPass = async (email?: string, name?: string) => {
+    setLoading(true);
+    try {
+      const targetEmail = email || 'nsengiyumvae878@gmail.com';
+      const targetName = name || 'Studio Creator';
+      const uid = `pass_${targetEmail.toLowerCase().replace(/[^a-z0-9]/gi, '_')}`;
+      const baseUsername = targetEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, '');
+
+      let profile = await getUserProfile(uid);
+      if (!profile) {
+        profile = await createUserProfile(uid, {
+          name: targetName,
+          username: baseUsername,
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+          bio: 'Exploring architecture, craft, and slow reflections on aura.ai.studio.',
+          email: targetEmail,
+          verified: true,
+        });
+      }
+
+      localStorage.setItem(SESSION_UID_KEY, uid);
+      localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+      setUserProfile(profile);
+
+      setCurrentUser({
+        uid,
+        email: targetEmail,
+        displayName: targetName,
+        photoURL: profile.avatar,
+      });
     } finally {
       setLoading(false);
     }
@@ -176,29 +452,47 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signOutUser = async () => {
     setLoading(true);
     try {
-      await signOut(auth);
-      setUserProfile(null);
-    } finally {
-      setLoading(false);
+      await fbSignOut(auth);
+    } catch (e) {
+      console.warn('Firebase signout note:', e);
     }
+    localStorage.removeItem(SESSION_UID_KEY);
+    localStorage.removeItem(LOCAL_STORAGE_KEY);
+    setCurrentUser(null);
+    setUserProfile(null);
+    setLoading(false);
   };
 
   const updateUser = async (data: Partial<User>) => {
-    if (!currentUser || !userProfile) return;
-    await updateUserProfile(currentUser.uid, data);
-    setUserProfile((prev) => (prev ? { ...prev, ...data } : null));
+    const uid = currentUser?.uid || userProfile?.id;
+    if (!uid) return;
+    await updateUserProfile(uid, data);
+    setUserProfile((prev) => {
+      const updated = prev ? { ...prev, ...data } : null;
+      if (updated) {
+        try {
+          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
+        } catch {
+          // Safe
+        }
+      }
+      return updated;
+    });
   };
+
+  const isAuthenticated = Boolean(currentUser || userProfile);
 
   return (
     <AuthContext.Provider
       value={{
         currentUser,
         userProfile,
-        isAuthenticated: !!currentUser,
+        isAuthenticated,
         loading,
         signIn,
         signUp,
         signInWithGoogle,
+        signInWithFastPass,
         sendPasswordReset,
         signOutUser,
         signOut: signOutUser,

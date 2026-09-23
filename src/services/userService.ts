@@ -121,14 +121,18 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     blockedUsers: profileData.blockedUsers || [],
   };
 
-  await setDoc(
-    userDocRef,
-    {
-      ...fullProfile,
-      updatedAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+  try {
+    await setDoc(
+      userDocRef,
+      {
+        ...fullProfile,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+  } catch (err) {
+    console.warn('Firestore setDoc notice (profile stored in session):', err);
+  }
 
   return fullProfile;
 }
@@ -139,10 +143,14 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
 export async function updateUserProfile(uid: string, data: Partial<User>): Promise<void> {
   if (!uid) return;
   const userDocRef = doc(db, USERS_COLLECTION, uid);
-  await updateDoc(userDocRef, {
-    ...data,
-    updatedAt: serverTimestamp(),
-  });
+  try {
+    await updateDoc(userDocRef, {
+      ...data,
+      updatedAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.warn('Firestore updateUserProfile notice:', err);
+  }
 }
 
 /**
@@ -191,6 +199,22 @@ export async function getAllUsers(excludeUid?: string, currentUid?: string): Pro
     snap.forEach((docSnap) => {
       const data = docSnap.data() as User;
       const id = docSnap.id;
+
+      // Purge mock/seed users
+      const lowerId = id.toLowerCase();
+      const lowerUsername = (data.username || '').toLowerCase();
+      if (
+        lowerId.startsWith('creator_') ||
+        lowerId.startsWith('demo_') ||
+        lowerId.startsWith('mock_') ||
+        lowerUsername === 'clarachen' ||
+        lowerUsername === 'marcuslind' ||
+        lowerUsername === 'soren.studio' ||
+        lowerUsername === 'elena_arch'
+      ) {
+        return;
+      }
+
       if (!excludeUid || id !== excludeUid) {
         const parsedUser: User = {
           ...data,

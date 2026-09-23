@@ -846,7 +846,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                       type="text"
                       value={mentionName}
                       onChange={(e) => setMentionName(e.target.value)}
-                      placeholder="clarachen"
+                      placeholder="username"
                       className="w-full pl-8 pr-3 py-2 rounded-xl bg-white border border-[#2D3732]/15 text-xs text-[#2D3732] focus:outline-none"
                     />
                   </div>
