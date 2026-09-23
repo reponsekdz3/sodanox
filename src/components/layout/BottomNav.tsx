@@ -1,6 +1,5 @@
 import React from 'react';
-import { Home, Play, MessageSquare, Compass, User as UserIcon, Plus } from 'lucide-react';
-import { User } from '../../types';
+import { Home, Compass, Film, MessageSquare, User as UserIcon, Plus } from 'lucide-react';
 
 interface BottomNavProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -16,80 +15,119 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onOpenCreatePost,
 }) => {
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FAFAF9]/95 backdrop-blur-md border-t border-[#F1F5F2] px-2 py-1 shadow-soft">
-      <div className="grid grid-cols-5 items-center h-14">
-        {/* Feed */}
+    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FAFAF9]/95 backdrop-blur-md border-t border-[#E6EDE9] px-2 py-1 shadow-soft-lg select-none">
+      <div className="grid grid-cols-5 items-center h-14 max-w-lg mx-auto">
+        {/* Feed / Home */}
         <button
+          type="button"
           onClick={() => onSelectTab('feed')}
-          className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center transition-colors ${
-            currentTab === 'feed' ? 'text-[#2D3732]' : 'text-[#7A8A82]'
+          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
+            currentTab === 'feed'
+              ? 'text-[#2D3732] font-semibold scale-105'
+              : 'text-[#7A8A82] hover:text-[#2D3732]'
           }`}
-          title="Feed"
+          title="Home Feed"
         >
-          <Home size={22} className={currentTab === 'feed' ? 'stroke-[2.5]' : ''} />
-          <span className="text-[10px] font-medium tracking-tight mt-0.5">Feed</span>
+          <div className="relative p-1">
+            <Home size={20} className={currentTab === 'feed' ? 'stroke-[2.5] text-[#5E7C6E]' : ''} />
+            {currentTab === 'feed' && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
+            )}
+          </div>
+          <span className="text-[10px] tracking-tight">Home</span>
+        </button>
+
+        {/* Explore */}
+        <button
+          type="button"
+          onClick={() => onSelectTab('explore')}
+          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
+            currentTab === 'explore'
+              ? 'text-[#2D3732] font-semibold scale-105'
+              : 'text-[#7A8A82] hover:text-[#2D3732]'
+          }`}
+          title="Explore"
+        >
+          <div className="relative p-1">
+            <Compass size={20} className={currentTab === 'explore' ? 'stroke-[2.5] text-[#5E7C6E]' : ''} />
+            {currentTab === 'explore' && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
+            )}
+          </div>
+          <span className="text-[10px] tracking-tight">Explore</span>
         </button>
 
         {/* Reels */}
         <button
+          type="button"
           onClick={() => onSelectTab('reels')}
-          className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center transition-colors ${
-            currentTab === 'reels' ? 'text-[#2D3732]' : 'text-[#7A8A82]'
+          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
+            currentTab === 'reels'
+              ? 'text-[#2D3732] font-semibold scale-105'
+              : 'text-[#7A8A82] hover:text-[#2D3732]'
           }`}
-          title="Reels"
+          title="Cinema & Reels"
         >
-          <Play size={22} className={currentTab === 'reels' ? 'stroke-[2.5]' : ''} />
-          <span className="text-[10px] font-medium tracking-tight mt-0.5">Reels</span>
-        </button>
-
-        {/* Create Post Center Button */}
-        <button
-          onClick={onOpenCreatePost}
-          className="min-h-[44px] min-w-[44px] flex flex-col items-center justify-center -mt-3"
-          title="Create Post"
-        >
-          <div className="w-11 h-11 rounded-2xl bg-[#8FA89B] text-white flex items-center justify-center shadow-soft active:scale-95 transition-transform">
-            <Plus size={22} strokeWidth={2.5} />
+          <div className="relative p-1">
+            <Film size={20} className={currentTab === 'reels' ? 'stroke-[2.5] text-[#5E7C6E]' : ''} />
+            {currentTab === 'reels' && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
+            )}
           </div>
+          <span className="text-[10px] tracking-tight">Reels</span>
         </button>
 
         {/* Messages */}
         <button
+          type="button"
           onClick={() => onSelectTab('messages')}
-          className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center relative transition-colors ${
-            currentTab === 'messages' ? 'text-[#2D3732]' : 'text-[#7A8A82]'
+          className={`min-h-[44px] flex flex-col items-center justify-center relative transition-all ${
+            currentTab === 'messages'
+              ? 'text-[#2D3732] font-semibold scale-105'
+              : 'text-[#7A8A82] hover:text-[#2D3732]'
           }`}
           title="Messages"
         >
-          <div className="relative">
+          <div className="relative p-1">
             <MessageSquare
-              size={22}
-              className={currentTab === 'messages' ? 'stroke-[2.5]' : ''}
+              size={20}
+              className={currentTab === 'messages' ? 'stroke-[2.5] text-[#5E7C6E]' : ''}
             />
             {unreadMessagesCount > 0 && (
-              <span className="absolute -top-1 -right-1.5 w-4 h-4 rounded-full bg-[#8FA89B] text-white text-[9px] font-bold flex items-center justify-center">
+              <span className="absolute -top-0.5 -right-1 min-w-[15px] h-[15px] px-1 rounded-full bg-[#8FA89B] text-white text-[9px] font-bold flex items-center justify-center shadow-xs">
                 {unreadMessagesCount}
               </span>
             )}
+            {currentTab === 'messages' && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
+            )}
           </div>
-          <span className="text-[10px] font-medium tracking-tight mt-0.5">Chat</span>
+          <span className="text-[10px] tracking-tight">Chat</span>
         </button>
 
         {/* Profile */}
         <button
+          type="button"
           onClick={() => onSelectTab('profile')}
-          className={`min-h-[44px] min-w-[44px] flex flex-col items-center justify-center transition-colors ${
-            currentTab === 'profile' ? 'text-[#2D3732]' : 'text-[#7A8A82]'
+          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
+            currentTab === 'profile'
+              ? 'text-[#2D3732] font-semibold scale-105'
+              : 'text-[#7A8A82] hover:text-[#2D3732]'
           }`}
           title="Profile"
         >
-          <UserIcon
-            size={22}
-            className={currentTab === 'profile' ? 'stroke-[2.5]' : ''}
-          />
-          <span className="text-[10px] font-medium tracking-tight mt-0.5">Profile</span>
+          <div className="relative p-1">
+            <UserIcon
+              size={20}
+              className={currentTab === 'profile' ? 'stroke-[2.5] text-[#5E7C6E]' : ''}
+            />
+            {currentTab === 'profile' && (
+              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
+            )}
+          </div>
+          <span className="text-[10px] tracking-tight">Profile</span>
         </button>
       </div>
-    </div>
+    </nav>
   );
 };

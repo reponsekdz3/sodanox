@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
+import { AuraLogo } from '../common/AuraLogo';
 
 interface NavbarProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -56,13 +57,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="sticky top-0 z-40 w-full bg-[#FAFAF9]/90 backdrop-blur-md border-b border-[#F1F5F2]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-        {/* Zone 1: Brand Wordmark */}
+        {/* Zone 1: Modern Aura Brand Logo */}
         <button
+          type="button"
           onClick={() => onSelectTab('feed')}
-          className="text-xl font-serif font-semibold tracking-tight text-[#2D3732] hover:opacity-80 transition-opacity focus-visible:outline-none flex items-center gap-2.5 cursor-pointer"
+          className="hover:opacity-85 transition-opacity focus-visible:outline-none flex items-center cursor-pointer"
         >
-          <span className="w-2.5 h-2.5 rounded-full bg-[#8FA89B] shadow-xs" />
-          <span className="tracking-wide">Aura</span>
+          <AuraLogo size="md" showWordmark={true} />
         </button>
 
         {/* Zone 2: Navigation Links */}

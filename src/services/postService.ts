@@ -21,95 +21,6 @@ import { createNotification } from './notificationService';
 
 const POSTS_COLLECTION = 'posts';
 
-export const INITIAL_COMMUNITY_POSTS: Omit<Post, 'id'>[] = [
-  {
-    author: {
-      id: 'creator_clara_chen',
-      name: 'Clara Chen',
-      username: 'clarachen',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80',
-      bio: 'Ceramicist & studio maker.',
-      joinedDate: 'Joined May 2024',
-      followersCount: 22400,
-      followingCount: 520,
-      isFollowing: true,
-      verified: true,
-    },
-    timestamp: '15m ago',
-    content: 'Unveiling a series of hand-thrown stoneware vessels cured in pine smoke. Notice how subtle raw iron speckles emerge through the satin matte glaze.',
-    mediaUrl: '/src/assets/images/post_ceramic_art_1790174946314.jpg',
-    mediaType: 'image',
-    likesCount: 142,
-    hasLiked: false,
-    bookmarksCount: 29,
-    isBookmarked: false,
-    repostsCount: 18,
-    hasReposted: false,
-    commentsCount: 3,
-    comments: [
-      {
-        id: 'c1',
-        author: {
-          id: 'creator_marcus_lind',
-          name: 'Marcus Lind',
-          username: 'marcuslind',
-          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
-          bio: 'Product designer',
-          joinedDate: 'Joined Jan 2024',
-          followersCount: 8930,
-          followingCount: 310,
-          isFollowing: true,
-          verified: true,
-        },
-        content: 'The quiet balance between the unglazed foot and upper rim is breathtaking.',
-        timestamp: '10m ago',
-        likesCount: 8,
-        hasLiked: false,
-      },
-    ],
-    tags: ['Ceramics', 'StudioCraft', 'TactileObject', 'SlowDesign'],
-    sharesCount: 14,
-  },
-  {
-    author: {
-      id: 'creator_marcus_lind',
-      name: 'Marcus Lind',
-      username: 'marcuslind',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
-      bio: 'Product designer & spatial acoustic engineer.',
-      joinedDate: 'Joined January 2024',
-      followersCount: 8930,
-      followingCount: 310,
-      isFollowing: true,
-      verified: true,
-    },
-    timestamp: '1h ago',
-    content: 'Observing how morning fog softens architectural silhouettes against the fjord. Which tonal material palette do you find most calming in work spaces?',
-    mediaUrl: '/src/assets/images/post_scenic_nordic_1790174933983.jpg',
-    mediaType: 'image',
-    likesCount: 384,
-    hasLiked: false,
-    bookmarksCount: 81,
-    isBookmarked: false,
-    repostsCount: 42,
-    hasReposted: false,
-    commentsCount: 12,
-    comments: [],
-    tags: ['NordicLight', 'SpatialDesign', 'Architecture', 'QuietSpaces'],
-    poll: {
-      id: 'poll_1',
-      question: 'Which material warmth best grounds your creative focus?',
-      options: [
-        { id: 'opt_1', text: 'Bleached ash & muted linen', votes: 128 },
-        { id: 'opt_2', text: 'Cast bronze & blackened oak', votes: 94 },
-        { id: 'opt_3', text: 'Brushed aluminum & tactile felt', votes: 62 },
-      ],
-      totalVotes: 284,
-    },
-    sharesCount: 38,
-  },
-];
-
 /**
  * Real-time subscription to community posts from Firestore
  */
@@ -597,6 +508,45 @@ export async function updatePostContent(postId: string, content: string): Promis
       isEdited: true,
       updatedAt: serverTimestamp(),
     });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
+  }
+}
+
+/**
+ * Delete a comment or reply from a post in Firestore
+ */
+export async function deleteCommentFromPost(
+  postId: string,
+  commentId: string,
+  replyId?: string
+): Promise<void> {
+  try {
+    const postRef = doc(db, POSTS_COLLECTION, postId);
+    const snap = await getDocs(query(collection(db, POSTS_COLLECTION)));
+    const target = snap.docs.find((d) => d.id === postId);
+    if (!target) return;
+
+    const comments: any[] = target.data().comments || [];
+    let updatedComments: any[] = [];
+
+    if (replyId) {
+      // Remove reply inside comment
+      updatedComments = comments.map((c) => {
+        if (c.id === commentId && c.replies) {
+          return {
+            ...c,
+            replies: c.replies.filter((r: any) => r.id !== replyId),
+          };
+        }
+        return c;
+      });
+    } else {
+      // Remove top-level comment
+      updatedComments = comments.filter((c) => c.id !== commentId);
+    }
+
+    await updateDoc(postRef, { comments: updatedComments });
   } catch (err) {
     handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
   }

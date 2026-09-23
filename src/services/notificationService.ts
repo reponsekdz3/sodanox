@@ -3,6 +3,7 @@ import {
   doc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where,
   orderBy,
@@ -147,3 +148,16 @@ export async function markNotificationAsRead(notificationId: string): Promise<vo
     console.error('Error marking notification read:', err);
   }
 }
+
+/**
+ * Delete a single notification
+ */
+export async function deleteNotification(notificationId: string): Promise<void> {
+  try {
+    const docRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
+    await deleteDoc(docRef);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `${NOTIFICATIONS_COLLECTION}/${notificationId}`);
+  }
+}
+

@@ -42,6 +42,7 @@ interface ProfileViewProps {
   onEditPost?: (postId: string, newContent: string) => void;
   onAddComment: (postId: string, text: string, replyToCommentId?: string) => void;
   onLikeComment: (postId: string, commentId: string) => void;
+  onDeleteComment?: (postId: string, commentId: string, replyId?: string) => void;
   onSelectReel: (reel: Reel) => void;
   onSelectHighlight?: (highlight: StoryHighlight) => void;
   onNavigateToUser?: (user: User) => void;
@@ -67,6 +68,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   onEditPost,
   onAddComment,
   onLikeComment,
+  onDeleteComment,
   onSelectReel,
   onSelectHighlight,
   onNavigateToUser,
@@ -396,6 +398,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onEditPost={onEditPost}
                   onAddComment={onAddComment}
                   onLikeComment={onLikeComment}
+                  onDeleteComment={onDeleteComment}
+                  onOpenUserProfile={onNavigateToUser}
                 />
               ))
             )}
@@ -452,6 +456,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onEditPost={onEditPost}
                   onAddComment={onAddComment}
                   onLikeComment={onLikeComment}
+                  onDeleteComment={onDeleteComment}
+                  onOpenUserProfile={onNavigateToUser}
                 />
               ))
             )}
@@ -518,6 +524,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           </div>
         </div>
       )}
+      {/* Mandatory Developer Footer */}
+      <div className="py-6 text-center border-t border-[#E6EDE9]">
+        <p className="text-xs text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
+          app developed by reponsekdz
+        </p>
+      </div>
     </div>
   );
 };

@@ -91,6 +91,7 @@ interface PostCardProps {
   onSendToChat?: (recipientId: string, messageText: string) => void;
   onAddComment: (postId: string, text: string, replyToCommentId?: string) => void;
   onLikeComment: (postId: string, commentId: string) => void;
+  onDeleteComment?: (postId: string, commentId: string, replyId?: string) => void;
   onVotePoll?: (postId: string, optionId: string) => void;
   onDeletePost?: (postId: string) => void;
   onEditPost?: (postId: string, newContent: string) => void;
@@ -108,6 +109,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   onSendToChat,
   onAddComment,
   onLikeComment,
+  onDeleteComment,
   onVotePoll,
   onDeletePost,
   onEditPost,
@@ -353,13 +355,19 @@ export const PostCard: React.FC<PostCardProps> = ({
       {/* Quoted Post Attachment */}
       {post.quotedPost && (
         <div className="my-4 p-4 rounded-2xl bg-[#FAFAF9] border border-[#E6EDE9] space-y-2">
-          <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 cursor-pointer group w-fit"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenUserProfile?.(post.quotedPost!.author);
+            }}
+          >
             <img
               src={post.quotedPost.author.avatar}
               alt={post.quotedPost.author.name}
-              className="w-6 h-6 rounded-full object-cover"
+              className="w-6 h-6 rounded-full object-cover group-hover:ring-2 group-hover:ring-[#8FA89B] transition-all"
             />
-            <span className="text-xs font-semibold text-[#2D3732]">
+            <span className="text-xs font-semibold text-[#2D3732] group-hover:underline">
               {post.quotedPost.author.name}
             </span>
             <span className="text-[11px] text-[#7A8A82]">
@@ -540,7 +548,9 @@ export const PostCard: React.FC<PostCardProps> = ({
               <img
                 src={currentUser.avatar}
                 alt={currentUser.name}
-                className="w-8 h-8 rounded-full object-cover shrink-0"
+                onClick={() => onOpenUserProfile?.(currentUser)}
+                className="w-8 h-8 rounded-full object-cover shrink-0 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                title="View your profile"
               />
               <input
                 type="text"
@@ -576,16 +586,33 @@ export const PostCard: React.FC<PostCardProps> = ({
                     <img
                       src={comment.author.avatar}
                       alt={comment.author.name}
-                      className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5"
+                      onClick={() => onOpenUserProfile?.(comment.author)}
+                      className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                      title={`View ${comment.author.name}'s profile`}
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-[#2D3732]">
+                        <span
+                          onClick={() => onOpenUserProfile?.(comment.author)}
+                          className="text-xs font-medium text-[#2D3732] cursor-pointer hover:underline"
+                        >
                           {comment.author.name}
                         </span>
-                        <span className="text-[11px] text-[#7A8A82]">
-                          {comment.timestamp}
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] text-[#7A8A82]">
+                            {comment.timestamp}
+                          </span>
+                          {comment.author.id === currentUser.id && onDeleteComment && (
+                            <button
+                              type="button"
+                              onClick={() => onDeleteComment(post.id, comment.id)}
+                              className="text-[#7A8A82] hover:text-red-600 transition-colors p-0.5"
+                              title="Delete comment"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <p className="text-xs text-[#2D3732] leading-relaxed break-words">
                         {comment.content}
@@ -631,16 +658,33 @@ export const PostCard: React.FC<PostCardProps> = ({
                           <img
                             src={reply.author.avatar}
                             alt={reply.author.name}
-                            className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5"
+                            onClick={() => onOpenUserProfile?.(reply.author)}
+                            className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                            title={`View ${reply.author.name}'s profile`}
                           />
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
-                              <span className="text-xs font-medium text-[#2D3732]">
+                              <span
+                                onClick={() => onOpenUserProfile?.(reply.author)}
+                                className="text-xs font-medium text-[#2D3732] cursor-pointer hover:underline"
+                              >
                                 {reply.author.name}
                               </span>
-                              <span className="text-[11px] text-[#7A8A82]">
-                                {reply.timestamp}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] text-[#7A8A82]">
+                                  {reply.timestamp}
+                                </span>
+                                {reply.author.id === currentUser.id && onDeleteComment && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onDeleteComment(post.id, comment.id, reply.id)}
+                                    className="text-[#7A8A82] hover:text-red-600 transition-colors p-0.5"
+                                    title="Delete reply"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                             <p className="text-xs text-[#2D3732] leading-relaxed break-words">
                               {reply.content}
@@ -659,6 +703,18 @@ export const PostCard: React.FC<PostCardProps> = ({
                                   className={reply.hasLiked ? 'fill-[#8FA89B]' : ''}
                                 />
                                 <span className="tabular-nums">{reply.likesCount}</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setReplyingTo({
+                                    id: comment.id,
+                                    authorName: reply.author.name,
+                                  });
+                                  setNewCommentText(`@${reply.author.username} `);
+                                }}
+                                className="text-[11px] text-[#7A8A82] hover:text-[#2D3732] font-medium"
+                              >
+                                Reply
                               </button>
                             </div>
                           </div>

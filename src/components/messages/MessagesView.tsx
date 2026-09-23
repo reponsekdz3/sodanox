@@ -41,106 +41,6 @@ interface MessagesViewProps {
   onOpenAuth?: () => void;
 }
 
-const DEMO_CONVERSATIONS: ChatConversation[] = [
-  {
-    id: 'demo_clara',
-    participant: {
-      id: 'creator_clara_chen',
-      name: 'Clara Chen',
-      username: 'clarachen',
-      avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=600&q=80',
-      bio: 'Ceramicist & studio maker. Shaping stoneware.',
-      location: 'Kyoto, Japan',
-      website: 'https://studiochen.co',
-      joinedDate: 'May 2024',
-      followersCount: 22400,
-      followingCount: 520,
-      isFollowing: false,
-      verified: true,
-    },
-    lastMessage: {
-      id: 'm_demo_1',
-      senderId: 'creator_clara_chen',
-      timestamp: '10:42 AM',
-      type: 'text',
-      text: 'The natural glaze test finished cooling down. What do you think?',
-      status: 'read',
-    },
-    unreadCount: 1,
-    isOnline: true,
-    isTyping: false,
-    messages: [],
-  },
-  {
-    id: 'demo_marcus',
-    participant: {
-      id: 'creator_marcus_lind',
-      name: 'Marcus Lind',
-      username: 'marcuslind',
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80',
-      bio: 'Product designer & spatial acoustic engineer.',
-      location: 'Stockholm, Sweden',
-      website: 'https://marcuslind.se',
-      joinedDate: 'January 2024',
-      followersCount: 8930,
-      followingCount: 310,
-      isFollowing: false,
-      verified: true,
-    },
-    lastMessage: {
-      id: 'm_demo_2',
-      senderId: 'creator_marcus_lind',
-      timestamp: 'Yesterday',
-      type: 'text',
-      text: 'Sent over the revised acoustic wood slats specs.',
-      status: 'read',
-    },
-    unreadCount: 0,
-    isOnline: false,
-    isTyping: false,
-    messages: [],
-  },
-];
-
-const DEMO_MESSAGES: Record<string, Message[]> = {
-  demo_clara: [
-    {
-      id: 'dm_1',
-      senderId: 'creator_clara_chen',
-      timestamp: '10:35 AM',
-      type: 'text',
-      text: 'Good morning Elena! Just unboxed the stoneware mugs from the second firing.',
-      status: 'read',
-    },
-    {
-      id: 'dm_2',
-      senderId: 'guest_user',
-      timestamp: '10:38 AM',
-      type: 'text',
-      text: 'The muted mineral tone looks exceptional. Did the matte finish hold up to the heat?',
-      status: 'read',
-    },
-    {
-      id: 'dm_3',
-      senderId: 'creator_clara_chen',
-      timestamp: '10:42 AM',
-      type: 'text',
-      text: 'The natural glaze test finished cooling down. What do you think?',
-      status: 'delivered',
-    },
-  ],
-  demo_marcus: [
-    {
-      id: 'dm_m1',
-      senderId: 'creator_marcus_lind',
-      timestamp: 'Yesterday',
-      type: 'text',
-      text: 'Sent over the revised acoustic wood slats specs.',
-      status: 'read',
-    },
-  ],
-};
-
 export const MessagesView: React.FC<MessagesViewProps> = ({
   currentUser,
   activeConversationId: externalActiveId,
@@ -184,22 +84,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   // Subscribe in real-time to conversations involving the current user
   useEffect(() => {
-    if (!currentUser?.id || currentUser.id === 'user_fallback' || currentUser.id === 'guest_user') {
-      setConversations(DEMO_CONVERSATIONS);
-      setActiveConvId((prev) => prev || 'demo_clara');
+    if (!currentUser?.id) {
+      setConversations([]);
       return;
     }
 
     const unsubscribe = subscribeToUserConversations(
       currentUser.id,
       (convs) => {
-        if (convs.length === 0) {
-          setConversations(DEMO_CONVERSATIONS);
-          setActiveConvId((prev) => prev || 'demo_clara');
-        } else {
-          setConversations(convs);
-          setActiveConvId((prev) => prev || (convs[0]?.id || ''));
-        }
+        setConversations(convs);
+        setActiveConvId((prev) => {
+          if (prev && convs.some((c) => c.id === prev)) return prev;
+          return convs[0]?.id || '';
+        });
       },
       (err) => console.warn('Convs error:', err)
     );
@@ -220,11 +117,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   useEffect(() => {
     if (!activeConvId) {
       setMessages([]);
-      return;
-    }
-
-    if (activeConvId.startsWith('demo_')) {
-      setMessages(DEMO_MESSAGES[activeConvId] || []);
       return;
     }
 
@@ -283,32 +175,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     setTypingIndicator(activeConvId, currentUser.id, false);
-
-    if (activeConvId.startsWith('demo_')) {
-      const newMsg: Message = {
-        id: `msg_${Date.now()}`,
-        senderId: currentUser.id,
-        timestamp: 'Just now',
-        type: 'text',
-        text: textToSend,
-        status: 'delivered',
-      };
-      setMessages((prev) => [...prev, newMsg]);
-      setIsSending(false);
-
-      setTimeout(() => {
-        const replyMsg: Message = {
-          id: `msg_rep_${Date.now()}`,
-          senderId: activeConv.participant.id,
-          timestamp: 'Just now',
-          type: 'text',
-          text: 'Love the perspective on this! The texture and balance feel very intentional.',
-          status: 'read',
-        };
-        setMessages((prev) => [...prev, replyMsg]);
-      }, 1000);
-      return;
-    }
 
     try {
       await sendChatMessage(

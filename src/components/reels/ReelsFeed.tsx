@@ -369,11 +369,22 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
                     <img
                       src={c.author.avatar}
                       alt={c.author.name}
-                      className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5"
+                      onClick={() => {
+                        setActiveCommentsReel(null);
+                        onOpenUserProfile(c.author);
+                      }}
+                      className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                      title={`View ${c.author.name}'s profile`}
                     />
                     <div className="flex-1 min-w-0 bg-[#F1F5F2] p-2.5 rounded-2xl">
                       <div className="flex items-center justify-between mb-0.5">
-                        <span className="text-xs font-medium text-[#2D3732]">
+                        <span
+                          onClick={() => {
+                            setActiveCommentsReel(null);
+                            onOpenUserProfile(c.author);
+                          }}
+                          className="text-xs font-medium text-[#2D3732] cursor-pointer hover:underline"
+                        >
                           {c.author.name}
                         </span>
                         <span className="text-[10px] text-[#7A8A82]">

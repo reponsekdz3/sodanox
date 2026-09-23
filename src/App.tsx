@@ -13,6 +13,7 @@ import {
 } from './types';
 
 import { Navbar } from './components/layout/Navbar';
+import { SidebarNav } from './components/layout/SidebarNav';
 import { BottomNav } from './components/layout/BottomNav';
 import { Feed } from './components/feed/Feed';
 import { ReelsFeed } from './components/reels/ReelsFeed';
@@ -39,6 +40,7 @@ import {
   incrementPostShareCount,
   addCommentToPost,
   toggleLikeComment,
+  deleteCommentFromPost,
   voteInPoll,
   deletePostFromFirestore,
   updatePostContent,
@@ -60,6 +62,7 @@ import {
 import {
   subscribeToNotifications,
   markAllNotificationsAsRead,
+  deleteNotification,
 } from './services/notificationService';
 import {
   subscribeToUserConversations,
@@ -333,8 +336,24 @@ export default function App() {
   const handleSendPostToChat = async (recipientId: string, messageText: string) => {
     if (!currentUser) return;
     try {
-      const conv = await getOrCreateConversation(currentUser.id, recipientId);
-      await sendChatMessage(conv.id, currentUser.id, messageText, 'post_share');
+      const targetUser: User = communityUsers.find((u) => u.id === recipientId) || {
+        id: recipientId,
+        name: 'Community Member',
+        username: 'member',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+        bio: '',
+        joinedDate: '',
+        followersCount: 0,
+        followingCount: 0,
+        isFollowing: false,
+      };
+      const convId = await getOrCreateConversation(currentUser, targetUser);
+      await sendChatMessage(
+        convId,
+        { text: messageText, type: 'text' },
+        currentUser,
+        recipientId
+      );
     } catch (err) {
       console.error('Error sending post in chat:', err);
     }
@@ -366,6 +385,14 @@ export default function App() {
       await toggleLikeComment(postId, commentId, currentUser.id);
     } catch (err) {
       console.error('Error liking comment:', err);
+    }
+  };
+
+  const handleDeleteComment = async (postId: string, commentId: string, replyId?: string) => {
+    try {
+      await deleteCommentFromPost(postId, commentId, replyId);
+    } catch (err) {
+      console.error('Error deleting comment:', err);
     }
   };
 
@@ -404,10 +431,13 @@ export default function App() {
         newPostData.mediaType || 'image',
         newPostData.tags || [],
         newPostData.poll,
-        newPostData.mediaUrls,
-        newPostData.location,
-        newPostData.audience,
-        newPostData.commentsDisabled
+        newPostData.quotedPost,
+        {
+          mediaUrls: newPostData.mediaUrls,
+          location: newPostData.location,
+          audience: newPostData.audience,
+          commentsDisabled: newPostData.commentsDisabled,
+        }
       );
     } catch (err) {
       console.error('Error creating post in Firestore:', err);
@@ -511,6 +541,14 @@ export default function App() {
     }
   };
 
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await deleteNotification(notificationId);
+    } catch (err) {
+      console.error('Error deleting notification:', err);
+    }
+  };
+
   // ---------------- Handlers for Calling ----------------
   const handleStartCall = (participant: User, type: 'audio' | 'video') => {
     setActiveCall({
@@ -581,27 +619,57 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#FAFAF9] text-[#2D3732] pb-16 md:pb-6 font-sans antialiased">
-      {/* Top Navbar */}
-      <Navbar
-        currentTab={currentTab}
-        currentUser={currentUser}
-        unreadMessagesCount={totalUnreadMessages}
-        unreadNotificationsCount={totalUnreadNotifications}
-        onSelectTab={(tab) => {
-          if (tab === 'profile') {
+    <div className="min-h-screen bg-[#FAFAF9] text-[#2D3732] flex flex-col md:flex-row font-sans antialiased">
+      {/* Left Aside Navigation: Powerful Desktop & Tablet View */}
+      <div className="hidden md:block">
+        <SidebarNav
+          currentTab={currentTab}
+          currentUser={currentUser}
+          unreadMessagesCount={totalUnreadMessages}
+          unreadNotificationsCount={totalUnreadNotifications}
+          onSelectTab={(tab) => {
+            if (tab === 'profile') {
+              setViewingUser(currentUser);
+            }
+            setCurrentTab(tab);
+          }}
+          onOpenCreatePost={() => setIsCreatePostOpen(true)}
+          onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onSelectSavedTab={() => {
             setViewingUser(currentUser);
-          }
-          setCurrentTab(tab);
-        }}
-        onOpenCreatePost={() => setIsCreatePostOpen(true)}
-        onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
-        onOpenAuth={() => setIsSettingsOpen(true)}
-        onOpenSettings={() => setIsSettingsOpen(true)}
-      />
+            setCurrentTab('profile');
+          }}
+          onSelectTrendingTab={() => {
+            setCurrentTab('explore');
+          }}
+        />
+      </div>
 
-      {/* Main Content Area based on Tab */}
-      <main className="w-full">
+      {/* Main Content Wrapper */}
+      <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-6">
+        {/* Mobile & Tablet Top Navbar */}
+        <div className="md:hidden">
+          <Navbar
+            currentTab={currentTab}
+            currentUser={currentUser}
+            unreadMessagesCount={totalUnreadMessages}
+            unreadNotificationsCount={totalUnreadNotifications}
+            onSelectTab={(tab) => {
+              if (tab === 'profile') {
+                setViewingUser(currentUser);
+              }
+              setCurrentTab(tab);
+            }}
+            onOpenCreatePost={() => setIsCreatePostOpen(true)}
+            onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
+            onOpenAuth={() => setIsSettingsOpen(true)}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+        </div>
+
+        {/* Main Content Area based on Tab */}
+        <main className="w-full flex-1">
         {currentTab === 'feed' && (
           <Feed
             posts={posts}
@@ -617,6 +685,7 @@ export default function App() {
             onSendToChat={handleSendPostToChat}
             onAddComment={handleAddComment}
             onLikeComment={handleLikeComment}
+            onDeleteComment={handleDeleteComment}
             onVotePoll={handleVotePoll}
             onDeletePost={handleDeletePost}
             onEditPost={handleEditPost}
@@ -680,12 +749,14 @@ export default function App() {
             onEditPost={handleEditPost}
             onAddComment={handleAddComment}
             onLikeComment={handleLikeComment}
+            onDeleteComment={handleDeleteComment}
             onSelectReel={() => setCurrentTab('reels')}
             onSelectHighlight={handleSelectHighlight}
             onNavigateToUser={handleOpenUserProfile}
           />
         )}
       </main>
+      </div>
 
       {/* Mobile Bottom Navigation */}
       <BottomNav
@@ -710,6 +781,7 @@ export default function App() {
           onSendStoryReply={handleSendStoryReply}
           onRecordStoryView={handleRecordStoryView}
           onDeleteStory={handleDeleteStory}
+          onOpenUserProfile={handleOpenUserProfile}
         />
       )}
 
@@ -761,6 +833,7 @@ export default function App() {
           notifications={notifications}
           onClose={() => setIsNotificationsDrawerOpen(false)}
           onMarkAllAsRead={handleMarkAllNotificationsRead}
+          onDeleteNotification={handleDeleteNotification}
           onOpenUserProfile={handleOpenUserProfile}
         />
       )}

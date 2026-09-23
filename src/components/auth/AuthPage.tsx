@@ -54,7 +54,7 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
-  const { signIn, signUp, signInWithGoogle, sendPasswordReset, quickDemoLogin } = useAuth();
+  const { signIn, signUp, signInWithGoogle, sendPasswordReset } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -265,37 +265,18 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </div>
         </div>
 
-        {/* Bottom: Fast Demo personas switcher for immediate testing */}
+        {/* Bottom: Genuine Member Guarantee */}
         <div className="relative z-10 pt-6 border-t border-white/10">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-[11px] uppercase tracking-wider text-white/50 font-mono">1-Click Test Personas</span>
-            <span className="text-[10px] text-[#8FA89B]">Instant Auth</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              type="button"
-              onClick={() => quickDemoLogin('clara')}
-              className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium border border-white/10 transition-colors text-left flex items-center gap-2"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>Clara (Ceramics)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => quickDemoLogin('marcus')}
-              className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium border border-white/10 transition-colors text-left flex items-center gap-2"
-            >
-              <span className="w-2 h-2 rounded-full bg-blue-400" />
-              <span>Marcus (Design)</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => quickDemoLogin('soren')}
-              className="py-2 px-3 rounded-xl bg-white/10 hover:bg-white/15 text-white text-xs font-medium border border-white/10 transition-colors text-left flex items-center gap-2"
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-400" />
-              <span>Søren (Coffee)</span>
-            </button>
+          <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
+            <div className="w-8 h-8 rounded-xl bg-[#8FA89B]/20 flex items-center justify-center shrink-0">
+              <ShieldCheck size={18} className="text-[#8FA89B]" />
+            </div>
+            <div>
+              <p className="text-xs font-medium text-white">Pure User-Generated Community</p>
+              <p className="text-[11px] text-white/60">
+                100% genuine member accounts. All stories, posts, and conversations are created in real time.
+              </p>
+            </div>
           </div>
         </div>
       </div>

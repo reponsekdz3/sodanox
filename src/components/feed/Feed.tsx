@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Post, User, Story } from '../../types';
 import { StoryBar } from '../story/StoryBar';
 import { PostCard } from './PostCard';
-import { Sparkles, TrendingUp, Users, CheckCircle2 } from 'lucide-react';
+import { Sparkles, TrendingUp, Users, CheckCircle2, Hash, Flame, X } from 'lucide-react';
+import { calculateTrendingTopics } from '../../services/trendingService';
 
 interface FeedProps {
   posts: Post[];
@@ -18,6 +19,7 @@ interface FeedProps {
   onSendToChat?: (recipientId: string, messageText: string) => void;
   onAddComment: (postId: string, text: string, replyToCommentId?: string) => void;
   onLikeComment: (postId: string, commentId: string) => void;
+  onDeleteComment?: (postId: string, commentId: string, replyId?: string) => void;
   onVotePoll: (postId: string, optionId: string) => void;
   onDeletePost?: (postId: string) => void;
   onEditPost?: (postId: string, newContent: string) => void;
@@ -40,6 +42,7 @@ export const Feed: React.FC<FeedProps> = ({
   onSendToChat,
   onAddComment,
   onLikeComment,
+  onDeleteComment,
   onVotePoll,
   onDeletePost,
   onEditPost,
@@ -48,8 +51,16 @@ export const Feed: React.FC<FeedProps> = ({
   onOpenCreatePost,
 }) => {
   const [activeFilter, setActiveFilter] = useState<'all' | 'following' | 'ceramics' | 'architecture'>('all');
+  const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  const trendingTopics = useMemo(() => calculateTrendingTopics(posts), [posts]);
 
   const filteredPosts = posts.filter((post) => {
+    if (selectedTag) {
+      const matchTag = post.tags?.some((t) => t.toLowerCase().includes(selectedTag.toLowerCase()));
+      const matchContent = post.content.toLowerCase().includes(`#${selectedTag.toLowerCase()}`);
+      return matchTag || matchContent;
+    }
     if (activeFilter === 'following') {
       return post.author.isFollowing || post.author.id === currentUser.id;
     }
@@ -102,6 +113,19 @@ export const Feed: React.FC<FeedProps> = ({
 
           {/* Filter Bar */}
           <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1 scrollbar-none">
+            {selectedTag && (
+              <div className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#8FA89B] text-white text-xs font-semibold shadow-soft shrink-0">
+                <Hash size={13} />
+                <span>{selectedTag}</span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedTag(null)}
+                  className="p-0.5 hover:bg-white/20 rounded-full ml-1"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            )}
             {[
               { id: 'all', label: 'All Feed' },
               { id: 'following', label: 'Following' },
@@ -110,9 +134,12 @@ export const Feed: React.FC<FeedProps> = ({
             ].map((tab) => (
               <button
                 key={tab.id}
-                onClick={() => setActiveFilter(tab.id as typeof activeFilter)}
+                onClick={() => {
+                  setSelectedTag(null);
+                  setActiveFilter(tab.id as typeof activeFilter);
+                }}
                 className={`px-4 py-2 rounded-2xl text-xs font-medium whitespace-nowrap transition-all ${
-                  activeFilter === tab.id
+                  !selectedTag && activeFilter === tab.id
                     ? 'bg-[#2D3732] text-white shadow-soft'
                     : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9]'
                 }`}
@@ -152,6 +179,7 @@ export const Feed: React.FC<FeedProps> = ({
                 onSendToChat={onSendToChat}
                 onAddComment={onAddComment}
                 onLikeComment={onLikeComment}
+                onDeleteComment={onDeleteComment}
                 onVotePoll={onVotePoll}
                 onDeletePost={onDeletePost}
                 onEditPost={onEditPost}
@@ -268,33 +296,53 @@ export const Feed: React.FC<FeedProps> = ({
             </div>
           </div>
 
-          {/* Trending Topics & Hashtags */}
+          {/* Trending Topics & Hashtags (Algorithmically Computed) */}
           <div className="bg-[#F1F5F2] rounded-3xl p-5 border border-[#E6EDE9] shadow-soft">
-            <h3 className="text-sm font-semibold text-[#2D3732] flex items-center gap-1.5 mb-3">
-              <TrendingUp size={15} className="text-[#8FA89B]" />
-              <span>Trending Discussions</span>
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-[#2D3732] flex items-center gap-1.5">
+                <TrendingUp size={15} className="text-[#8FA89B]" />
+                <span>Trending on Aura</span>
+              </h3>
+              <span className="text-[10px] text-[#8FA89B] font-medium bg-[#E6EDE9] px-2 py-0.5 rounded-full">
+                Live Algorithm
+              </span>
+            </div>
 
             <div className="space-y-2.5">
-              {[
-                { tag: 'nordicminimalism', posts: '1.4k posts' },
-                { tag: 'tactilecraft', posts: '980 posts' },
-                { tag: 'ambientaudio', posts: '620 posts' },
-                { tag: 'stoneware', posts: '540 posts' },
-              ].map((item) => (
+              {trendingTopics.slice(0, 6).map((item) => (
                 <div
                   key={item.tag}
-                  className="flex items-center justify-between text-xs py-1 hover:text-[#2D3732] cursor-pointer group"
+                  onClick={() => setSelectedTag(item.tag)}
+                  className={`flex items-center justify-between text-xs py-1.5 px-2 rounded-xl transition-all cursor-pointer group ${
+                    selectedTag === item.tag
+                      ? 'bg-[#8FA89B] text-white'
+                      : 'hover:bg-[#E6EDE9]/70 text-[#2D3732]'
+                  }`}
                 >
-                  <span className="font-medium text-[#2D3732] group-hover:text-[#8FA89B] transition-colors">
-                    #{item.tag}
-                  </span>
-                  <span className="text-[#7A8A82] tabular-nums">
-                    {item.posts}
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    {item.isHot && (
+                      <Flame size={13} className={selectedTag === item.tag ? 'text-amber-200' : 'text-amber-500'} />
+                    )}
+                    <div className="truncate">
+                      <span className="font-semibold">{item.name}</span>
+                      <span className={`block text-[10px] ${selectedTag === item.tag ? 'text-white/80' : 'text-[#7A8A82]'}`}>
+                        {item.category}
+                      </span>
+                    </div>
+                  </div>
+                  <span className={`text-[11px] tabular-nums shrink-0 ${selectedTag === item.tag ? 'text-white/90' : 'text-[#7A8A82]'}`}>
+                    {item.formattedCount}
                   </span>
                 </div>
               ))}
             </div>
+          </div>
+
+          {/* Mandatory Developer Footer Attribution */}
+          <div className="py-4 text-center">
+            <p className="text-xs text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
+              app developed by reponsekdz
+            </p>
           </div>
         </aside>
       </div>

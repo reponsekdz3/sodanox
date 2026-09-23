@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
-import { Search, Hash, TrendingUp, Play, Heart, MessageCircle } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { Search, Hash, TrendingUp, Play, Heart, MessageCircle, Flame } from 'lucide-react';
 import { Post, Reel, User } from '../../types';
+import { calculateTrendingTopics } from '../../services/trendingService';
 
 interface ExploreViewProps {
   posts: Post[];
@@ -9,14 +10,6 @@ interface ExploreViewProps {
   onSelectReel: (reel: Reel) => void;
   onOpenUserProfile: (user: User) => void;
 }
-
-const TRENDING_CHANNELS = [
-  { name: 'Tactile Architecture', tag: 'nordic', count: '14.2k reflections' },
-  { name: 'Ceramics & Stoneware', tag: 'ceramics', count: '9.8k posts' },
-  { name: 'Acoustic Soundscapes', tag: 'sounddesign', count: '6.4k files' },
-  { name: 'Slow Morning Rituals', tag: 'coffee', count: '5.1k moments' },
-  { name: 'Minimalist Spaces', tag: 'minimalism', count: '18.7k posts' },
-];
 
 export const ExploreView: React.FC<ExploreViewProps> = ({
   posts,
@@ -27,6 +20,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
+
+  const dynamicTrending = useMemo(() => calculateTrendingTopics(posts), [posts]);
 
   const filteredPosts = posts.filter((post) => {
     const query = (selectedTag || searchQuery).toLowerCase();
@@ -68,7 +63,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           )}
         </div>
 
-        {/* Quick Tag Pills */}
+        {/* Dynamic Trending Quick Tag Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
           <button
             onClick={() => setSelectedTag(null)}
@@ -80,17 +75,18 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           >
             All Discoveries
           </button>
-          {TRENDING_CHANNELS.map((ch) => (
+          {dynamicTrending.map((ch) => (
             <button
               key={ch.tag}
               onClick={() => setSelectedTag(ch.tag)}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${
+              className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors flex items-center gap-1 ${
                 selectedTag === ch.tag
                   ? 'bg-[#8FA89B] text-white shadow-soft'
                   : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9]'
               }`}
             >
-              #{ch.tag}
+              {ch.isHot && <Flame size={12} className={selectedTag === ch.tag ? 'text-amber-200' : 'text-amber-500'} />}
+              <span>#{ch.tag}</span>
             </button>
           ))}
         </div>
@@ -133,7 +129,15 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                     {reel.caption}
                   </p>
                   <div className="flex items-center justify-between text-[11px] text-white/80">
-                    <span className="truncate">@{reel.author.username}</span>
+                    <span
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onOpenUserProfile(reel.author);
+                      }}
+                      className="truncate hover:underline cursor-pointer"
+                    >
+                      @{reel.author.username}
+                    </span>
                     <span className="flex items-center gap-1">
                       <Heart size={10} className="fill-white" />
                       {reel.likesCount}
@@ -181,13 +185,19 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
                   <div className="p-4 flex-1 flex flex-col justify-between">
                     <div>
-                      <div className="flex items-center gap-2 mb-2">
+                      <div
+                        className="flex items-center gap-2 mb-2 w-fit cursor-pointer hover:opacity-80"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenUserProfile(post.author);
+                        }}
+                      >
                         <img
                           src={post.author.avatar}
                           alt={post.author.name}
-                          className="w-6 h-6 rounded-full object-cover"
+                          className="w-6 h-6 rounded-full object-cover hover:ring-2 hover:ring-[#8FA89B] transition-all"
                         />
-                        <span className="text-xs font-medium text-[#2D3732]">
+                        <span className="text-xs font-medium text-[#2D3732] hover:underline">
                           {post.author.name}
                         </span>
                       </div>
@@ -206,6 +216,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             })}
           </div>
         )}
+      </div>
+
+      {/* Mandatory Developer Footer */}
+      <div className="py-6 text-center border-t border-[#E6EDE9]">
+        <p className="text-xs text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
+          app developed by reponsekdz
+        </p>
       </div>
     </div>
   );

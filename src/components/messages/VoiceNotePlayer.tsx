@@ -126,9 +126,20 @@ export const VoiceNotePlayer: React.FC<VoiceNotePlayerProps> = ({ voiceMeta, isS
         {isPlaying ? <Pause size={16} /> : <Play size={16} className="ml-0.5" />}
       </button>
 
-      {/* Waveform Bars */}
-      <div className="flex-1 flex flex-col justify-center gap-1 min-w-0">
-        <div className="flex items-center gap-[3px] h-7 w-full overflow-hidden">
+      {/* Waveform Bars with clickable scrubbing */}
+      <div
+        className="flex-1 flex flex-col justify-center gap-1 min-w-0 cursor-pointer"
+        onClick={(e) => {
+          const rect = e.currentTarget.getBoundingClientRect();
+          const clickX = e.clientX - rect.left;
+          const newRatio = Math.max(0, Math.min(1, clickX / rect.width));
+          setProgress(newRatio);
+          if (audioElementRef.current && audioElementRef.current.duration) {
+            audioElementRef.current.currentTime = newRatio * audioElementRef.current.duration;
+          }
+        }}
+      >
+        <div className="flex items-center gap-[3px] h-7 w-full overflow-hidden py-1">
           {(voiceMeta.waveform || [30, 45, 60, 50, 40, 65, 80]).map((barHeight, idx, arr) => {
             const barProgress = idx / arr.length;
             const isPlayed = barProgress <= progress;
