@@ -1,8 +1,15 @@
-import { initializeApp, getApps, getApp, FirebaseOptions } from 'firebase/app';
+import { initializeApp, getApps, getApp, FirebaseOptions, setLogLevel } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import localFirebaseConfig from '../../firebase-applet-config.json';
+
+// Silence non-fatal internal SDK notices (e.g. Analytics falling back to the local measurementId)
+try {
+  setLogLevel('error');
+} catch {
+  // Safe if already configured
+}
 
 // Support both firebase-applet-config.json and Vite environment variables
 const resolvedConfig: FirebaseOptions & { firestoreDatabaseId?: string } = {
@@ -43,16 +50,19 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Validate connection on startup as recommended by Firebase skill
+// Safe startup check: silent connection verification
 async function testConnection() {
   try {
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('the client is offline')) {
-      console.warn('Firestore offline notice. Offline cache enabled.');
+    // Only attempt if not offline
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      return;
     }
+    await getDocFromServer(doc(db, 'test', 'connection'));
+  } catch {
+    // Graceful offline fallback - no warning emitted to keep console clean
   }
 }
-testConnection();
+// Run asynchronously without blocking
+testConnection().catch(() => {});
 
 export default app;

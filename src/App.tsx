@@ -184,7 +184,7 @@ export default function App() {
 
   // Real-time subscription to Posts in Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return;
     const unsubPosts = subscribeToPosts(
       currentUser.id,
       (fetchedPosts) => {
@@ -193,11 +193,11 @@ export default function App() {
       (err) => console.warn('Posts sync error:', err)
     );
     return () => unsubPosts();
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   // Real-time subscription to Stories in Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return;
     const unsubStories = subscribeToStories(
       currentUser.id,
       (fetchedStories) => {
@@ -206,11 +206,11 @@ export default function App() {
       (err) => console.warn('Stories sync error:', err)
     );
     return () => unsubStories();
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   // Real-time subscription to Reels in Firestore
   useEffect(() => {
-    if (!currentUser) return;
+    if (!currentUser?.id) return;
     const unsubReels = subscribeToReels(
       currentUser.id,
       (fetchedReels) => {
@@ -219,7 +219,7 @@ export default function App() {
       (err) => console.warn('Reels sync error:', err)
     );
     return () => unsubReels();
-  }, [currentUser]);
+  }, [currentUser?.id]);
 
   // Real-time subscription to Notifications in Firestore
   useEffect(() => {

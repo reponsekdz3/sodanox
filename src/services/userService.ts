@@ -79,10 +79,24 @@ function saveCachedUsers(users: User[]) {
 export async function getUserProfile(uid: string): Promise<User | null> {
   if (!uid) return null;
 
-  // Check local cache first
+  // 1. Check in-memory community cache first
   const cached = getCachedUsers().find((u) => u.id === uid);
   if (cached) return cached;
 
+  // 2. Check local session storage if this is the active user
+  try {
+    const local = localStorage.getItem('aura_current_user');
+    if (local) {
+      const parsed = JSON.parse(local);
+      if (parsed && (parsed.id === uid || parsed.uid === uid)) {
+        return parsed as User;
+      }
+    }
+  } catch {
+    // Non-critical local storage parse error
+  }
+
+  // 3. Query Firestore
   try {
     const userDocRef = doc(db, USERS_COLLECTION, uid);
     const snap = await getDoc(userDocRef);
@@ -107,7 +121,11 @@ export async function getUserProfile(uid: string): Promise<User | null> {
     }
     return null;
   } catch (error) {
-    console.warn('Error fetching user profile (using cached if available):', error);
+    const msg = error instanceof Error ? error.message : String(error);
+    const isOffline = msg.includes('offline') || msg.includes('unavailable') || msg.includes('failed-precondition');
+    if (!isOffline) {
+      console.warn('Error fetching user profile (using cached if available):', error);
+    }
     return cached || null;
   }
 }

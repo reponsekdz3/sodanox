@@ -282,10 +282,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 }
               }
             },
-            (err) => console.warn('User profile realtime sync warning:', err)
+            (err) => {
+              const msg = err?.message || '';
+              if (!msg.includes('offline') && !msg.includes('unavailable')) {
+                console.warn('User profile realtime sync notice:', err);
+              }
+            }
           );
         } catch (err) {
-          console.warn('Error fetching user profile in auth observer:', err);
+          const msg = err instanceof Error ? err.message : String(err);
+          if (!msg.includes('offline') && !msg.includes('unavailable')) {
+            console.warn('Error fetching user profile in auth observer:', err);
+          }
           const fallback = buildProfileFromFirebase(fbUser);
           setUserProfile(fallback);
         }
@@ -303,12 +311,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch {
             // Safe
           }
-        }
-        // Ensure Firebase Auth session exists so Firestore rules allow reads/writes
-        try {
-          await signInAnonymously(auth);
-        } catch {
-          // Anonymous auth optional
         }
       }
 
