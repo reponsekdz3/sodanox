@@ -246,11 +246,13 @@ export interface ActiveCall {
   participant: User;
   type: 'audio' | 'video';
   status: 'ringing' | 'connected' | 'ended';
+  direction?: 'incoming' | 'outgoing';
   durationSeconds: number;
   isMuted: boolean;
   isCameraOff: boolean;
   isSpeakerOn: boolean;
   isMinimized: boolean;
+  callSignalingId?: string;
 }
 
 export interface NotificationItem {

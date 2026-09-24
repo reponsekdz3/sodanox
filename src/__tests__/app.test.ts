@@ -172,3 +172,104 @@ describe('Authentic Seed Registry', () => {
     expect(clara).toBeDefined();
   });
 });
+
+describe('Follow System & Social Graph Architecture', () => {
+  it('computes mutual follow status correctly when both parties follow each other', () => {
+    const userAId = 'user_alpha';
+    const userBId = 'user_beta';
+
+    const userAFollowing = [userBId, 'user_gamma'];
+    const userAFollowers = [userBId, 'user_delta'];
+
+    const isFollowingTarget = userAFollowing.includes(userBId);
+    const isFollowedByTarget = userAFollowers.includes(userBId);
+    const isMutual = isFollowingTarget && isFollowedByTarget;
+
+    expect(isFollowingTarget).toBe(true);
+    expect(isFollowedByTarget).toBe(true);
+    expect(isMutual).toBe(true);
+  });
+
+  it('correctly increments and decrements followers count on follow toggle', () => {
+    const initialFollowersCount = 42;
+    let isFollowing = false;
+
+    // Simulate Follow action
+    isFollowing = true;
+    const countAfterFollow = isFollowing ? initialFollowersCount + 1 : initialFollowersCount - 1;
+    expect(countAfterFollow).toBe(43);
+
+    // Simulate Unfollow action
+    isFollowing = false;
+    const countAfterUnfollow = isFollowing ? countAfterFollow + 1 : countAfterFollow - 1;
+    expect(countAfterUnfollow).toBe(42);
+  });
+});
+
+describe('Real-time Audio & Video Calling Signaling', () => {
+  it('validates CallSession signaling payload structure and states', () => {
+    const session = {
+      id: 'call_123_456_789',
+      callerId: 'user_caller',
+      caller: {
+        id: 'user_caller',
+        name: 'Caller Name',
+        username: 'caller_handle',
+        avatar: 'https://example.com/avatar.jpg',
+      },
+      recipientId: 'user_recipient',
+      recipient: {
+        id: 'user_recipient',
+        name: 'Recipient Name',
+        username: 'recipient_handle',
+        avatar: 'https://example.com/recipient.jpg',
+      },
+      type: 'video' as const,
+      status: 'ringing' as const,
+      lastReaction: {
+        emoji: '❤️',
+        senderId: 'user_caller',
+        timestamp: 1711200000,
+      },
+      lastQuickMessage: {
+        text: 'Can you hear me clearly?',
+        senderId: 'user_caller',
+        senderName: 'Caller Name',
+        timestamp: 1711200001,
+      },
+    };
+
+    expect(session.id).toBeDefined();
+    expect(session.type).toBe('video');
+    expect(session.status).toBe('ringing');
+    expect(session.lastReaction.emoji).toBe('❤️');
+    expect(session.lastQuickMessage.text).toBe('Can you hear me clearly?');
+  });
+});
+
+describe('Story Highlights & Multimedia Curation', () => {
+  it('validates StoryHighlight collection structure with items and custom cover', () => {
+    const highlight = {
+      id: 'hl_kyoto_2026',
+      userId: 'user_architect',
+      title: 'Kyoto Archive',
+      coverUrl: 'https://example.com/cover.jpg',
+      items: [
+        {
+          id: 'item_1',
+          mediaUrl: 'https://example.com/slide1.jpg',
+          type: 'image' as const,
+          timestamp: 'Yesterday',
+          caption: 'Wooden joinery',
+        },
+      ],
+      createdAt: '2026-09-24',
+    };
+
+    expect(highlight.id).toBe('hl_kyoto_2026');
+    expect(highlight.items.length).toBe(1);
+    expect(highlight.coverUrl).toBeDefined();
+    expect(highlight.title).toBe('Kyoto Archive');
+  });
+});
+

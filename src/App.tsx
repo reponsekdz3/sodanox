@@ -28,8 +28,17 @@ import { EditProfileModal } from './components/profile/EditProfileModal';
 import { SettingsModal } from './components/settings/SettingsModal';
 import { ActiveCallModal } from './components/calls/ActiveCallModal';
 import { FloatingCallPill } from './components/calls/FloatingCallPill';
+import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { NotificationsDrawer } from './components/notifications/NotificationsDrawer';
 import { AuthPage } from './components/auth/AuthPage';
+import {
+  initiateCallSession,
+  subscribeToIncomingCalls,
+  acceptCallSession,
+  declineCallSession,
+  endCallSession,
+  CallSession,
+} from './services/callService';
 
 import {
   subscribeToPosts,
@@ -96,6 +105,7 @@ export default function App() {
 
   // Calling state
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
+  const [incomingCall, setIncomingCall] = useState<CallSession | null>(null);
 
   // Modals state
   const [isStoryViewerOpen, setIsStoryViewerOpen] = useState(false);
@@ -698,12 +708,72 @@ export default function App() {
   };
 
   // ---------------- Handlers for Calling ----------------
-  const handleStartCall = (participant: User, type: 'audio' | 'video') => {
+  // Real-time listener for incoming ringing calls
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const unsub = subscribeToIncomingCalls(currentUser.id, (incoming) => {
+      if (incoming && (!activeCall || activeCall.status !== 'connected')) {
+        setIncomingCall(incoming);
+      } else if (!incoming) {
+        setIncomingCall(null);
+      }
+    });
+    return () => unsub();
+  }, [currentUser?.id, activeCall]);
+
+  const handleStartCall = async (participant: User, type: 'audio' | 'video') => {
+    if (!currentUser) return;
+    try {
+      const signalingId = await initiateCallSession(currentUser, participant, type);
+      setActiveCall({
+        id: signalingId,
+        callSignalingId: signalingId,
+        participant,
+        type,
+        status: 'ringing',
+        direction: 'outgoing',
+        durationSeconds: 0,
+        isMuted: false,
+        isCameraOff: false,
+        isSpeakerOn: true,
+        isMinimized: false,
+      });
+    } catch (err) {
+      console.warn('Call signaling fallback to direct session:', err);
+      setActiveCall({
+        id: `call_${Date.now()}`,
+        participant,
+        type,
+        status: 'ringing',
+        direction: 'outgoing',
+        durationSeconds: 0,
+        isMuted: false,
+        isCameraOff: false,
+        isSpeakerOn: true,
+        isMinimized: false,
+      });
+    }
+  };
+
+  const handleAcceptIncomingCall = async (session: CallSession) => {
+    setIncomingCall(null);
+    await acceptCallSession(session.id).catch(() => {});
     setActiveCall({
-      id: `call_${Date.now()}`,
-      participant,
-      type,
-      status: 'ringing',
+      id: session.id,
+      callSignalingId: session.id,
+      participant: {
+        id: session.caller.id,
+        name: session.caller.name,
+        username: session.caller.username,
+        avatar: session.caller.avatar,
+        bio: '',
+        joinedDate: '',
+        followersCount: 0,
+        followingCount: 0,
+      },
+      type: session.type,
+      status: 'connected',
+      direction: 'incoming',
       durationSeconds: 0,
       isMuted: false,
       isCameraOff: false,
@@ -712,7 +782,15 @@ export default function App() {
     });
   };
 
+  const handleDeclineIncomingCall = async (session: CallSession) => {
+    setIncomingCall(null);
+    await declineCallSession(session.id).catch(() => {});
+  };
+
   const handleEndCall = () => {
+    if (activeCall?.callSignalingId) {
+      endCallSession(activeCall.callSignalingId).catch(() => {});
+    }
     setActiveCall(null);
   };
 
@@ -1024,6 +1102,15 @@ export default function App() {
             setIsNotificationsDrawerOpen(false);
             setCurrentTab('feed');
           }}
+        />
+      )}
+
+      {/* Incoming Call Notification Modal */}
+      {incomingCall && (
+        <IncomingCallModal
+          incomingCall={incomingCall}
+          onAccept={handleAcceptIncomingCall}
+          onDecline={handleDeclineIncomingCall}
         />
       )}
 

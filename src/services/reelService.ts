@@ -31,10 +31,9 @@ export function subscribeToReels(
   onError?: (err: unknown) => void
 ): Unsubscribe {
   const reelsRef = collection(db, REELS_COLLECTION);
-  const q = query(reelsRef, orderBy('createdAt', 'desc'));
 
   return onSnapshot(
-    q,
+    reelsRef,
     (snapshot) => {
       const list: Reel[] = [];
       snapshot.forEach((docSnap) => {
@@ -67,6 +66,13 @@ export function subscribeToReels(
           sharesCount: d.sharesCount || 0,
           isSaved: bookmarkedBy.includes(currentUid),
         });
+      });
+
+      // Sort client-side so new reels appear first
+      list.sort((a, b) => {
+        const timeA = (a as any).createdAt?.toMillis ? (a as any).createdAt.toMillis() : Date.now();
+        const timeB = (b as any).createdAt?.toMillis ? (b as any).createdAt.toMillis() : Date.now();
+        return timeB - timeA;
       });
 
       onUpdate(list);

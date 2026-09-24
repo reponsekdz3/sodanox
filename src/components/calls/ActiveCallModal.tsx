@@ -16,10 +16,20 @@ import {
   ShieldCheck,
   Sparkles,
   Wifi,
+  MessageSquare,
+  Send,
+  X,
+  Smile,
 } from 'lucide-react';
 import { ActiveCall, User } from '../../types';
 import { audioSynth } from '../../utils/audioSynth';
 import { AuraLogo } from '../common/AuraLogo';
+import {
+  subscribeToCallSession,
+  endCallSession,
+  sendCallReaction,
+  sendCallQuickMessage,
+} from '../../services/callService';
 
 interface ActiveCallModalProps {
   call: ActiveCall;
@@ -41,6 +51,8 @@ const FILTER_STYLES: Record<VideoFilter, string> = {
   noir: 'grayscale(1) contrast(1.25)',
 };
 
+const CALL_EMOJIS = ['❤️', '👏', '🔥', '✨', '👋', '☕'];
+
 export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   call,
   currentUser,
@@ -59,11 +71,59 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [audioLevel, setAudioLevel] = useState(0); // 0 to 100 volume meter
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  // In-call chat overlay
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<
+    { senderName: string; text: string; isSelf: boolean; time: string }[]
+  >([]);
+  const [inCallInputText, setInCallInputText] = useState('');
+
+  // Floating reaction state
+  const [floatingReactions, setFloatingReactions] = useState<
+    { id: string; emoji: string; x: number }[]
+  >([]);
+
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
+  const chatScrollRef = useRef<HTMLDivElement | null>(null);
+
+  // Listen to remote call signaling changes (if call has signalingId)
+  useEffect(() => {
+    if (!call.callSignalingId) return;
+
+    const unsub = subscribeToCallSession(call.callSignalingId, (session) => {
+      if (!session) return;
+      if (session.status === 'connected' && call.status === 'ringing') {
+        onStatusConnected();
+      }
+      if (session.status === 'ended' || session.status === 'declined') {
+        handleHangup();
+      }
+
+      // Handle remote incoming reactions
+      if (session.lastReaction && session.lastReaction.senderId !== currentUser.id) {
+        triggerFloatingEmoji(session.lastReaction.emoji);
+      }
+
+      // Handle remote incoming quick chat messages
+      if (session.lastQuickMessage && session.lastQuickMessage.senderId !== currentUser.id) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            senderName: session.lastQuickMessage!.senderName,
+            text: session.lastQuickMessage!.text,
+            isSelf: false,
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          },
+        ]);
+      }
+    });
+
+    return () => unsub();
+  }, [call.callSignalingId, call.status, currentUser.id]);
 
   // Handle ringtone and transition to connected
   useEffect(() => {
@@ -74,7 +134,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         audioSynth.stopRinging();
         audioSynth.playConnectedChime();
         onStatusConnected();
-      }, 3200);
+      }, 3000);
 
       return () => {
         audioSynth.stopRinging();
@@ -123,7 +183,9 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
 
         // Setup real-time audio volume analyzer
         try {
-          const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+          const AudioContextClass =
+            window.AudioContext ||
+            (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
           if (AudioContextClass) {
             const ctx = new AudioContextClass();
             audioContextRef.current = ctx;
@@ -190,7 +252,6 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   // Toggle Screen Share
   const handleToggleScreenShare = async () => {
     if (isScreenSharing) {
-      // Revert back to camera
       if (userStream) {
         userStream.getTracks().forEach((t) => t.stop());
       }
@@ -208,7 +269,6 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         // ignore
       }
     } else {
-      // Request screen share
       if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
         try {
           const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
@@ -225,6 +285,45 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         }
       }
     }
+  };
+
+  const triggerFloatingEmoji = (emoji: string) => {
+    const id = `float_${Date.now()}_${Math.random()}`;
+    const x = Math.floor(Math.random() * 60) + 20; // 20% - 80% horizontal
+    setFloatingReactions((prev) => [...prev, { id, emoji, x }]);
+    audioSynth.playConnectedChime();
+    setTimeout(() => {
+      setFloatingReactions((prev) => prev.filter((r) => r.id !== id));
+    }, 2400);
+  };
+
+  const handleSendReaction = (emoji: string) => {
+    triggerFloatingEmoji(emoji);
+    if (call.callSignalingId) {
+      sendCallReaction(call.callSignalingId, emoji, currentUser.id);
+    }
+  };
+
+  const handleSendInCallMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inCallInputText.trim()) return;
+    const text = inCallInputText.trim();
+    setInCallInputText('');
+
+    const newMsg = {
+      senderName: currentUser.name,
+      text,
+      isSelf: true,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+    setChatMessages((prev) => [...prev, newMsg]);
+
+    if (call.callSignalingId) {
+      sendCallQuickMessage(call.callSignalingId, text, currentUser.id, currentUser.name);
+    }
+    setTimeout(() => {
+      chatScrollRef.current?.scrollTo({ top: chatScrollRef.current.scrollHeight, behavior: 'smooth' });
+    }, 50);
   };
 
   // Toggle Fullscreen
@@ -247,6 +346,9 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const handleHangup = () => {
     audioSynth.stopRinging();
     audioSynth.playEndChime();
+    if (call.callSignalingId) {
+      endCallSession(call.callSignalingId).catch(() => {});
+    }
     if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
     if (userStream) {
       userStream.getTracks().forEach((t) => t.stop());
@@ -289,6 +391,21 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               <span>Encrypted</span>
             </div>
 
+            {/* In-call Chat Drawer Toggle */}
+            <button
+              type="button"
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              className={`p-2 rounded-xl transition-colors relative ${
+                isChatOpen ? 'bg-[#8FA89B] text-white' : 'bg-white/10 hover:bg-white/20 text-white'
+              }`}
+              title="In-call Chat"
+            >
+              <MessageSquare size={16} />
+              {chatMessages.length > 0 && !isChatOpen && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full" />
+              )}
+            </button>
+
             {/* Fullscreen toggle */}
             <button
               type="button"
@@ -313,10 +430,25 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
 
         {/* Center Calling Area */}
         <div className="relative flex-1 flex flex-col items-center justify-center p-4 overflow-hidden">
+          {/* Animated Floating Reaction Bubbles */}
+          {floatingReactions.map((fr) => (
+            <div
+              key={fr.id}
+              className="absolute z-40 text-4xl animate-bounce"
+              style={{
+                left: `${fr.x}%`,
+                bottom: '18%',
+                animation: 'floatUp 2.4s ease-out forwards',
+              }}
+            >
+              {fr.emoji}
+            </div>
+          ))}
+
           {call.type === 'video' ? (
             /* ================= VIDEO CALL VIEW ================= */
             <div className="relative w-full h-full rounded-2xl overflow-hidden bg-neutral-950 flex items-center justify-center shadow-inner">
-              {/* Remote Participant Simulated HD Feed */}
+              {/* Remote Participant HD Feed */}
               <div className="relative w-full h-full flex items-center justify-center">
                 <img
                   src={call.participant.avatar}
@@ -438,65 +570,148 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/10 text-xs font-mono text-white/90 tabular-nums">
                 <span className="w-2 h-2 rounded-full bg-emerald-400" />
                 <span>
-                  {call.status === 'ringing' ? 'Calling...' : `Spatial Voice · ${formatDuration(duration)}`}
+                  {call.status === 'ringing'
+                    ? 'Calling...'
+                    : `Spatial Voice · ${formatDuration(duration)}`}
                 </span>
               </div>
             </div>
           )}
+
+          {/* Slide-over In-Call Quick Chat Drawer */}
+          {isChatOpen && (
+            <div className="absolute top-2 right-2 bottom-2 w-72 sm:w-80 bg-neutral-900/95 backdrop-blur-md rounded-2xl border border-white/15 p-3 flex flex-col z-30 shadow-2xl animate-fade-in">
+              <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-2">
+                <div className="flex items-center gap-1.5 text-xs font-medium">
+                  <MessageSquare size={13} className="text-[#8FA89B]" />
+                  <span>Call Chat</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsChatOpen(false)}
+                  className="p-1 rounded-lg hover:bg-white/10 text-white/70"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+
+              <div ref={chatScrollRef} className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
+                {chatMessages.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-center text-white/40 text-[11px] p-4">
+                    Send quick notes or links during your call
+                  </div>
+                ) : (
+                  chatMessages.map((msg, i) => (
+                    <div
+                      key={i}
+                      className={`flex flex-col ${msg.isSelf ? 'items-end' : 'items-start'}`}
+                    >
+                      <span className="text-[10px] text-white/50 mb-0.5">
+                        {msg.isSelf ? 'You' : msg.senderName} · {msg.time}
+                      </span>
+                      <div
+                        className={`px-3 py-1.5 rounded-xl max-w-[85%] ${
+                          msg.isSelf ? 'bg-[#8FA89B] text-white' : 'bg-white/15 text-white'
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              <form onSubmit={handleSendInCallMessage} className="pt-2 border-t border-white/10 flex gap-1.5">
+                <input
+                  type="text"
+                  value={inCallInputText}
+                  onChange={(e) => setInCallInputText(e.target.value)}
+                  placeholder="Quick message..."
+                  className="flex-1 px-3 py-1.5 bg-black/40 border border-white/10 rounded-xl text-xs text-white placeholder-white/40 focus:outline-none focus:border-[#8FA89B]"
+                />
+                <button
+                  type="submit"
+                  disabled={!inCallInputText.trim()}
+                  className="p-1.5 rounded-xl bg-[#8FA89B] hover:bg-[#7e9689] disabled:opacity-40 text-white cursor-pointer"
+                >
+                  <Send size={13} />
+                </button>
+              </form>
+            </div>
+          )}
         </div>
 
-        {/* Video Filter Selector Row (when in video mode) */}
-        {call.type === 'video' && !call.isCameraOff && (
-          <div className="px-6 py-2 flex items-center justify-center gap-2 bg-black/40 border-t border-white/5">
-            <span className="text-[11px] text-white/60 mr-2 flex items-center gap-1">
-              <Sparkles size={12} className="text-[#8FA89B]" /> Video Tone:
-            </span>
-            {(['natural', 'warm', 'frost', 'noir'] as VideoFilter[]).map((f) => (
+        {/* Reaction Bar & Video Filter Row */}
+        <div className="px-4 py-2 flex flex-wrap items-center justify-between gap-2 bg-black/40 border-t border-white/5">
+          {/* Reaction Emojis */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] text-white/50 hidden sm:inline">React:</span>
+            {CALL_EMOJIS.map((emoji) => (
               <button
-                key={f}
+                key={emoji}
                 type="button"
-                onClick={() => setVideoFilter(f)}
-                className={`px-3 py-1 rounded-full text-xs capitalize transition-all ${
-                  videoFilter === f
-                    ? 'bg-[#8FA89B] text-white font-medium'
-                    : 'bg-white/10 text-white/70 hover:bg-white/20'
-                }`}
+                onClick={() => handleSendReaction(emoji)}
+                className="w-7 h-7 rounded-full bg-white/10 hover:bg-white/25 flex items-center justify-center text-sm transition-transform active:scale-125 cursor-pointer"
+                title={`Send ${emoji}`}
               >
-                {f}
+                {emoji}
               </button>
             ))}
           </div>
-        )}
+
+          {/* Video Filter Selector Row (when in video mode) */}
+          {call.type === 'video' && !call.isCameraOff && (
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-white/50 mr-1 hidden sm:inline-flex items-center gap-1">
+                <Sparkles size={11} className="text-[#8FA89B]" /> Tone:
+              </span>
+              {(['natural', 'warm', 'frost', 'noir'] as VideoFilter[]).map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => setVideoFilter(f)}
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] capitalize transition-all ${
+                    videoFilter === f
+                      ? 'bg-[#8FA89B] text-white font-medium'
+                      : 'bg-white/10 text-white/70 hover:bg-white/20'
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Bottom Call Controls Rail */}
-        <div className="p-5 sm:p-6 bg-black/60 backdrop-blur-md border-t border-white/10 rounded-b-3xl">
+        <div className="p-4 sm:p-5 bg-black/70 backdrop-blur-md border-t border-white/10 rounded-b-3xl">
           <div className="flex items-center justify-center gap-3 sm:gap-5">
             {/* Mute Mic */}
             <button
               type="button"
               onClick={onToggleMute}
-              className={`p-4 rounded-full transition-all ${
+              className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer ${
                 call.isMuted
                   ? 'bg-amber-500 text-white shadow-lg ring-2 ring-amber-400/40'
                   : 'bg-white/15 hover:bg-white/25 text-white'
               }`}
               title={call.isMuted ? 'Unmute microphone' : 'Mute microphone'}
             >
-              {call.isMuted ? <MicOff size={22} /> : <Mic size={22} />}
+              {call.isMuted ? <MicOff size={20} /> : <Mic size={20} />}
             </button>
 
             {/* Toggle Camera */}
             <button
               type="button"
               onClick={onToggleCamera}
-              className={`p-4 rounded-full transition-all ${
+              className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer ${
                 call.isCameraOff
                   ? 'bg-amber-500 text-white shadow-lg ring-2 ring-amber-400/40'
                   : 'bg-white/15 hover:bg-white/25 text-white'
               }`}
               title={call.isCameraOff ? 'Turn camera on' : 'Turn camera off'}
             >
-              {call.isCameraOff ? <VideoOff size={22} /> : <Video size={22} />}
+              {call.isCameraOff ? <VideoOff size={20} /> : <Video size={20} />}
             </button>
 
             {/* Screen Share (video calls) */}
@@ -504,14 +719,14 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               <button
                 type="button"
                 onClick={handleToggleScreenShare}
-                className={`p-4 rounded-full transition-all ${
+                className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer ${
                   isScreenSharing
                     ? 'bg-emerald-500 text-white shadow-lg'
                     : 'bg-white/15 hover:bg-white/25 text-white'
                 }`}
                 title={isScreenSharing ? 'Stop Screen Sharing' : 'Share Screen'}
               >
-                <MonitorUp size={22} />
+                <MonitorUp size={20} />
               </button>
             )}
 
@@ -520,10 +735,10 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
               <button
                 type="button"
                 onClick={() => setIsFrontCamera((prev) => !prev)}
-                className="p-4 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all"
+                className="p-3.5 sm:p-4 rounded-full bg-white/15 hover:bg-white/25 text-white transition-all cursor-pointer"
                 title="Switch Camera (Front/Back)"
               >
-                <SwitchCamera size={22} />
+                <SwitchCamera size={20} />
               </button>
             )}
 
@@ -531,24 +746,24 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
             <button
               type="button"
               onClick={onToggleSpeaker}
-              className={`p-4 rounded-full transition-all ${
+              className={`p-3.5 sm:p-4 rounded-full transition-all cursor-pointer ${
                 call.isSpeakerOn
                   ? 'bg-[#8FA89B] text-white shadow-lg'
                   : 'bg-white/15 hover:bg-white/25 text-white'
               }`}
               title={call.isSpeakerOn ? 'Speaker ON' : 'Speaker OFF'}
             >
-              {call.isSpeakerOn ? <Volume2 size={22} /> : <VolumeX size={22} />}
+              {call.isSpeakerOn ? <Volume2 size={20} /> : <VolumeX size={20} />}
             </button>
 
             {/* End Call Button */}
             <button
               type="button"
               onClick={handleHangup}
-              className="p-4 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl transition-transform active:scale-95 ring-2 ring-red-500/40"
+              className="p-3.5 sm:p-4 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl transition-transform active:scale-95 ring-2 ring-red-500/40 cursor-pointer"
               title="End Call"
             >
-              <PhoneOff size={22} />
+              <PhoneOff size={20} />
             </button>
           </div>
         </div>

@@ -36,10 +36,9 @@ export function subscribeToStories(
   }
 
   const storiesRef = collection(db, STORIES_COLLECTION);
-  const q = query(storiesRef, orderBy('createdAt', 'desc'));
 
   return onSnapshot(
-    q,
+    storiesRef,
     (snapshot) => {
       const list: Story[] = [];
       snapshot.forEach((docSnap) => {
@@ -68,6 +67,13 @@ export function subscribeToStories(
           viewers,
           createdAt: d.createdAt,
         });
+      });
+
+      // Sort client-side so stories with fresh items appear first
+      list.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : Date.now();
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : Date.now();
+        return timeB - timeA;
       });
 
       onUpdate(list);

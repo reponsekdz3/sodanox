@@ -20,12 +20,18 @@ import {
   Share2,
   Check,
   UserCheck,
+  Search,
+  Trash2,
 } from 'lucide-react';
 import { User, Post, Reel, StoryHighlight } from '../../types';
 import { PostCard } from '../feed/PostCard';
 import { FollowButton } from '../common/FollowButton';
-import { subscribeToUserHighlights } from '../../services/storyService';
+import {
+  subscribeToUserHighlights,
+  deleteStoryHighlight,
+} from '../../services/storyService';
 import { getFollowersList, getFollowingList, toggleFollowUser } from '../../services/userService';
+import { CreateHighlightModal } from './CreateHighlightModal';
 
 interface ProfileViewProps {
   user: User;
@@ -87,6 +93,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   const [connectionModalType, setConnectionModalType] = useState<'followers' | 'following' | null>(null);
   const [connectionList, setConnectionList] = useState<User[]>([]);
   const [loadingConnections, setLoadingConnections] = useState(false);
+  const [connectionSearchQuery, setConnectionSearchQuery] = useState('');
+  const [isCreateHighlightOpen, setIsCreateHighlightOpen] = useState(false);
 
   // Subscribe to real user highlights
   useEffect(() => {
@@ -364,33 +372,65 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
         </div>
 
         <div className="flex items-center gap-4 overflow-x-auto pb-2 scrollbar-none">
-          {highlights.map((hl) => (
+          {/* Add New Highlight Button for Profile Owner */}
+          {isSelf && (
             <button
-              key={hl.id}
               type="button"
-              onClick={() => onSelectHighlight?.(hl)}
+              onClick={() => setIsCreateHighlightOpen(true)}
               className="flex flex-col items-center gap-1.5 shrink-0 group cursor-pointer focus:outline-none"
             >
-              <div className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-[#8FA89B] to-[#E6EDE9] group-hover:scale-105 transition-transform shadow-sm">
-                <div className="w-full h-full rounded-full p-[2px] bg-white">
-                  <img
-                    src={hl.coverUrl}
-                    alt={hl.title}
-                    className="w-full h-full rounded-full object-cover"
-                  />
-                </div>
+              <div className="w-16 h-16 rounded-full border-2 border-dashed border-[#8FA89B] hover:border-[#5C7567] bg-white hover:bg-[#F1F5F2] flex items-center justify-center text-[#8FA89B] group-hover:text-[#5C7567] group-hover:scale-105 transition-all shadow-sm">
+                <Plus size={24} />
               </div>
               <span className="text-xs font-medium text-[#2D3732] max-w-[70px] truncate text-center">
-                {hl.title}
+                New
               </span>
             </button>
+          )}
+
+          {highlights.map((hl) => (
+            <div key={hl.id} className="relative group shrink-0">
+              <button
+                type="button"
+                onClick={() => onSelectHighlight?.(hl)}
+                className="flex flex-col items-center gap-1.5 cursor-pointer focus:outline-none"
+              >
+                <div className="w-16 h-16 rounded-full p-[2px] bg-gradient-to-tr from-[#8FA89B] to-[#E6EDE9] group-hover:scale-105 transition-transform shadow-sm">
+                  <div className="w-full h-full rounded-full p-[2px] bg-white">
+                    <img
+                      src={hl.coverUrl}
+                      alt={hl.title}
+                      className="w-full h-full rounded-full object-cover"
+                    />
+                  </div>
+                </div>
+                <span className="text-xs font-medium text-[#2D3732] max-w-[70px] truncate text-center">
+                  {hl.title}
+                </span>
+              </button>
+
+              {/* Delete Highlight for Profile Owner */}
+              {isSelf && (
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (window.confirm(`Delete highlight "${hl.title}"?`)) {
+                      await deleteStoryHighlight(hl.id);
+                    }
+                  }}
+                  className="absolute -top-1 -right-1 p-1 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-md hover:bg-red-700"
+                  title="Delete Highlight"
+                >
+                  <Trash2 size={10} />
+                </button>
+              )}
+            </div>
           ))}
 
-          {highlights.length === 0 && (
+          {highlights.length === 0 && !isSelf && (
             <div className="py-2 px-1 text-xs text-[#7A8A82] italic">
-              {isSelf
-                ? 'Save your active stories to Highlights to pin them here permanently.'
-                : 'No story highlights curated yet.'}
+              No story highlights curated yet.
             </div>
           )}
         </div>
@@ -546,18 +586,48 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
               </div>
               <button
                 type="button"
-                onClick={() => setConnectionModalType(null)}
+                onClick={() => {
+                  setConnectionModalType(null);
+                  setConnectionSearchQuery('');
+                }}
                 className="p-1 rounded-full hover:bg-black/5 cursor-pointer"
               >
                 <X size={18} />
               </button>
             </div>
 
+            {/* Filter / Search input */}
+            <div className="relative mb-3">
+              <Search
+                size={14}
+                className="absolute left-3 top-1/2 -translate-y-1/2 text-[#7A8A82]"
+              />
+              <input
+                type="text"
+                value={connectionSearchQuery}
+                onChange={(e) => setConnectionSearchQuery(e.target.value)}
+                placeholder={`Search ${connectionModalType}...`}
+                className="w-full pl-9 pr-3 py-2 bg-[#F1F5F2] border border-[#E6EDE9] rounded-xl text-xs text-[#2D3732] placeholder-[#7A8A82] focus:outline-none focus:border-[#8FA89B]"
+              />
+            </div>
+
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
               {loadingConnections ? (
                 <div className="py-8 text-center text-xs text-[#7A8A82]">Loading members...</div>
-              ) : connectionList.length > 0 ? (
-                connectionList.map((member) => (
+              ) : connectionList.filter(
+                  (m) =>
+                    !connectionSearchQuery.trim() ||
+                    m.name.toLowerCase().includes(connectionSearchQuery.toLowerCase()) ||
+                    m.username.toLowerCase().includes(connectionSearchQuery.toLowerCase())
+                ).length > 0 ? (
+                connectionList
+                  .filter(
+                    (m) =>
+                      !connectionSearchQuery.trim() ||
+                      m.name.toLowerCase().includes(connectionSearchQuery.toLowerCase()) ||
+                      m.username.toLowerCase().includes(connectionSearchQuery.toLowerCase())
+                  )
+                  .map((member) => (
                   <div
                     key={member.id}
                     className="flex items-center justify-between p-2.5 rounded-2xl hover:bg-[#F1F5F2] transition-colors"
@@ -631,6 +701,15 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Create Highlight Modal */}
+      {isCreateHighlightOpen && (
+        <CreateHighlightModal
+          currentUser={currentUser}
+          onClose={() => setIsCreateHighlightOpen(false)}
+          onCreated={() => {}}
+        />
       )}
 
       {/* Mandatory Developer Footer */}

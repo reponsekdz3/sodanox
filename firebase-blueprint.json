@@ -169,9 +169,30 @@
         "createdAt": { "type": "string" }
       },
       "required": ["uid", "email", "passwordHash"]
+    },
+    "Call": {
+      "title": "Call",
+      "description": "Real-time audio and video call signaling document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "callerId": { "type": "string" },
+        "caller": { "type": "object" },
+        "recipientId": { "type": "string" },
+        "recipient": { "type": "object" },
+        "type": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "endedAt": { "type": "string" }
+      },
+      "required": ["callerId", "recipientId", "type", "status"]
     }
   },
   "firestore": {
+    "/calls/{callId}": {
+      "schema": "Call",
+      "description": "Real-time call sessions"
+    },
     "/user_credentials/{email}": {
       "schema": "UserCredential",
       "description": "Secure authentication credentials registry"

@@ -48,10 +48,9 @@ export function subscribeToPosts(
   onError?: (err: unknown) => void
 ): Unsubscribe {
   const postsRef = collection(db, POSTS_COLLECTION);
-  const q = query(postsRef, orderBy('createdAt', 'desc'));
 
   return onSnapshot(
-    q,
+    postsRef,
     (snapshot) => {
       const postList: Post[] = [];
       snapshot.forEach((docSnap) => {
@@ -141,6 +140,13 @@ export function subscribeToPosts(
           sharesCount: typeof d.sharesCount === 'number' ? d.sharesCount : sharedBy.length,
           createdAt: d.createdAt,
         });
+      });
+
+      // Sort client-side so latest posts appear at the top of the feed
+      postList.sort((a, b) => {
+        const timeA = (a as any).createdAt?.toMillis ? (a as any).createdAt.toMillis() : Date.now();
+        const timeB = (b as any).createdAt?.toMillis ? (b as any).createdAt.toMillis() : Date.now();
+        return timeB - timeA;
       });
 
       onUpdate(postList);

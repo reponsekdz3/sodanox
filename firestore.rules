@@ -101,6 +101,13 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------
+    // Real-time Calls & Signaling
+    // -------------------------------------------------------------
+    match /calls/{callId} {
+      allow read, create, update, delete: if true;
+    }
+
+    // -------------------------------------------------------------
     // Notifications Collection
     // -------------------------------------------------------------
     match /notifications/{notificationId} {
