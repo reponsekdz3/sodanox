@@ -130,7 +130,11 @@ export async function authenticateWithGoogle(): Promise<GoogleUserProfile> {
     }
   } catch (fbErr: unknown) {
     const err = fbErr as { code?: string; message?: string };
-    console.info('Firebase popup note, checking Google Identity Services:', err?.code || err?.message);
+    console.info('Firebase popup note:', err?.code || err?.message);
+    if (err.code === 'auth/unauthorized-domain') {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'https://sodanox.ai.studio';
+      throw new Error(`origin_mismatch: Domain ${origin} (and sodanox.ai.studio) is not authorized in Firebase Authentication.`);
+    }
   }
 
   // 2. Try Google Identity Services (GSI)
@@ -145,12 +149,23 @@ export async function authenticateWithGoogle(): Promise<GoogleUserProfile> {
           scope: 'openid email profile',
           callback: (response) => {
             if (response.error) {
-              reject(new Error(response.error));
+              if (response.error.includes('origin_mismatch') || response.error.includes('unauthorized')) {
+                reject(new Error(`origin_mismatch: Register https://sodanox.ai.studio and ${window.location.origin} in Google Cloud Console.`));
+              } else {
+                reject(new Error(response.error));
+              }
             } else {
               resolve(response);
             }
           },
-          error_callback: (err) => reject(err),
+          error_callback: (err: any) => {
+            const errStr = typeof err === 'object' ? JSON.stringify(err) : String(err);
+            if (errStr.includes('origin_mismatch') || err?.type === 'origin_mismatch') {
+              reject(new Error(`origin_mismatch: Register https://sodanox.ai.studio and ${window.location.origin} in Google Cloud Console.`));
+            } else {
+              reject(err);
+            }
+          },
         });
 
         try {
@@ -180,14 +195,14 @@ export async function authenticateWithGoogle(): Promise<GoogleUserProfile> {
     }
   }
 
-  throw new Error('Google Sign-In is opening. If popup is blocked by your browser, please enable popups.');
+  throw new Error('Google Sign-In is unavailable or popup was closed.');
 }
 
 /**
  * Powerful Firestore User Synchronizer for Google Auth:
- * - Upserts full user document in `users/{userId}`
- * - Updates or creates credential mapping in `user_credentials/{email}`
- * - Retains existing community relations, followers, and customizations
+ * - Upserts public user document in `users/{userId}`
+ * - Persists private settings to `users/{userId}/private/settings`
+ * - Adheres strictly to Zero-Trust rules (role/verified immutability)
  */
 export async function syncGoogleProfileWithFirestore(
   googleProfile: GoogleUserProfile
@@ -229,28 +244,33 @@ export async function syncGoogleProfileWithFirestore(
     `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80`;
 
   if (existingUser) {
-    // Merge latest Google verified information into existing profile
+    // Merge latest Google information into existing profile
     const updatedProfile: User = {
       ...existingUser,
       name: existingUser.name || googleProfile.name,
       avatar: existingUser.avatar || avatar,
       email: cleanEmail,
-      verified: true,
-      authProvider: 'google',
       emailVerified: true,
     };
 
     try {
       const userRef = doc(db, 'users', targetUid);
+      // Public updates only to avoid permission denied
       await updateDoc(userRef, {
         name: updatedProfile.name,
         avatar: updatedProfile.avatar,
-        email: cleanEmail,
-        verified: true,
-        authProvider: 'google',
-        emailVerified: true,
         updatedAt: serverTimestamp(),
       });
+      // Private subcollection
+      const privateRef = doc(db, 'users', targetUid, 'private', 'settings');
+      await setDoc(
+        privateRef,
+        {
+          email: cleanEmail,
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
     } catch (err) {
       console.warn('Firestore Google user update note:', err);
     }
@@ -265,7 +285,7 @@ export async function syncGoogleProfileWithFirestore(
   const now = new Date();
   const formattedDate = `Joined ${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}`;
 
-  const newProfile: User = {
+  const publicData = {
     id: targetUid,
     name: googleProfile.name || cleanEmail.split('@')[0],
     username,
@@ -280,30 +300,41 @@ export async function syncGoogleProfileWithFirestore(
     followingCount: 0,
     followers: [],
     following: [],
-    isFollowing: false,
-    isFollower: false,
-    isMutual: false,
     verified: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  const privateData = {
     email: cleanEmail,
     privateAccount: false,
     showOnlineStatus: true,
     allowReshare: true,
     themePreference: 'nordic',
-    authProvider: 'google',
-    emailVerified: true,
+    blockedUsers: [],
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
   };
 
-  // Persist to Firestore
+  const fullUser: User = {
+    ...publicData,
+    email: cleanEmail,
+    isFollowing: false,
+    isFollower: false,
+    isMutual: false,
+    themePreference: 'nordic',
+    emailVerified: true,
+  } as unknown as User;
+
+  // Persist to Firestore with separated public and private paths
   try {
     const userRef = doc(db, 'users', targetUid);
-    await setDoc(userRef, {
-      ...newProfile,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
+    await setDoc(userRef, publicData, { merge: true });
+    const privateRef = doc(db, 'users', targetUid, 'private', 'settings');
+    await setDoc(privateRef, privateData, { merge: true });
   } catch (err) {
     console.warn('Firestore new Google user write note:', err);
   }
 
-  return { user: newProfile, isNewUser: true };
+  return { user: fullUser, isNewUser: true };
 }

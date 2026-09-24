@@ -87,7 +87,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   const handleCopyProfileUrl = () => {
-    const url = window.location.origin + '/@' + currentUser.username;
+    const domain =
+      typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+        ? window.location.origin
+        : 'https://sodanox.ai.studio';
+    const url = `${domain}/@${currentUser.username}`;
     navigator.clipboard?.writeText(url);
     setCopiedProfileLink(true);
     setTimeout(() => setCopiedProfileLink(false), 2500);
@@ -389,7 +393,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <span>Your Public Profile Link</span>
                   </div>
                   <div className="text-xs font-mono text-[#55635C] truncate mt-0.5">
-                    {window.location.origin}/@{currentUser.username}
+                    {typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+                      ? window.location.origin
+                      : 'https://sodanox.ai.studio'}
+                    /@{currentUser.username}
                   </div>
                 </div>
                 <button

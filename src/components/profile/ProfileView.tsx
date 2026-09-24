@@ -122,7 +122,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const handleCopyProfileUrl = () => {
-    const domain = typeof window !== 'undefined' ? window.location.origin : 'https://aura.social';
+    const domain =
+      typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+        ? window.location.origin
+        : 'https://sodanox.ai.studio';
     const url = `${domain}/@${user.username}`;
     navigator.clipboard?.writeText(url);
     setCopiedLink(true);
@@ -169,7 +172,12 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           {/* Domain Pill */}
           <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/15 text-[11px] font-mono text-white/90 flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-[#8FA89B] animate-pulse" />
-            <span>aura.social/@{user.username}</span>
+            <span>
+              {typeof window !== 'undefined' && window.location.hostname && !window.location.hostname.includes('localhost')
+                ? window.location.hostname
+                : 'sodanox.ai.studio'}
+              /@{user.username}
+            </span>
           </div>
         </div>
 

@@ -91,7 +91,10 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
   const handleCopyProfileUrl = () => {
     auraAudio.playClick(800, 0.04);
     const username = currentUser?.username || 'member';
-    const domain = typeof window !== 'undefined' ? window.location.origin : 'https://aura.social';
+    const domain =
+      typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('localhost')
+        ? window.location.origin
+        : 'https://sodanox.ai.studio';
     navigator.clipboard?.writeText(`${domain}/@${username}`);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
@@ -351,7 +354,10 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
 
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#2D3732]/5">
               <span className="text-[11px] font-mono text-[#55635C] truncate">
-                aura.social/@{currentUser?.username || 'member'}
+                {typeof window !== 'undefined' && window.location.hostname && !window.location.hostname.includes('localhost')
+                  ? window.location.hostname
+                  : 'sodanox.ai.studio'}
+                /@{currentUser?.username || 'member'}
               </span>
               <button
                 type="button"

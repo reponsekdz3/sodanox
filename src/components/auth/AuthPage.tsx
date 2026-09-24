@@ -81,6 +81,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
   // Real Google Auth Modal state
   const [showGoogleModal, setShowGoogleModal] = useState(false);
+  const [googleModalTab, setGoogleModalTab] = useState<'signin' | 'origin-guide'>('signin');
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -367,8 +368,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   auraAudio.playChime();
                   onSuccess?.();
                 } catch (err: unknown) {
-                  const e = err as { message?: string };
-                  // If popup blocked, closed, or user wants fast Google picker
+                  const e = err as { message?: string; code?: string };
+                  const isOriginError =
+                    e.message?.includes('origin_mismatch') ||
+                    e.message?.includes('unauthorized') ||
+                    e.code === 'auth/unauthorized-domain';
+                  setGoogleModalTab(isOriginError ? 'origin-guide' : 'signin');
                   setShowGoogleModal(true);
                 } finally {
                   setIsSubmitting(false);
@@ -397,6 +402,29 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               </svg>
               <span>Continue with Google</span>
             </button>
+
+            <div className="flex items-center justify-between px-1 text-[11px] text-[#7A8A82]">
+              <button
+                type="button"
+                onClick={() => {
+                  setGoogleModalTab('signin');
+                  setShowGoogleModal(true);
+                }}
+                className="hover:text-[#5E7C6E] underline cursor-pointer"
+              >
+                1-Click Google Pass
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setGoogleModalTab('origin-guide');
+                  setShowGoogleModal(true);
+                }}
+                className="hover:text-[#5E7C6E] underline cursor-pointer flex items-center gap-1"
+              >
+                <span>Fix Error 400 (origin_mismatch)</span>
+              </button>
+            </div>
           </div>
 
           <div className="relative flex py-2 items-center mb-6">
@@ -776,8 +804,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
       <GoogleAuthModal
         isOpen={showGoogleModal}
         onClose={() => setShowGoogleModal(false)}
-        defaultEmail="raphanshimyumukiza@gmail.com"
-        defaultName="Raphaël NSHIMYUMUKIZA"
+        initialTab={googleModalTab}
+        defaultEmail={email.trim() || 'icedrick444@gmail.com'}
+        defaultName={name.trim() || 'Icedrick'}
         onConfirmGoogleAuth={async (confirmedEmail, confirmedName, confirmedAvatar) => {
           await signInWithGoogle({
             email: confirmedEmail,
