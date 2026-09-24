@@ -32,6 +32,8 @@ export interface User {
   isFollower?: boolean;
   isMutual?: boolean;
   verified?: boolean;
+  authProvider?: 'google' | 'password' | 'email';
+  emailVerified?: boolean;
   privateAccount?: boolean;
   themePreference?: 'light' | 'dark' | 'cream' | 'nordic' | 'alabaster' | 'dusk';
   allowMessagesFrom?: 'everyone' | 'followers';

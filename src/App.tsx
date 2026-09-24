@@ -76,7 +76,6 @@ import {
   getAllUsers,
   getSuggestedUsers,
 } from './services/userService';
-import { seedCommunityDataIfEmpty } from './services/seedService';
 
 export default function App() {
   const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
@@ -173,11 +172,8 @@ export default function App() {
     }
   };
 
-  // Load registered community creators from Firestore & verify seed data
+  // Load registered community creators from Firestore
   useEffect(() => {
-    seedCommunityDataIfEmpty(currentUser || undefined).catch((err) =>
-      console.warn('Initial community data seed:', err)
-    );
     if (!currentUser) return;
     refreshCommunity(currentUser.id);
   }, [currentUser?.id]);

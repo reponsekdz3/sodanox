@@ -17,51 +17,16 @@ import { User } from '../types';
 import { createNotification } from './notificationService';
 
 const USERS_COLLECTION = 'users';
-const LOCAL_USERS_CACHE_KEY = 'aura_community_users_cache';
-
-// Built-in real community member verified in Firestore
-const DEFAULT_COMMUNITY_USERS: User[] = [
-  {
-    id: 'Xu0Rc4W9fZgpjh0bEWzEvxbN4pC2',
-    name: 'Raphaël NSHIMYUMUKIZA',
-    username: 'raphael_nsh',
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-    bannerUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
-    bio: 'Architectural designer & creator on Aura · Exploring tactile spaces, light, and mindful conversations.',
-    pronouns: 'he/him',
-    location: 'Kigali, Rwanda',
-    website: 'https://github.com/reponsekdz3',
-    joinedDate: 'Joined September 2026',
-    followersCount: 14,
-    followingCount: 8,
-    followers: [],
-    following: [],
-    isFollowing: false,
-    isFollower: false,
-    isMutual: false,
-    verified: true,
-    email: 'raphanshimyumukiza@gmail.com',
-    privateAccount: false,
-    themePreference: 'nordic',
-    allowMessagesFrom: 'everyone',
-    showOnlineStatus: true,
-    allowReshare: true,
-  },
-];
+const LOCAL_USERS_CACHE_KEY = 'aura_pure_users_cache';
 
 function getCachedUsers(): User[] {
   try {
     const raw = localStorage.getItem(LOCAL_USERS_CACHE_KEY);
-    if (!raw) return DEFAULT_COMMUNITY_USERS;
+    if (!raw) return [];
     const parsed = JSON.parse(raw);
-    const map = new Map<string, User>();
-    DEFAULT_COMMUNITY_USERS.forEach((u) => map.set(u.id, u));
-    if (Array.isArray(parsed)) {
-      parsed.forEach((u) => map.set(u.id, u));
-    }
-    return Array.from(map.values());
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return DEFAULT_COMMUNITY_USERS;
+    return [];
   }
 }
 
@@ -292,7 +257,7 @@ export async function getAllUsers(excludeUid?: string, currentUid?: string): Pro
   }
 
   const mergedMap = new Map<string, User>();
-  // Pre-seed from persistent community cache (includes Raphael)
+  // Include existing cached real users
   getCachedUsers().forEach((u) => {
     if (!excludeUid || u.id !== excludeUid) {
       mergedMap.set(u.id, u);
@@ -307,17 +272,13 @@ export async function getAllUsers(excludeUid?: string, currentUid?: string): Pro
       const data = docSnap.data() as User;
       const id = docSnap.id;
 
-      // Purge mock/seed users
+      // Purge any mock/test users
       const lowerId = id.toLowerCase();
-      const lowerUsername = (data.username || '').toLowerCase();
       if (
-        lowerId.startsWith('creator_') ||
-        lowerId.startsWith('demo_') ||
+        lowerId.startsWith('test_') ||
         lowerId.startsWith('mock_') ||
-        lowerUsername === 'clarachen' ||
-        lowerUsername === 'marcuslind' ||
-        lowerUsername === 'soren.studio' ||
-        lowerUsername === 'elena_arch'
+        lowerId.startsWith('demo_') ||
+        lowerId.startsWith('creator_')
       ) {
         return;
       }

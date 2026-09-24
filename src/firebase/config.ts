@@ -27,6 +27,10 @@ const app = !getApps().length ? initializeApp(resolvedConfig) : getApp();
 
 export const auth = getAuth(app);
 
+export const oAuthClientId: string =
+  (localFirebaseConfig as { oAuthClientId?: string }).oAuthClientId ||
+  '228496397008-b7bskjaae516ggsa00qofto0a6ji6nch.apps.googleusercontent.com';
+
 // Use the provisioned database ID or default if not specified
 const isCustomDb = Boolean(
   resolvedConfig.firestoreDatabaseId &&

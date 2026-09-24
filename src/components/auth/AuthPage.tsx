@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { checkUsernameAvailable } from '../../services/userService';
 import { AuraLogo } from '../common/AuraLogo';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { GoogleAuthModal } from './GoogleAuthModal';
 import {
   Sparkles,
   Lock,
@@ -57,7 +58,7 @@ interface AuthPageProps {
 }
 
 export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
-  const { signIn, signUp, signInWithGoogle, signInWithFastPass, sendPasswordReset } = useAuth();
+  const { signIn, signUp, signInWithGoogle, sendPasswordReset } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
@@ -77,6 +78,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   const [resetEmail, setResetEmail] = useState('');
   const [resetSent, setResetSent] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+
+  // Real Google Auth Modal state
+  const [showGoogleModal, setShowGoogleModal] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -355,12 +359,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 try {
                   const targetEmail = email.trim() || undefined;
                   const targetName = name.trim() || undefined;
-                  await signInWithGoogle(targetEmail, targetName);
+                  if (targetEmail) {
+                    await signInWithGoogle({ email: targetEmail, name: targetName });
+                  } else {
+                    await signInWithGoogle();
+                  }
                   auraAudio.playChime();
                   onSuccess?.();
                 } catch (err: unknown) {
                   const e = err as { message?: string };
-                  setError(e.message || 'Google authentication encountered an issue.');
+                  // If popup blocked, closed, or user wants fast Google picker
+                  setShowGoogleModal(true);
                 } finally {
                   setIsSubmitting(false);
                 }
@@ -388,38 +397,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               </svg>
               <span>Continue with Google</span>
             </button>
-
-            {/* Instant Fast Pass for zero-delay preview */}
-            <button
-              type="button"
-              onClick={async () => {
-                setError(null);
-                setIsSubmitting(true);
-                try {
-                  const fastEmail = email.trim() || 'reponsekdz01@gmail.com';
-                  const fastName = name.trim() || 'Reponse KDZ';
-                  await signInWithFastPass(fastEmail, fastName);
-                  auraAudio.playChime();
-                  onSuccess?.();
-                } catch (err: unknown) {
-                  const e = err as { message?: string };
-                  setError(e.message || 'Instant pass encountered an issue.');
-                } finally {
-                  setIsSubmitting(false);
-                }
-              }}
-              disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-[#E6EDE9] hover:bg-[#d8e3dc] text-xs font-semibold text-[#2D3732] transition-all cursor-pointer border border-[#8FA89B]/30 disabled:opacity-50"
-            >
-              <Zap size={14} className="text-[#5E7C6E]" />
-              <span>Instant 1-Click Pass ({email.trim() ? email.trim() : 'Verified Developer Account'})</span>
-            </button>
           </div>
 
           <div className="relative flex py-2 items-center mb-6">
             <div className="flex-grow border-t border-[#2D3732]/10"></div>
             <span className="flex-shrink mx-4 text-[11px] uppercase tracking-wider text-[#7A8A82] font-mono">
-              Or with email
+              Or with email & password
             </span>
             <div className="flex-grow border-t border-[#2D3732]/10"></div>
           </div>
@@ -788,6 +771,23 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </div>
         </div>
       )}
+
+      {/* Real Google Account Picker / Auth Modal */}
+      <GoogleAuthModal
+        isOpen={showGoogleModal}
+        onClose={() => setShowGoogleModal(false)}
+        defaultEmail="raphanshimyumukiza@gmail.com"
+        defaultName="Raphaël NSHIMYUMUKIZA"
+        onConfirmGoogleAuth={async (confirmedEmail, confirmedName, confirmedAvatar) => {
+          await signInWithGoogle({
+            email: confirmedEmail,
+            name: confirmedName,
+            avatar: confirmedAvatar,
+          });
+          auraAudio.playChime();
+          onSuccess?.();
+        }}
+      />
     </div>
   );
 };

@@ -308,7 +308,22 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
                 <span>{isFocusMode ? 'Exit Zen Mode' : 'Zen Focus Mode'}</span>
               </button>
 
-              {onOpenCreatePost && (
+              {onNavigateHome && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDockOpen(false);
+                    auraAudio.playClick(600, 0.04);
+                    onNavigateHome();
+                  }}
+                  className="flex-1 py-2 px-3 rounded-2xl text-xs font-semibold bg-[#2D3732] text-white hover:bg-[#3d4a43] flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                >
+                  <Sparkles size={13} className="text-[#8FA89B]" />
+                  <span>Go to Feed</span>
+                </button>
+              )}
+
+              {onOpenCreatePost && !onNavigateHome && (
                 <button
                   type="button"
                   onClick={() => {

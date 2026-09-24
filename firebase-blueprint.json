@@ -26,6 +26,8 @@
         "notificationPreferences": { "type": "object" },
         "mediaPreferences": { "type": "object" },
         "verified": { "type": "boolean" },
+        "authProvider": { "type": "string" },
+        "emailVerified": { "type": "boolean" },
         "isOnline": { "type": "boolean" },
         "createdAt": { "type": "string" }
       },
@@ -154,9 +156,26 @@
         "createdAt": { "type": "string" }
       },
       "required": ["senderId", "type"]
+    },
+    "UserCredential": {
+      "title": "UserCredential",
+      "description": "Secure user auth registry document stored per email",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "salt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["uid", "email", "passwordHash"]
     }
   },
   "firestore": {
+    "/user_credentials/{email}": {
+      "schema": "UserCredential",
+      "description": "Secure authentication credentials registry"
+    },
     "/users/{userId}": {
       "schema": "User",
       "description": "User profile collection"

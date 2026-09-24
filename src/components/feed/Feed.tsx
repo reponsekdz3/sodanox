@@ -166,19 +166,39 @@ export const Feed: React.FC<FeedProps> = ({
 
           {/* Posts list */}
           {filteredPosts.length === 0 ? (
-            <div className="bg-[#F1F5F2] rounded-3xl p-12 text-center border border-[#E6EDE9]">
-              <p className="text-sm font-medium text-[#2D3732] mb-1">
-                No posts found in this stream
+            <div className="bg-[#F1F5F2] rounded-3xl p-10 sm:p-12 text-center border border-[#E6EDE9]">
+              <div className="w-12 h-12 rounded-2xl bg-[#8FA89B]/20 text-[#5E7C6E] flex items-center justify-center mx-auto mb-4">
+                <Sparkles size={24} />
+              </div>
+              <h3 className="font-serif text-lg text-[#2D3732] mb-1 font-normal">
+                {posts.length === 0 ? 'Your feed is fresh and quiet' : 'No posts found in this stream'}
+              </h3>
+              <p className="text-xs text-[#7A8A82] max-w-sm mx-auto mb-5 leading-relaxed">
+                {posts.length === 0
+                  ? 'Be the first creator to share a mindful thought, image, poll, or voice reflection.'
+                  : 'Try selecting another category or clear your search filter.'}
               </p>
-              <p className="text-xs text-[#7A8A82] mb-4">
-                Be the first to share an update or switch filters.
-              </p>
-              <button
-                onClick={() => setActiveFilter('all')}
-                className="px-4 py-2 rounded-2xl bg-[#8FA89B] text-white text-xs font-medium"
-              >
-                View All Posts
-              </button>
+              <div className="flex items-center justify-center gap-3">
+                {posts.length === 0 ? (
+                  <button
+                    onClick={onOpenCreatePost}
+                    className="px-5 py-2.5 rounded-2xl bg-[#2D3732] hover:bg-[#1E2522] text-white text-xs font-medium shadow-soft transition-all cursor-pointer"
+                  >
+                    Create First Reflection
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setActiveFilter('all');
+                      setSelectedTag(null);
+                      setSearchQuery('');
+                    }}
+                    className="px-4 py-2 rounded-2xl bg-[#8FA89B] text-white text-xs font-medium cursor-pointer"
+                  >
+                    View All Posts
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             filteredPosts.map((post) => (

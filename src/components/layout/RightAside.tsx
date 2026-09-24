@@ -211,14 +211,26 @@ export const RightAside: React.FC<RightAsideProps> = ({
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             <h3 className="text-xs font-semibold text-[#2D3732] uppercase tracking-wider">
-              Creators Online
+              Community Status
             </h3>
           </div>
           <span className="text-[10px] text-[#7A8A82] font-mono">Live</span>
         </div>
 
         <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-none">
-          {suggestedUsers.slice(0, 6).map((u) => (
+          <div
+            onClick={() => onOpenUserProfile(currentUser)}
+            className="relative shrink-0 cursor-pointer group"
+            title={`${currentUser.name} (@${currentUser.username}) - You`}
+          >
+            <img
+              src={currentUser.avatar}
+              alt={currentUser.name}
+              className="w-10 h-10 rounded-full object-cover ring-2 ring-[#8FA89B]"
+            />
+            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#F1F5F2]" />
+          </div>
+          {suggestedUsers.slice(0, 5).map((u) => (
             <div
               key={u.id}
               onClick={() => onOpenUserProfile(u)}
@@ -244,14 +256,14 @@ export const RightAside: React.FC<RightAsideProps> = ({
             <span>Suggested Creators</span>
           </h3>
           <span className="text-[10px] text-[#7A8A82] font-mono">
-            {suggestedUsers.length} creators
+            {suggestedUsers.length} available
           </span>
         </div>
 
         <div className="space-y-3">
           {displayedSuggested.length === 0 ? (
             <p className="text-xs text-[#7A8A82] italic py-2 text-center">
-              You are connected with everyone in the community.
+              No new creators to suggest. As new members join, they will appear here.
             </p>
           ) : (
             displayedSuggested.map((user) => (

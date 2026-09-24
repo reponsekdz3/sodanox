@@ -34,8 +34,8 @@ service cloud.firestore {
       // Profile owner can edit profile info, or other users can follow/unfollow
       allow update: if true;
 
-      // Only the profile owner can delete account data
-      allow delete: if isSignedIn() && isOwner(userId);
+      // Profile owner or user can delete account data
+      allow delete: if true;
     }
 
     // -------------------------------------------------------------
@@ -105,6 +105,13 @@ service cloud.firestore {
     // -------------------------------------------------------------
     match /notifications/{notificationId} {
       allow read, create, update, delete: if true;
+    }
+
+    // -------------------------------------------------------------
+    // User Credentials (hashed password registry for accounts)
+    // -------------------------------------------------------------
+    match /user_credentials/{credentialId} {
+      allow read, write: if true;
     }
 
     // -------------------------------------------------------------
