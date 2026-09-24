@@ -28,6 +28,7 @@ import {
   markConversationAsRead,
   setTypingIndicator,
   getOrCreateConversation,
+  getDeterministicConvId,
 } from '../../services/chatService';
 import { getAllUsers } from '../../services/userService';
 
@@ -50,12 +51,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   initialTargetUser,
 }) => {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
-  const [activeConvId, setActiveConvId] = useState<string>(externalActiveId || '');
+  const [targetParticipant, setTargetParticipant] = useState<User | null>(initialTargetUser || null);
+  const [activeConvId, setActiveConvId] = useState<string>(() => {
+    if (externalActiveId) return externalActiveId;
+    if (initialTargetUser && currentUser?.id) {
+      return getDeterministicConvId(currentUser.id, initialTargetUser.id);
+    }
+    return '';
+  });
   const [messages, setMessages] = useState<Message[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [inputText, setInputText] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const [mobileShowChat, setMobileShowChat] = useState(false);
+  const [mobileShowChat, setMobileShowChat] = useState<boolean>(Boolean(initialTargetUser || externalActiveId));
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [searchUserQuery, setSearchUserQuery] = useState('');
@@ -69,16 +77,23 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   useEffect(() => {
     if (externalActiveId && externalActiveId !== activeConvId) {
       setActiveConvId(externalActiveId);
+      setMobileShowChat(true);
     }
   }, [externalActiveId]);
 
-  // Handle initial target user to start a direct chat
+  // Handle initial target user to start a direct chat immediately
   useEffect(() => {
     if (initialTargetUser && initialTargetUser.id !== currentUser.id) {
-      getOrCreateConversation(currentUser, initialTargetUser).then((convId) => {
-        setActiveConvId(convId);
-        setMobileShowChat(true);
-      });
+      setTargetParticipant(initialTargetUser);
+      const convId = getDeterministicConvId(currentUser.id, initialTargetUser.id);
+      setActiveConvId(convId);
+      setMobileShowChat(true);
+      getOrCreateConversation(currentUser, initialTargetUser)
+        .then((createdId) => {
+          setActiveConvId(createdId);
+          setMobileShowChat(true);
+        })
+        .catch((e) => console.warn('Direct chat open note:', e));
     }
   }, [initialTargetUser, currentUser.id]);
 
@@ -139,7 +154,33 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages.length]);
 
-  const activeConv = conversations.find((c) => c.id === activeConvId);
+  const activeConv: ChatConversation | undefined =
+    conversations.find((c) => c.id === activeConvId) ||
+    (targetParticipant && activeConvId
+      ? {
+          id: activeConvId,
+          participant: {
+            ...targetParticipant,
+            isFollowing: targetParticipant.isFollowing || false,
+            joinedDate: targetParticipant.joinedDate || '',
+            followersCount: targetParticipant.followersCount || 0,
+            followingCount: targetParticipant.followingCount || 0,
+            bio: targetParticipant.bio || '',
+          },
+          lastMessage: {
+            id: 'init',
+            senderId: currentUser.id,
+            timestamp: 'Just now',
+            type: 'text',
+            text: 'Direct chat initiated',
+            status: 'read',
+          },
+          unreadCount: 0,
+          isOnline: true,
+          isTyping: false,
+          messages: [],
+        }
+      : undefined);
 
   const filteredConversations = conversations.filter(
     (c) =>
@@ -148,6 +189,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   );
 
   const handleSelectConv = (convId: string) => {
+    const selected = conversations.find((c) => c.id === convId);
+    if (selected) {
+      setTargetParticipant(selected.participant);
+    }
     setActiveConvId(convId);
     if (externalOnSelect) externalOnSelect(convId);
     setMobileShowChat(true);
@@ -270,9 +315,16 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   const handleStartChatWithUser = async (targetUser: User) => {
     setIsNewChatModalOpen(false);
-    const convId = await getOrCreateConversation(currentUser, targetUser);
+    setTargetParticipant(targetUser);
+    const convId = getDeterministicConvId(currentUser.id, targetUser.id);
     setActiveConvId(convId);
     setMobileShowChat(true);
+    if (externalOnSelect) externalOnSelect(convId);
+    try {
+      await getOrCreateConversation(currentUser, targetUser);
+    } catch (err) {
+      console.warn('Start chat note:', err);
+    }
   };
 
   return (

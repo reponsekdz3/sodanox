@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Heart,
   MessageCircle,
@@ -16,10 +16,13 @@ import {
   MapPin,
   Users,
   MessageSquareOff,
+  Eye,
 } from 'lucide-react';
 import { Post, User } from '../../types';
 import { SharePostModal } from './SharePostModal';
 import { QuotePostModal } from './QuotePostModal';
+import { PostEngagementModal } from './PostEngagementModal';
+import { recordPostView } from '../../services/postService';
 
 const PostMediaCarousel: React.FC<{ mediaUrls: string[] }> = ({ mediaUrls }) => {
   const [curr, setCurr] = useState(0);
@@ -96,6 +99,7 @@ interface PostCardProps {
   onDeletePost?: (postId: string) => void;
   onEditPost?: (postId: string, newContent: string) => void;
   onOpenUserProfile?: (user: User) => void;
+  onToggleFollowUser?: (userId: string) => void;
 }
 
 export const PostCard: React.FC<PostCardProps> = ({
@@ -114,6 +118,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   onDeletePost,
   onEditPost,
   onOpenUserProfile,
+  onToggleFollowUser,
 }) => {
   const [showComments, setShowComments] = useState(false);
   const [newCommentText, setNewCommentText] = useState('');
@@ -123,8 +128,16 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isQuoteModalOpen, setIsQuoteModalOpen] = useState(false);
+  const [isEngagementModalOpen, setIsEngagementModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
+
+  // Automatically record impressions/views in Firestore
+  useEffect(() => {
+    if (currentUser?.id && post?.id) {
+      recordPostView(post.id, currentUser.id);
+    }
+  }, [post.id, currentUser?.id]);
 
   const isAuthor = post.author.id === currentUser.id;
 
@@ -506,6 +519,19 @@ export const PostCard: React.FC<PostCardProps> = ({
               {post.sharesCount}
             </span>
           </button>
+
+          {/* Views / Impressions with Live Engagement Modal */}
+          <button
+            type="button"
+            onClick={() => setIsEngagementModalOpen(true)}
+            className="flex items-center gap-1.5 py-1.5 px-2.5 rounded-xl hover:text-[#2D3732] hover:bg-[#E6EDE9]/50 transition-colors group/view"
+            title="Views & Impressions · Click for Engagement Details"
+          >
+            <Eye size={17} className="group-hover/view:text-[#5E7C6E] transition-colors" />
+            <span className="text-xs font-medium tabular-nums">
+              {(post.viewsCount ?? 0).toLocaleString()}
+            </span>
+          </button>
         </div>
 
         {/* Bookmark */}
@@ -750,6 +776,17 @@ export const PostCard: React.FC<PostCardProps> = ({
           currentUser={currentUser}
           onClose={() => setIsQuoteModalOpen(false)}
           onSubmitQuote={(quoteComment) => onRepostPost(post.id, quoteComment)}
+        />
+      )}
+
+      {/* Post Engagement Modal (Views, Likes, Reach) */}
+      {isEngagementModalOpen && (
+        <PostEngagementModal
+          post={post}
+          currentUser={currentUser}
+          onClose={() => setIsEngagementModalOpen(false)}
+          onOpenUserProfile={onOpenUserProfile}
+          onToggleFollowUser={onToggleFollowUser}
         />
       )}
     </article>

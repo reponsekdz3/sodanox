@@ -466,6 +466,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onLikeComment={onLikeComment}
                   onDeleteComment={onDeleteComment}
                   onOpenUserProfile={onNavigateToUser}
+                  onToggleFollowUser={onToggleFollow}
                 />
               ))
             )}
@@ -524,6 +525,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                   onLikeComment={onLikeComment}
                   onDeleteComment={onDeleteComment}
                   onOpenUserProfile={onNavigateToUser}
+                  onToggleFollowUser={onToggleFollow}
                 />
               ))
             )}

@@ -151,6 +151,7 @@ export interface Post {
   commentsDisabled?: boolean;
   likesCount: number;
   hasLiked: boolean;
+  likedBy?: string[];
   bookmarksCount: number;
   isBookmarked: boolean;
   commentsCount: number;
@@ -158,6 +159,9 @@ export interface Post {
   tags: string[];
   poll?: Poll;
   sharesCount: number;
+  sharedBy?: string[];
+  viewsCount?: number;
+  viewedBy?: string[];
   repostsCount?: number;
   hasReposted?: boolean;
   repostedBy?: string[];
@@ -237,8 +241,21 @@ export interface ActiveCall {
 export interface NotificationItem {
   id: string;
   user: User;
-  type: 'like' | 'comment' | 'follow' | 'call' | 'mention' | 'repost' | 'story_reply';
+  type:
+    | 'like'
+    | 'comment'
+    | 'follow'
+    | 'call'
+    | 'mention'
+    | 'repost'
+    | 'share'
+    | 'story_reply'
+    | 'story_like'
+    | 'reel_like';
   targetTitle?: string;
+  targetId?: string;
+  targetType?: 'post' | 'reel' | 'story' | 'profile';
+  actionSnippet?: string;
   timestamp: string;
   read: boolean;
   createdAt?: any;

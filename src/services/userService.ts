@@ -366,7 +366,9 @@ export async function toggleFollowUser(
         targetUid,
         currentUser,
         'follow',
-        'started following your profile'
+        'started following your channel',
+        targetUid,
+        'profile'
       ).catch((err) => console.warn('Could not create follow notification:', err));
     }
 

@@ -199,6 +199,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Safe
           }
         }
+        // Ensure Firebase Auth session exists so Firestore rules allow reads/writes
+        try {
+          await signInAnonymously(auth);
+        } catch {
+          // Anonymous auth optional
+        }
       }
 
       setLoading(false);

@@ -64,6 +64,7 @@ import {
   subscribeToNotifications,
   markAllNotificationsAsRead,
   deleteNotification,
+  clearAllNotifications,
 } from './services/notificationService';
 import {
   subscribeToUserConversations,
@@ -386,7 +387,8 @@ export default function App() {
 
   const handleIncrementShare = async (postId: string) => {
     try {
-      await incrementPostShareCount(postId);
+      const targetPost = posts.find((p) => p.id === postId);
+      await incrementPostShareCount(postId, currentUser, targetPost?.author.id);
     } catch (err) {
       console.error('Error incrementing share count:', err);
     }
@@ -685,6 +687,15 @@ export default function App() {
     }
   };
 
+  const handleClearAllNotifications = async () => {
+    if (!currentUser?.id) return;
+    try {
+      await clearAllNotifications(currentUser.id);
+    } catch (err) {
+      console.error('Error clearing notifications:', err);
+    }
+  };
+
   // ---------------- Handlers for Calling ----------------
   const handleStartCall = (participant: User, type: 'audio' | 'video') => {
     setActiveCall({
@@ -827,6 +838,7 @@ export default function App() {
             onEditPost={handleEditPost}
             onToggleFollowUser={handleToggleFollow}
             onOpenUserProfile={handleOpenUserProfile}
+            onOpenDirectChat={handleOpenDirectChat}
             onOpenCreatePost={() => {
               setCreatePostInitialPrompt('');
               setIsCreatePostOpen(true);
@@ -982,10 +994,17 @@ export default function App() {
       {isNotificationsDrawerOpen && (
         <NotificationsDrawer
           notifications={notifications}
+          currentUser={currentUser}
           onClose={() => setIsNotificationsDrawerOpen(false)}
           onMarkAllAsRead={handleMarkAllNotificationsRead}
+          onClearAllNotifications={handleClearAllNotifications}
           onDeleteNotification={handleDeleteNotification}
+          onToggleFollowUser={handleToggleFollow}
           onOpenUserProfile={handleOpenUserProfile}
+          onSelectPost={() => {
+            setIsNotificationsDrawerOpen(false);
+            setCurrentTab('feed');
+          }}
         />
       )}
 

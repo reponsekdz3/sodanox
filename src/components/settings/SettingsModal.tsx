@@ -25,6 +25,7 @@ import {
 import { User as UserType } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { updateUserProfile, toggleBlockUser } from '../../services/userService';
+import { auraAudio } from '../../utils/audioSynthesizer';
 
 interface SettingsModalProps {
   currentUser: UserType;
@@ -296,6 +297,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <button
               type="button"
               onClick={async () => {
+                auraAudio.playClick(400, 0.05);
                 onClose();
                 await signOut();
               }}
@@ -769,6 +771,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={async () => {
+                    auraAudio.playClick(400, 0.05);
                     onClose();
                     await signOut();
                   }}

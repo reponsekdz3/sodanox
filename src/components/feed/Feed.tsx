@@ -26,6 +26,7 @@ interface FeedProps {
   onEditPost?: (postId: string, newContent: string) => void;
   onToggleFollowUser: (userId: string) => void;
   onOpenUserProfile: (user: User) => void;
+  onOpenDirectChat?: (user: User) => void;
   onOpenCreatePost: () => void;
   onOpenCreatePostWithPrompt?: (prompt: string) => void;
 }
@@ -50,6 +51,7 @@ export const Feed: React.FC<FeedProps> = ({
   onEditPost,
   onToggleFollowUser,
   onOpenUserProfile,
+  onOpenDirectChat,
   onOpenCreatePost,
   onOpenCreatePostWithPrompt,
 }) => {
@@ -197,6 +199,7 @@ export const Feed: React.FC<FeedProps> = ({
                 onDeletePost={onDeletePost}
                 onEditPost={onEditPost}
                 onOpenUserProfile={onOpenUserProfile}
+                onToggleFollowUser={onToggleFollowUser}
               />
             ))
           )}
@@ -213,11 +216,7 @@ export const Feed: React.FC<FeedProps> = ({
             onOpenUserProfile={onOpenUserProfile}
             onToggleFollowUser={onToggleFollowUser}
             onOpenCreatePostWithPrompt={onOpenCreatePostWithPrompt}
-            onSendDirectMessage={
-              onSendToChat
-                ? (u) => onSendToChat(u.id, `Hello ${u.name}! Connected with you on Aura.`)
-                : undefined
-            }
+            onSendDirectMessage={onOpenDirectChat}
             searchQuery={searchQuery}
             onSearchQueryChange={setSearchQuery}
           />

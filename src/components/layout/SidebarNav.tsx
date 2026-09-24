@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   Home,
   Compass,
@@ -15,6 +15,10 @@ import {
 } from 'lucide-react';
 import { User } from '../../types';
 import { AuraLogo } from '../common/AuraLogo';
+import { useAuth } from '../../context/AuthContext';
+import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernReelIcon } from '../common/ModernReelIcon';
+import { ModernCreateIcon } from '../common/ModernCreateIcon';
 
 interface SidebarNavProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -41,6 +45,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onSelectSavedTab,
   onSelectTrendingTab,
 }) => {
+  const { signOut } = useAuth();
+  const [isSigningOut, setIsSigningOut] = useState(false);
+
   return (
     <aside className="w-64 xl:w-72 shrink-0 h-screen sticky top-0 flex flex-col justify-between py-6 px-4 sm:px-6 border-r border-[#E6EDE9] bg-[#FAFAF9]/95 backdrop-blur-md select-none">
       {/* Top Header & Navigation Links */}
@@ -101,9 +108,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 : 'text-[#55635C] hover:bg-[#F1F5F2] hover:text-[#2D3732]'
             }`}
           >
-            <Film
+            <ModernReelIcon
               size={20}
-              className={currentTab === 'reels' ? 'text-[#5E7C6E]' : 'text-[#7A8A82]'}
+              active={currentTab === 'reels'}
             />
             <span className="text-[14px]">Cinema & Reels</span>
           </button>
@@ -206,10 +213,13 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
         {/* Primary Action Button: Create Reflection */}
         <button
           type="button"
-          onClick={onOpenCreatePost}
-          className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-2xl bg-[#8FA89B] hover:bg-[#7e9689] text-white text-sm font-semibold shadow-soft hover:shadow-soft-lg transition-all active:scale-98 cursor-pointer"
+          onClick={() => {
+            auraAudio.playClick(520, 0.05);
+            onOpenCreatePost();
+          }}
+          className="group w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-2xl bg-gradient-to-r from-[#5E7C6E] via-[#6B8B7C] to-[#8FA89B] hover:brightness-105 text-white text-sm font-semibold shadow-soft hover:shadow-soft-lg transition-all active:scale-98 cursor-pointer ring-1 ring-white/20"
         >
-          <Plus size={18} />
+          <ModernCreateIcon size={18} />
           <span>New Reflection</span>
         </button>
       </div>
@@ -237,6 +247,21 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 @{currentUser.username}
               </div>
             </div>
+
+            <button
+              type="button"
+              disabled={isSigningOut}
+              onClick={async (e) => {
+                e.stopPropagation();
+                setIsSigningOut(true);
+                auraAudio.playClick(450, 0.05);
+                await signOut();
+              }}
+              className="p-2 rounded-xl text-[#7A8A82] hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+              title="Sign Out of Aura"
+            >
+              <LogOut size={16} className={isSigningOut ? 'opacity-50 animate-pulse' : ''} />
+            </button>
           </div>
         )}
 

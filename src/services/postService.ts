@@ -9,9 +9,11 @@ import {
   onSnapshot,
   serverTimestamp,
   getDocs,
+  getDoc,
   limit,
   arrayUnion,
   arrayRemove,
+  increment,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
@@ -67,6 +69,8 @@ export function subscribeToPosts(
         const likedBy: string[] = d.likedBy || [];
         const bookmarkedBy: string[] = d.bookmarkedBy || [];
         const repostedBy: string[] = d.repostedBy || [];
+        const viewedBy: string[] = d.viewedBy || [];
+        const sharedBy: string[] = d.sharedBy || [];
         const voters: Record<string, string> = d.poll?.voters || {};
 
         // Process comments and check likedBy per comment
@@ -95,6 +99,8 @@ export function subscribeToPosts(
           };
         });
 
+        const viewsCount = typeof d.viewsCount === 'number' ? d.viewsCount : viewedBy.length;
+
         postList.push({
           id: docSnap.id,
           author: d.author,
@@ -108,11 +114,15 @@ export function subscribeToPosts(
           commentsDisabled: d.commentsDisabled || false,
           likesCount: likedBy.length || d.likesCount || 0,
           hasLiked: likedBy.includes(currentUid),
+          likedBy,
           bookmarksCount: bookmarkedBy.length || d.bookmarksCount || 0,
           isBookmarked: bookmarkedBy.includes(currentUid),
           repostsCount: repostedBy.length || d.repostsCount || 0,
           hasReposted: repostedBy.includes(currentUid),
           repostedBy,
+          viewsCount,
+          viewedBy,
+          sharedBy,
           repostAuthor: d.repostAuthor,
           repostComment: d.repostComment,
           quotedPost: d.quotedPost,
@@ -128,7 +138,7 @@ export function subscribeToPosts(
                 userVotedId: voters[currentUid],
               }
             : undefined,
-          sharesCount: d.sharesCount || 0,
+          sharesCount: typeof d.sharesCount === 'number' ? d.sharesCount : sharedBy.length,
           createdAt: d.createdAt,
         });
       });
@@ -189,6 +199,9 @@ export async function createNewPost(
       commentsCount: 0,
       comments: [],
       sharesCount: 0,
+      sharedBy: [],
+      viewsCount: 0,
+      viewedBy: [],
       poll: poll || null,
       quotedPost: quotedPost
         ? {
@@ -322,20 +335,51 @@ export async function toggleRepostPost(
 }
 
 /**
- * Increment real share counter in Firestore
+ * Increment real share counter in Firestore & notify the post author
  */
-export async function incrementPostShareCount(postId: string): Promise<void> {
+export async function incrementPostShareCount(
+  postId: string,
+  actor?: User,
+  targetAuthorId?: string
+): Promise<void> {
   try {
     const postRef = doc(db, POSTS_COLLECTION, postId);
-    const snap = await getDocs(query(collection(db, POSTS_COLLECTION)));
-    const target = snap.docs.find((d) => d.id === postId);
-    if (!target) return;
-    const currentShares = target.data().sharesCount || 0;
-    await updateDoc(postRef, {
-      sharesCount: currentShares + 1,
-    });
+    const updates: Record<string, any> = {
+      sharesCount: increment(1),
+    };
+    if (actor?.id) {
+      updates.sharedBy = arrayUnion(actor.id);
+    }
+    await updateDoc(postRef, updates);
+
+    if (actor && targetAuthorId && targetAuthorId !== actor.id) {
+      await createNotification(
+        targetAuthorId,
+        actor,
+        'share',
+        'shared your reflection',
+        postId,
+        'post'
+      );
+    }
   } catch (err) {
     console.warn('Error incrementing share count:', err);
+  }
+}
+
+/**
+ * Real Post View / Impression tracker in Firestore
+ */
+export async function recordPostView(postId: string, viewerId: string): Promise<void> {
+  if (!postId || !viewerId) return;
+  try {
+    const postRef = doc(db, POSTS_COLLECTION, postId);
+    await updateDoc(postRef, {
+      viewedBy: arrayUnion(viewerId),
+      viewsCount: increment(1),
+    });
+  } catch (err) {
+    // Non-fatal, suppress permissions or network glitches during rapid scroll
   }
 }
 
