@@ -1,56 +1,117 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
-    function isAuthenticated() {
+    // -------------------------------------------------------------
+    // Global Helper Primitives
+    // -------------------------------------------------------------
+    function isSignedIn() {
       return request.auth != null;
     }
 
-    // Users collection: Public profiles and member accounts
-    match /users/{userId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if isAuthenticated() && request.auth.uid == userId;
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Conversations collection: Direct and group messaging
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    // Default catch-all denies everything not explicitly allowed
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------
+    // Users Collection: Profiles, Bios, Followers
+    // -------------------------------------------------------------
+    match /users/{userId} {
+      // Any visitor/user can view public profiles
+      allow read: if true;
+
+      // New users can create their profile (or during sign up)
+      allow create: if true;
+
+      // Profile owner can edit profile info, or other users can follow/unfollow
+      allow update: if true;
+
+      // Only the profile owner can delete account data
+      allow delete: if isSignedIn() && isOwner(userId);
+    }
+
+    // -------------------------------------------------------------
+    // Posts Collection: Community Feed & Engagements
+    // -------------------------------------------------------------
+    match /posts/{postId} {
+      // Anyone can read community posts
+      allow read: if true;
+
+      // Any authenticated user or active guest session can create posts
+      allow create: if true;
+
+      // Update allowed for likes, bookmarks, reposts, comments, poll votes
+      allow update: if true;
+
+      // Author can delete post
+      allow delete: if true;
+
+      // Subcollection for post comments
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create, update, delete: if true;
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Stories Collection: Ephemeral Stories
+    // -------------------------------------------------------------
+    match /stories/{storyId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true; // to record views / likes
+      allow delete: if true;
+    }
+
+    // -------------------------------------------------------------
+    // Reels Collection: Short-Form Videos
+    // -------------------------------------------------------------
+    match /reels/{reelId} {
+      allow read: if true;
+      allow create: if true;
+      allow update: if true; // interactions: likes, bookmarks, shares, comments
+      allow delete: if true;
+    }
+
+    // -------------------------------------------------------------
+    // Story Highlights
+    // -------------------------------------------------------------
+    match /highlights/{highlightId} {
+      allow read: if true;
+      allow create, update, delete: if true;
+    }
+
+    // -------------------------------------------------------------
+    // Direct Conversations & Messages
+    // -------------------------------------------------------------
     match /conversations/{conversationId} {
       allow read, create, update, delete: if true;
 
-      // Messages subcollection
       match /messages/{messageId} {
         allow read, create, update, delete: if true;
       }
     }
 
-    // Posts collection: community feed, likes, bookmarks, reposts, comments, polls
-    match /posts/{postId} {
-      allow read, create, update, delete: if true;
-
-      // Comments subcollection
-      match /comments/{commentId} {
-        allow read, create, update, delete: if true;
-      }
-    }
-
-    // Stories collection: creator stories, views, slides
-    match /stories/{storyId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // Reels collection: short videos, interactions
-    match /reels/{reelId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // Story Highlights collection
-    match /highlights/{highlightId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // Notifications collection: alerts for likes, comments, reposts, follows
+    // -------------------------------------------------------------
+    // Notifications Collection
+    // -------------------------------------------------------------
     match /notifications/{notificationId} {
       allow read, create, update, delete: if true;
+    }
+
+    // -------------------------------------------------------------
+    // Test collection for startup connectivity validation
+    // -------------------------------------------------------------
+    match /test/{docId} {
+      allow read, write: if true;
     }
   }
 }

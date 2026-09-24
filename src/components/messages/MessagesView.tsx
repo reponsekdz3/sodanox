@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Phone,
   Video,
@@ -20,6 +20,16 @@ import {
   Flame,
   Laugh,
   Plus,
+  Info,
+  Trash2,
+  Copy,
+  Download,
+  Image as ImageIcon,
+  Volume2,
+  MoreVertical,
+  Calendar,
+  MapPin,
+  ExternalLink,
 } from 'lucide-react';
 import { ChatConversation, Message, MessageReplyInfo, User, VoiceNoteMeta } from '../../types';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
@@ -34,6 +44,8 @@ import {
   getOrCreateConversation,
   getDeterministicConvId,
   addMessageReaction,
+  deleteChatMessage,
+  clearConversationMessages,
 } from '../../services/chatService';
 import { getAllUsers } from '../../services/userService';
 import { auraAudio } from '../../utils/audioSynthesizer';
@@ -46,6 +58,8 @@ interface MessagesViewProps {
   onOpenUserProfile: (user: User) => void;
   initialTargetUser?: User | null;
   onOpenAuth?: () => void;
+  onMobileChatActiveChange?: (isActive: boolean) => void;
+  onNavigateTab?: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => void;
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
@@ -55,7 +69,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   onStartCall,
   onOpenUserProfile,
   initialTargetUser,
+  onMobileChatActiveChange,
+  onNavigateTab,
 }) => {
+  // -------------------------------------------------------------
+  // State: Conversations & Active Chat
+  // -------------------------------------------------------------
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [targetParticipant, setTargetParticipant] = useState<User | null>(initialTargetUser || null);
   const [activeConvId, setActiveConvId] = useState<string>(() => {
@@ -66,25 +85,49 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     return '';
   });
   const [messages, setMessages] = useState<Message[]>([]);
+
+  // Navigation & Responsiveness
+  const [mobileShowChat, setMobileShowChat] = useState<boolean>(Boolean(initialTargetUser || externalActiveId));
+
+  useEffect(() => {
+    onMobileChatActiveChange?.(mobileShowChat);
+  }, [mobileShowChat, onMobileChatActiveChange]);
+  const [showChatInfo, setShowChatInfo] = useState<boolean>(false);
+  const [convFilter, setConvFilter] = useState<'all' | 'unread' | 'online'>('all');
+
+  // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
+  const [searchInChatQuery, setSearchInChatQuery] = useState('');
+  const [isSearchingInChat, setIsSearchingInChat] = useState(false);
+
+  // Input & Messaging
   const [inputText, setInputText] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
-  const [mobileShowChat, setMobileShowChat] = useState<boolean>(Boolean(initialTargetUser || externalActiveId));
+  const [isSending, setIsSending] = useState(false);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+
+  // Message Interaction States
+  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
+  const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+
+  // Modals
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [availableUsers, setAvailableUsers] = useState<User[]>([]);
   const [searchUserQuery, setSearchUserQuery] = useState('');
-  const [isSending, setIsSending] = useState(false);
-  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-  const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
-  const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
+  const [confirmClearChat, setConfirmClearChat] = useState(false);
 
+  // Refs
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageElementsRef = useRef<{ [key: string]: HTMLDivElement | null }>({});
 
-  // Sync external conversation selection if provided
+  // -------------------------------------------------------------
+  // Effects: Sync external conversation ID
+  // -------------------------------------------------------------
   useEffect(() => {
     if (externalActiveId && externalActiveId !== activeConvId) {
       setActiveConvId(externalActiveId);
@@ -92,7 +135,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   }, [externalActiveId]);
 
-  // Handle initial target user to start a direct chat immediately
+  // Handle direct message launch to a specific target user
   useEffect(() => {
     if (initialTargetUser && initialTargetUser.id !== currentUser.id) {
       setTargetParticipant(initialTargetUser);
@@ -108,7 +151,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   }, [initialTargetUser, currentUser.id]);
 
-  // Subscribe in real-time to conversations involving the current user from Firestore
+  // Real-time conversations subscription
   useEffect(() => {
     if (!currentUser?.id) {
       setConversations([]);
@@ -130,7 +173,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     return () => unsubscribe();
   }, [currentUser?.id]);
 
-  // Fetch available community users for New Chat modal
+  // Fetch community users for New Chat modal
   useEffect(() => {
     if (isNewChatModalOpen) {
       getAllUsers(currentUser.id).then((users) => {
@@ -139,21 +182,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   }, [isNewChatModalOpen, currentUser.id]);
 
-  // Subscribe in real-time to messages of the active conversation from Firestore
+  // Real-time messages subscription
   useEffect(() => {
     if (!activeConvId) {
       setMessages([]);
       return;
     }
 
-    // Mark messages as read in Firestore
     markConversationAsRead(activeConvId, currentUser.id).catch(() => {});
 
     const unsubscribe = subscribeToMessages(
       activeConvId,
       (msgs) => {
         setMessages(msgs);
-        // If there are unread messages from the other user while we are looking, mark them read
         const hasUnreadFromOther = msgs.some(
           (m) => m.senderId !== currentUser.id && m.status !== 'read'
         );
@@ -167,12 +208,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     return () => unsubscribe();
   }, [activeConvId, currentUser.id]);
 
-  // Scroll to bottom on new messages
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  };
+
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    scrollToBottom('smooth');
   }, [messages.length]);
 
-  // Clear typing indicator on unmount
   useEffect(() => {
     return () => {
       if (activeConvId && currentUser?.id) {
@@ -181,40 +224,68 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     };
   }, [activeConvId, currentUser?.id]);
 
-  const activeConv: ChatConversation | undefined =
-    conversations.find((c) => c.id === activeConvId) ||
-    (targetParticipant && activeConvId
-      ? {
-          id: activeConvId,
-          participant: {
-            ...targetParticipant,
-            isFollowing: targetParticipant.isFollowing || false,
-            joinedDate: targetParticipant.joinedDate || '',
-            followersCount: targetParticipant.followersCount || 0,
-            followingCount: targetParticipant.followingCount || 0,
-            bio: targetParticipant.bio || '',
-          },
-          lastMessage: {
-            id: 'init',
-            senderId: currentUser.id,
-            timestamp: 'Just now',
-            type: 'text',
-            text: 'Conversation started',
-            status: 'read',
-          },
-          unreadCount: 0,
-          isOnline: true,
-          isTyping: false,
-          messages: [],
-        }
-      : undefined);
+  // -------------------------------------------------------------
+  // Computed Data
+  // -------------------------------------------------------------
+  const activeConv: ChatConversation | undefined = useMemo(() => {
+    const existing = conversations.find((c) => c.id === activeConvId);
+    if (existing) return existing;
+    if (targetParticipant && activeConvId) {
+      return {
+        id: activeConvId,
+        participant: targetParticipant,
+        lastMessage: {
+          id: 'init',
+          senderId: currentUser.id,
+          timestamp: 'Just now',
+          type: 'text',
+          text: 'Conversation started',
+          status: 'read',
+        },
+        unreadCount: 0,
+        isOnline: true,
+        isTyping: false,
+        messages: [],
+      };
+    }
+    return undefined;
+  }, [conversations, activeConvId, targetParticipant, currentUser]);
 
-  const filteredConversations = conversations.filter(
-    (c) =>
-      c.participant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.participant.username.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const filteredConversations = useMemo(() => {
+    return conversations.filter((c) => {
+      const matchesSearch =
+        c.participant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        c.participant.username.toLowerCase().includes(searchTerm.toLowerCase());
 
+      if (!matchesSearch) return false;
+      if (convFilter === 'unread') return c.unreadCount > 0;
+      if (convFilter === 'online') return c.isOnline;
+      return true;
+    });
+  }, [conversations, searchTerm, convFilter]);
+
+  const displayedMessages = useMemo(() => {
+    if (!searchInChatQuery.trim()) return messages;
+    const query = searchInChatQuery.toLowerCase();
+    return messages.filter(
+      (m) =>
+        m.text?.toLowerCase().includes(query) ||
+        m.file?.name?.toLowerCase().includes(query)
+    );
+  }, [messages, searchInChatQuery]);
+
+  // Media gallery shared in this conversation
+  const sharedMedia = useMemo(() => {
+    return messages.filter((m) => m.type === 'image' && m.file?.url);
+  }, [messages]);
+
+  const sharedDocuments = useMemo(() => {
+    return messages.filter((m) => m.type === 'file' && m.file?.url);
+  }, [messages]);
+
+  // -------------------------------------------------------------
+  // Handlers
+  // -------------------------------------------------------------
   const handleSelectConv = (convId: string) => {
     auraAudio.playClick(600, 0.03);
     const selected = conversations.find((c) => c.id === convId);
@@ -223,6 +294,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
     setActiveConvId(convId);
     setReplyingTo(null);
+    setIsSearchingInChat(false);
+    setSearchInChatQuery('');
     if (externalOnSelect) externalOnSelect(convId);
     setMobileShowChat(true);
   };
@@ -231,7 +304,6 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     setInputText(e.target.value);
     if (!activeConvId || !currentUser?.id) return;
 
-    // Real-time Firestore typing notification
     setTypingIndicator(activeConvId, currentUser.id, true);
     if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
     typingTimeoutRef.current = setTimeout(() => {
@@ -269,6 +341,29 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     await addMessageReaction(activeConvId, messageId, emoji);
   };
 
+  const handleCopyMessage = (msg: Message) => {
+    if (!msg.text) return;
+    navigator.clipboard.writeText(msg.text);
+    auraAudio.playClick(900, 0.03);
+    setCopiedMessageId(msg.id);
+    setTimeout(() => setCopiedMessageId(null), 1800);
+  };
+
+  const handleDeleteMessage = async (msgId: string) => {
+    if (!activeConvId) return;
+    auraAudio.playClick(400, 0.04);
+    setMessages((prev) => prev.filter((m) => m.id !== msgId));
+    await deleteChatMessage(activeConvId, msgId);
+  };
+
+  const handleClearHistory = async () => {
+    if (!activeConvId) return;
+    auraAudio.playClick(400, 0.04);
+    setMessages([]);
+    setConfirmClearChat(false);
+    await clearConversationMessages(activeConvId);
+  };
+
   const handleSendText = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !activeConvId || !activeConv || isSending) return;
@@ -301,6 +396,24 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       : undefined;
 
     setReplyingTo(null);
+
+    // Instant optimistic render
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const optimisticMsg: Message = {
+      id: tempMsgId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatar,
+      timestamp: nowTime,
+      type: 'text',
+      text: textToSend,
+      status: 'sent',
+      replyTo: replyPayload,
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(() => scrollToBottom('smooth'), 40);
 
     try {
       auraAudio.playClick(640, 0.05);
@@ -348,6 +461,29 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
       if (!dataUrl) return;
+
+      const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const optimisticMsg: Message = {
+        id: tempMsgId,
+        senderId: currentUser.id,
+        senderName: currentUser.name,
+        senderAvatar: currentUser.avatar,
+        timestamp: nowTime,
+        type: isImage ? 'image' : 'file',
+        text: file.name,
+        file: {
+          name: file.name,
+          size: sizeStr,
+          type: file.type,
+          url: dataUrl,
+        },
+        status: 'sent',
+        replyTo: replyPayload,
+      };
+
+      setMessages((prev) => [...prev, optimisticMsg]);
+      setTimeout(() => scrollToBottom('smooth'), 40);
 
       try {
         auraAudio.playClick(640, 0.05);
@@ -414,6 +550,23 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
     setReplyingTo(null);
 
+    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const optimisticMsg: Message = {
+      id: tempMsgId,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatar,
+      timestamp: nowTime,
+      type: 'voice',
+      voice: voiceMeta,
+      status: 'sent',
+      replyTo: replyPayload,
+    };
+
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setTimeout(() => scrollToBottom('smooth'), 40);
+
     try {
       auraAudio.playClick(640, 0.05);
       await sendChatMessage(
@@ -446,28 +599,44 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-0 sm:px-4 md:px-6 py-0 sm:py-4 h-[calc(100dvh-60px)] md:h-[calc(100vh-88px)] flex flex-col">
-      <div className="w-full h-full bg-[#FAFAF9] sm:border border-[#E2EAE4] sm:rounded-3xl shadow-sm sm:shadow-soft overflow-hidden grid grid-cols-1 md:grid-cols-12 flex-1">
+    <div className="w-full h-full flex flex-col overflow-hidden min-h-0">
+      <div className="w-full h-full bg-[#FAFAF9] overflow-hidden grid grid-cols-1 md:grid-cols-12 flex-1 min-h-0">
         
         {/* ========================================================
-            Conversations List Sidebar (Hidden on mobile when chat is open)
+            COLUMN 1: Conversations List Sidebar
+            Visible on Desktop/Tablet, hidden on Mobile when chat active
             ======================================================== */}
         <div
-          className={`h-full border-r border-[#E6EDE9] flex flex-col md:col-span-4 lg:col-span-4 bg-[#FAFAF9] ${
+          className={`h-full border-r border-[#E6EDE9] flex flex-col md:col-span-5 lg:col-span-4 xl:col-span-4 bg-[#FAFAF9] overflow-hidden min-h-0 ${
             mobileShowChat ? 'hidden md:flex' : 'flex'
           }`}
         >
-          {/* Sidebar Header & Search */}
-          <div className="p-3.5 sm:p-4 border-b border-[#E6EDE9] space-y-3 bg-white/60 backdrop-blur-sm">
+          {/* Sidebar Header & Filters */}
+          <div className="p-3 sm:p-4 border-b border-[#E6EDE9] space-y-2.5 bg-white/80 backdrop-blur-md shrink-0">
             <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-base font-bold text-[#1E2A23] tracking-tight">
-                    Messages
-                  </h2>
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <div className="flex items-center gap-2">
+                {onNavigateTab && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      auraAudio.playClick(480, 0.03);
+                      onNavigateTab('feed');
+                    }}
+                    className="md:hidden p-1.5 -ml-1 rounded-xl text-[#4A6757] hover:bg-[#EBF1ED] transition-colors cursor-pointer"
+                    title="Back to Feed"
+                  >
+                    <ArrowLeft size={18} className="stroke-[2.5]" />
+                  </button>
+                )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-base font-bold text-[#1E2A23] tracking-tight">
+                      Messages
+                    </h2>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  </div>
+                  <span className="text-[11px] text-[#6A7B73] font-medium">Real-time sync</span>
                 </div>
-                <span className="text-[11px] text-[#6A7B73] font-medium">Real-time sync</span>
               </div>
               <button
                 onClick={() => {
@@ -482,9 +651,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               </button>
             </div>
 
+            {/* Search conversations */}
             <div className="relative">
               <Search
-                size={15}
+                size={14}
                 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]"
               />
               <input
@@ -492,7 +662,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 placeholder="Search conversations..."
-                className="w-full bg-[#F1F5F2] hover:bg-[#EAEFEA] rounded-2xl pl-9 pr-4 py-2 text-xs text-[#2D3732] placeholder-[#7A8A82] focus:outline-none focus:bg-white border border-transparent focus:border-[#4A6757] transition-all"
+                className="w-full bg-[#F1F5F2] hover:bg-[#EAEFEA] rounded-2xl pl-9 pr-8 py-2 text-xs text-[#2D3732] placeholder-[#7A8A82] focus:outline-none focus:bg-white border border-transparent focus:border-[#4A6757] transition-all"
               />
               {searchTerm && (
                 <button
@@ -503,22 +673,75 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 </button>
               )}
             </div>
+
+            {/* Filter Pills: All / Unread / Online */}
+            <div className="flex items-center gap-1.5 pt-0.5">
+              <button
+                onClick={() => setConvFilter('all')}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  convFilter === 'all'
+                    ? 'bg-[#2F4438] text-white shadow-xs'
+                    : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                }`}
+              >
+                All ({conversations.length})
+              </button>
+              <button
+                onClick={() => setConvFilter('unread')}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  convFilter === 'unread'
+                    ? 'bg-[#2F4438] text-white shadow-xs'
+                    : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                }`}
+              >
+                Unread
+              </button>
+              <button
+                onClick={() => setConvFilter('online')}
+                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  convFilter === 'online'
+                    ? 'bg-[#2F4438] text-white shadow-xs'
+                    : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                }`}
+              >
+                Online
+              </button>
+            </div>
           </div>
 
           {/* Conversation List Items */}
-          <div className="flex-1 overflow-y-auto divide-y divide-[#F1F5F2]">
+          <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-[#EAEFEA] overscroll-contain touch-pan-y scroll-smooth pb-20 md:pb-4">
             {filteredConversations.length === 0 ? (
-              <div className="p-8 text-center space-y-3 flex flex-col items-center justify-center h-48">
-                <div className="w-12 h-12 rounded-2xl bg-[#E6EDE9] flex items-center justify-center text-[#4A6757]">
-                  <Smile size={22} />
+              <div className="p-4 space-y-4">
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-xs font-semibold text-[#1E2A23]">Start a Conversation</p>
+                  <p className="text-[11px] text-[#7A8A82]">Select a creator below to begin real-time messaging:</p>
                 </div>
-                <p className="text-xs text-[#7A8A82]">No conversations yet.</p>
-                <button
-                  onClick={() => setIsNewChatModalOpen(true)}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-[#2F4438] to-[#4A6757] text-white text-xs font-semibold hover:brightness-110 transition-all shadow-xs cursor-pointer"
-                >
-                  Start a conversation
-                </button>
+                <div className="space-y-1">
+                  {availableUsers.slice(0, 6).map((user) => (
+                    <button
+                      key={user.id}
+                      onClick={() => handleStartChatWithUser(user)}
+                      className="w-full p-2.5 flex items-center gap-3 rounded-2xl hover:bg-[#EBF1ED] text-left transition-all cursor-pointer border border-transparent hover:border-[#8FA89B]/30"
+                    >
+                      <div className="relative shrink-0">
+                        <img
+                          src={user.avatar}
+                          alt={user.name}
+                          className="w-10 h-10 rounded-full object-cover border border-[#2D3732]/10"
+                        />
+                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-[#1E2A23] truncate">{user.name}</span>
+                          {user.verified && <CheckCircle2 size={12} className="text-emerald-700" />}
+                        </div>
+                        <p className="text-[11px] text-[#7A8A82] truncate">@{user.username}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
               </div>
             ) : (
               filteredConversations.map((conv) => {
@@ -527,7 +750,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   <button
                     key={conv.id}
                     onClick={() => handleSelectConv(conv.id)}
-                    className={`w-full p-3.5 sm:p-4 flex items-center gap-3 text-left transition-colors cursor-pointer border-l-3 ${
+                    className={`w-full p-3 sm:p-3.5 md:p-4 flex items-center gap-2.5 sm:gap-3 text-left transition-colors cursor-pointer border-l-3 ${
                       isActive
                         ? 'bg-[#EBF1ED] border-[#4A6757]'
                         : 'border-transparent hover:bg-[#F4F7F5]'
@@ -537,25 +760,25 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       <img
                         src={conv.participant.avatar}
                         alt={conv.participant.name}
-                        className="w-12 h-12 rounded-full object-cover border border-[#2D3732]/10"
+                        className="w-11 h-11 rounded-full object-cover border border-[#2D3732]/10"
                       />
                       {conv.isOnline && (
-                        <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white" />
+                        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
                       )}
                     </div>
 
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between mb-0.5">
                         <span className="text-xs sm:text-sm font-bold text-[#1E2A23] truncate">
                           {conv.participant.name}
                         </span>
-                        <span className="text-[11px] text-[#7A8A82] shrink-0 tabular-nums">
+                        <span className="text-[10px] text-[#7A8A82] shrink-0 tabular-nums">
                           {conv.lastMessage?.timestamp || ''}
                         </span>
                       </div>
 
                       <div className="flex items-center justify-between">
-                        <p className="text-xs text-[#62736B] truncate max-w-[190px]">
+                        <p className="text-xs text-[#62736B] truncate max-w-[180px]">
                           {conv.isTyping ? (
                             <span className="text-emerald-700 font-semibold animate-pulse flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block animate-ping" />
@@ -587,32 +810,35 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         </div>
 
         {/* ========================================================
-            Active Conversation Chat Window (Full height mobile layout)
+            COLUMN 2: Main Active Chat Window
             ======================================================== */}
         {activeConv ? (
           <div
-            className={`h-full flex flex-col md:col-span-8 lg:col-span-8 bg-[#FAFAF9] relative overflow-hidden ${
-              mobileShowChat ? 'flex' : 'hidden md:flex'
-            }`}
+            className={`h-full flex flex-col bg-[#FAFAF9] relative overflow-hidden min-h-0 ${
+              showChatInfo
+                ? 'md:col-span-7 lg:col-span-5 xl:col-span-5'
+                : 'md:col-span-7 lg:col-span-8 xl:col-span-8'
+            } ${mobileShowChat ? 'flex' : 'hidden md:flex'}`}
           >
-            {/* Chat Top Bar Header */}
-            <div className="h-16 px-3 sm:px-6 border-b border-[#E6EDE9] flex items-center justify-between shrink-0 bg-white/80 backdrop-blur-md z-10 shadow-2xs">
-              <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Top Chat Bar Header */}
+            <div className="h-14 sm:h-16 px-3 sm:px-5 border-b border-[#E6EDE9] flex items-center justify-between shrink-0 bg-white/90 backdrop-blur-md z-20 shadow-2xs">
+              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
                 {/* Back button on mobile */}
                 <button
                   onClick={() => {
                     auraAudio.playClick(480, 0.03);
                     setMobileShowChat(false);
                   }}
-                  className="md:hidden p-2 -ml-1 text-[#4A6757] hover:bg-[#F1F5F2] rounded-xl transition-colors cursor-pointer"
+                  className="md:hidden p-2 -ml-1 text-[#4A6757] hover:bg-[#F1F5F2] rounded-xl transition-colors cursor-pointer shrink-0"
                   title="Back to conversations"
                 >
                   <ArrowLeft size={20} className="stroke-[2.5]" />
                 </button>
 
+                {/* Participant Identity */}
                 <div
                   onClick={() => onOpenUserProfile(activeConv.participant)}
-                  className="flex items-center gap-3 cursor-pointer group"
+                  className="flex items-center gap-3 cursor-pointer group min-w-0"
                 >
                   <div className="relative shrink-0">
                     <img
@@ -625,23 +851,23 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     )}
                   </div>
 
-                  <div>
+                  <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
-                      <span className="text-xs sm:text-sm font-bold text-[#1E2A23] group-hover:text-[#4A6757] transition-colors truncate max-w-[130px] sm:max-w-xs">
+                      <span className="text-xs sm:text-sm font-bold text-[#1E2A23] group-hover:text-[#4A6757] transition-colors truncate">
                         {activeConv.participant.name}
                       </span>
                       {activeConv.participant.verified && (
                         <CheckCircle2 size={14} className="text-emerald-700 shrink-0" />
                       )}
                     </div>
-                    <span className="text-[11px] block font-medium">
+                    <span className="text-[11px] block font-medium truncate">
                       {activeConv.isTyping ? (
                         <span className="text-emerald-700 font-semibold animate-pulse flex items-center gap-1">
                           <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block animate-ping" />
                           typing...
                         </span>
                       ) : activeConv.isOnline ? (
-                        <span className="text-[#6A7B73]">Active now</span>
+                        <span className="text-emerald-700 font-medium">Active now</span>
                       ) : (
                         <span className="text-[#8FA89B]">Offline</span>
                       )}
@@ -650,57 +876,115 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 </div>
               </div>
 
-              {/* Call and Profile Actions */}
-              <div className="flex items-center gap-1 sm:gap-2">
+              {/* Chat Actions: Call, Search in Chat, Toggle Info */}
+              <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                {/* Search In Chat Toggle */}
+                <button
+                  onClick={() => {
+                    auraAudio.playClick(500, 0.03);
+                    setIsSearchingInChat(!isSearchingInChat);
+                  }}
+                  className={`p-2 sm:p-2.5 rounded-2xl transition-colors cursor-pointer ${
+                    isSearchingInChat
+                      ? 'bg-[#4A6757] text-white'
+                      : 'text-[#6A7B73] hover:text-[#1E2A23] hover:bg-[#F1F5F2]'
+                  }`}
+                  title="Search inside this chat"
+                >
+                  <Search size={17} />
+                </button>
+
+                {/* Audio Call */}
                 <button
                   onClick={() => {
                     auraAudio.playClick(600, 0.04);
                     onStartCall(activeConv.participant, 'audio');
                   }}
                   className="p-2 sm:p-2.5 rounded-2xl text-[#4A6757] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
-                  title="Audio Call"
+                  title="Start Audio Call"
                 >
-                  <Phone size={18} className="stroke-[2]" />
+                  <Phone size={17} className="stroke-[2.2]" />
                 </button>
+
+                {/* Video Call */}
                 <button
                   onClick={() => {
                     auraAudio.playClick(600, 0.04);
                     onStartCall(activeConv.participant, 'video');
                   }}
                   className="p-2 sm:p-2.5 rounded-2xl text-[#4A6757] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
-                  title="Video Call"
+                  title="Start Video Call"
                 >
-                  <Video size={18} className="stroke-[2]" />
+                  <Video size={17} className="stroke-[2.2]" />
                 </button>
+
+                {/* Info Panel Toggle */}
                 <button
                   onClick={() => {
                     auraAudio.playClick(500, 0.03);
-                    onOpenUserProfile(activeConv.participant);
+                    setShowChatInfo(!showChatInfo);
                   }}
-                  className="p-2 sm:p-2.5 rounded-2xl text-[#6A7B73] hover:text-[#1E2A23] hover:bg-[#F1F5F2] transition-colors cursor-pointer"
-                  title="View Profile"
+                  className={`p-2 sm:p-2.5 rounded-2xl transition-colors cursor-pointer ${
+                    showChatInfo
+                      ? 'bg-[#E6EDE9] text-[#2F4438]'
+                      : 'text-[#6A7B73] hover:text-[#1E2A23] hover:bg-[#F1F5F2]'
+                  }`}
+                  title="Chat Details & Shared Media"
                 >
-                  <UserIcon size={18} />
+                  <Info size={17} />
                 </button>
               </div>
             </div>
 
+            {/* In-Chat Search Bar Drawer */}
+            {isSearchingInChat && (
+              <div className="px-4 py-2 bg-[#F1F5F2] border-b border-[#E6EDE9] flex items-center gap-2 animate-in slide-in-from-top duration-150 shrink-0">
+                <Search size={14} className="text-[#7A8A82]" />
+                <input
+                  type="text"
+                  value={searchInChatQuery}
+                  onChange={(e) => setSearchInChatQuery(e.target.value)}
+                  placeholder="Find in conversation..."
+                  className="flex-1 bg-transparent text-xs text-[#1E2A23] placeholder-[#7A8A82] focus:outline-none"
+                  autoFocus
+                />
+                {searchInChatQuery && (
+                  <span className="text-[10px] text-[#7A8A82]">
+                    {displayedMessages.length} found
+                  </span>
+                )}
+                <button
+                  onClick={() => {
+                    setIsSearchingInChat(false);
+                    setSearchInChatQuery('');
+                  }}
+                  className="text-[#7A8A82] hover:text-[#1E2A23] p-1 cursor-pointer"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
             {/* Chat Messages Feed */}
-            <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-3.5 bg-[#FAFAF9]">
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
-                  <div className="w-12 h-12 rounded-2xl bg-[#E6EDE9] flex items-center justify-center text-[#4A6757] mb-1">
-                    <Smile size={24} />
+            <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-4 md:p-5 space-y-3 sm:space-y-3.5 bg-[#FAFAF9] overscroll-contain touch-pan-y scroll-smooth">
+              {displayedMessages.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2.5">
+                  <div className="w-14 h-14 rounded-3xl bg-[#E6EDE9] flex items-center justify-center text-[#4A6757] shadow-xs">
+                    <Smile size={26} />
                   </div>
                   <h3 className="text-sm font-bold text-[#1E2A23]">
-                    Conversation with {activeConv.participant.name}
+                    {searchInChatQuery
+                      ? 'No matching messages found'
+                      : `Conversation with ${activeConv.participant.name}`}
                   </h3>
-                  <p className="text-xs text-[#7A8A82] max-w-xs">
-                    Send a message, voice note, photo, or attach files. Direct messages sync live across all devices.
+                  <p className="text-xs text-[#7A8A82] max-w-xs leading-relaxed">
+                    {searchInChatQuery
+                      ? 'Try searching with different keywords.'
+                      : 'Send a message, voice note, photo, or document. Messages sync live across all devices.'}
                   </p>
                 </div>
               ) : (
-                messages.map((msg) => {
+                displayedMessages.map((msg) => {
                   const isSelf = msg.senderId === currentUser.id;
                   const isHovered = hoveredMessageId === msg.id;
 
@@ -717,11 +1001,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       }`}
                     >
                       {/* Message Bubble + Action Buttons Container */}
-                      <div className="flex items-center gap-1.5 max-w-[88%] sm:max-w-[72%]">
+                      <div className="flex items-center gap-1.5 max-w-[90%] sm:max-w-[76%]">
                         {/* If self message, action icons appear on the left */}
                         {isSelf && (
                           <div
-                            className={`flex items-center gap-1 transition-opacity ${
+                            className={`flex items-center gap-0.5 transition-opacity ${
                               isHovered || activeReactionMessageId === msg.id
                                 ? 'opacity-100'
                                 : 'opacity-0 md:group-hover:opacity-100'
@@ -730,10 +1014,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleInitiateReply(msg)}
-                              className="p-1 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="Reply"
                             >
-                              <Reply size={14} />
+                              <Reply size={13} />
                             </button>
                             <button
                               type="button"
@@ -742,10 +1026,32 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                   activeReactionMessageId === msg.id ? null : msg.id
                                 )
                               }
-                              className="p-1 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="React"
                             >
-                              <Smile size={14} />
+                              <Smile size={13} />
+                            </button>
+                            {msg.text && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyMessage(msg)}
+                                className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                                title="Copy text"
+                              >
+                                {copiedMessageId === msg.id ? (
+                                  <Check size={13} className="text-emerald-700" />
+                                ) : (
+                                  <Copy size={13} />
+                                )}
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteMessage(msg.id)}
+                              className="p-1.5 rounded-lg text-[#7A8A82] hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                              title="Delete message"
+                            >
+                              <Trash2 size={13} />
                             </button>
                           </div>
                         )}
@@ -753,16 +1059,16 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         {/* Reaction Picker Popover */}
                         {activeReactionMessageId === msg.id && (
                           <div
-                            className={`absolute -top-9 z-20 bg-white border border-[#2D3732]/10 rounded-full px-2 py-1 shadow-lg flex items-center gap-1.5 animate-in fade-in zoom-in-95 ${
+                            className={`absolute -top-9 z-20 bg-white border border-[#2D3732]/10 rounded-full px-2.5 py-1 shadow-lg flex items-center gap-1.5 animate-in fade-in zoom-in-95 ${
                               isSelf ? 'right-2' : 'left-2'
                             }`}
                           >
-                            {['❤️', '👍', '🔥', '😂', '👏'].map((emoji) => (
+                            {['❤️', '👍', '🔥', '😂', '👏', '😮'].map((emoji) => (
                               <button
                                 key={emoji}
                                 type="button"
                                 onClick={() => handleReaction(msg.id, emoji)}
-                                className="hover:scale-125 transition-transform text-sm p-1 cursor-pointer"
+                                className="hover:scale-125 transition-transform text-sm p-0.5 cursor-pointer"
                               >
                                 {emoji}
                               </button>
@@ -800,18 +1106,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                           {/* Text Message */}
                           {msg.type === 'text' && (
-                            <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words">
+                            <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words select-text">
                               {msg.text}
                             </p>
                           )}
 
                           {/* Image Message */}
                           {msg.type === 'image' && msg.file && (
-                            <div className="rounded-2xl overflow-hidden shadow-xs border border-white/20">
+                            <div className="rounded-2xl overflow-hidden shadow-xs border border-white/20 group/img relative">
                               <img
                                 src={msg.file.url}
                                 alt={msg.file.name}
-                                className="w-full max-h-72 object-cover rounded-2xl"
+                                onClick={() => setLightboxImageUrl(msg.file!.url)}
+                                className="w-full max-h-72 object-cover rounded-2xl cursor-pointer hover:opacity-95 transition-opacity"
                               />
                               {msg.text && msg.text !== msg.file.name && (
                                 <p className="p-2 text-xs opacity-90">{msg.text}</p>
@@ -840,7 +1147,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             </div>
                           )}
 
-                          {/* Timestamp and Seen Read-receipt */}
+                          {/* Timestamp and Real-Time Delivery Receipt */}
                           <div
                             className={`flex items-center gap-1.5 text-[10px] pt-0.5 ${
                               isSelf ? 'justify-end text-white/80' : 'justify-start text-[#7A8A82]'
@@ -872,7 +1179,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         {/* If received message, action icons appear on the right */}
                         {!isSelf && (
                           <div
-                            className={`flex items-center gap-1 transition-opacity ${
+                            className={`flex items-center gap-0.5 transition-opacity ${
                               isHovered || activeReactionMessageId === msg.id
                                 ? 'opacity-100'
                                 : 'opacity-0 md:group-hover:opacity-100'
@@ -881,10 +1188,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             <button
                               type="button"
                               onClick={() => handleInitiateReply(msg)}
-                              className="p-1 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="Reply"
                             >
-                              <Reply size={14} />
+                              <Reply size={13} />
                             </button>
                             <button
                               type="button"
@@ -893,11 +1200,25 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                   activeReactionMessageId === msg.id ? null : msg.id
                                 )
                               }
-                              className="p-1 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                              className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="React"
                             >
-                              <Smile size={14} />
+                              <Smile size={13} />
                             </button>
+                            {msg.text && (
+                              <button
+                                type="button"
+                                onClick={() => handleCopyMessage(msg)}
+                                className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                                title="Copy text"
+                              >
+                                {copiedMessageId === msg.id ? (
+                                  <Check size={13} className="text-emerald-700" />
+                                ) : (
+                                  <Copy size={13} />
+                                )}
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -930,37 +1251,37 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             {/* ========================================================
                 Chat Input Bar & Replying Banner
                 ======================================================== */}
-            <div className="border-t border-[#E6EDE9] bg-white/95 backdrop-blur-md">
-              {/* Replying To Banner */}
-              {replyingTo && (
-                <div className="px-4 py-2 bg-[#EBF1ED] border-b border-[#D8E4DC] flex items-center justify-between text-xs animate-in slide-in-from-bottom-2 duration-150">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Reply size={14} className="text-[#4A6757] shrink-0 stroke-[2.5]" />
-                    <div className="truncate">
-                      <span className="font-semibold text-[#1E2A23]">
-                        Replying to{' '}
-                        {replyingTo.senderId === currentUser.id
-                          ? 'yourself'
-                          : replyingTo.senderName || activeConv.participant.name}
-                        :
-                      </span>{' '}
-                      <span className="text-[#62736B] italic">
-                        {replyingTo.text || (replyingTo.type === 'voice' ? 'Voice note' : 'Attachment')}
-                      </span>
+            <div className="border-t border-[#E6EDE9] bg-white/95 backdrop-blur-md shrink-0 sticky bottom-0 z-30 pb-safe shadow-lg">
+              <div className="p-2 sm:p-3 md:p-3.5 w-full bg-white/90 backdrop-blur-sm">
+                {/* Replying To Banner */}
+                {replyingTo && (
+                  <div className="mb-2 px-3 py-1.5 bg-[#EBF1ED] border border-[#D8E4DC] rounded-xl flex items-center justify-between text-xs animate-in slide-in-from-bottom-2 duration-150">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Reply size={14} className="text-[#4A6757] shrink-0 stroke-[2.5]" />
+                      <div className="truncate">
+                        <span className="font-semibold text-[#1E2A23]">
+                          Replying to{' '}
+                          {replyingTo.senderId === currentUser.id
+                            ? 'yourself'
+                            : replyingTo.senderName || activeConv.participant.name}
+                          :
+                        </span>{' '}
+                        <span className="text-[#62736B] italic">
+                          {replyingTo.text || (replyingTo.type === 'voice' ? 'Voice note' : 'Attachment')}
+                        </span>
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={handleCancelReply}
+                      className="p-1 rounded-full text-[#62736B] hover:text-[#1E2A23] hover:bg-black/5 cursor-pointer shrink-0"
+                      title="Cancel reply"
+                    >
+                      <X size={15} />
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleCancelReply}
-                    className="p-1 rounded-full text-[#62736B] hover:text-[#1E2A23] hover:bg-black/5 cursor-pointer shrink-0"
-                    title="Cancel reply"
-                  >
-                    <X size={15} />
-                  </button>
-                </div>
-              )}
+                )}
 
-              <div className="p-2.5 sm:p-3.5">
                 {isRecordingVoice ? (
                   <VoiceRecorderBar
                     onCancel={() => setIsRecordingVoice(false)}
@@ -969,7 +1290,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 ) : (
                   <form
                     onSubmit={handleSendText}
-                    className="flex items-center gap-2 bg-[#F1F5F2] focus-within:bg-white rounded-2xl p-1.5 pl-3 border border-transparent focus-within:border-[#4A6757] transition-all shadow-xs"
+                    className="flex items-center gap-1.5 sm:gap-2 bg-[#F1F5F2] focus-within:bg-white rounded-2xl p-1.5 pl-2.5 sm:pl-3 border border-[#DDE6E1] focus-within:border-[#4A6757] transition-all shadow-xs"
                   >
                     {/* File Upload Hidden Input */}
                     <input
@@ -1033,15 +1354,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             </div>
           </div>
         ) : (
-          <div className="hidden md:flex md:col-span-8 lg:col-span-8 h-full flex-col items-center justify-center p-6 text-center bg-[#FAFAF9]">
-            <div className="w-16 h-16 rounded-3xl bg-[#E6EDE9] flex items-center justify-center text-[#4A6757] mb-4">
+          <div className="hidden md:flex md:col-span-7 lg:col-span-8 xl:col-span-8 h-full flex-col items-center justify-center p-6 text-center bg-[#FAFAF9]">
+            <div className="w-16 h-16 rounded-3xl bg-[#E6EDE9] flex items-center justify-center text-[#4A6757] mb-4 shadow-xs">
               <Smile size={32} />
             </div>
             <h3 className="text-base font-bold text-[#1E2A23] mb-1">
               Select or Start a Conversation
             </h3>
-            <p className="text-xs text-[#7A8A82] max-w-sm mb-4">
-              Direct messages sync live in real-time with full support for replies, voice notes, photos, and files.
+            <p className="text-xs text-[#7A8A82] max-w-sm mb-4 leading-relaxed">
+              Direct messages sync live in real-time with full support for replies, voice notes, photos, and file transfers.
             </p>
             <button
               onClick={() => {
@@ -1054,7 +1375,190 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             </button>
           </div>
         )}
+
+        {/* ========================================================
+            COLUMN 3: Participant Info & Shared Media Drawer
+            ======================================================== */}
+        {showChatInfo && activeConv && (
+          <div className="hidden lg:flex lg:col-span-3 xl:col-span-3 h-full border-l border-[#E6EDE9] bg-white flex-col overflow-y-auto overscroll-contain animate-in slide-in-from-right duration-200">
+            {/* Header */}
+            <div className="p-4 border-b border-[#E6EDE9] flex items-center justify-between">
+              <h3 className="text-xs font-bold text-[#1E2A23] uppercase tracking-wider">Chat Details</h3>
+              <button
+                onClick={() => setShowChatInfo(false)}
+                className="p-1 rounded-lg text-[#7A8A82] hover:text-[#1E2A23] hover:bg-[#F1F5F2] cursor-pointer"
+              >
+                <X size={15} />
+              </button>
+            </div>
+
+            {/* Profile Overview */}
+            <div className="p-5 flex flex-col items-center text-center border-b border-[#E6EDE9]">
+              <div className="relative mb-3">
+                <img
+                  src={activeConv.participant.avatar}
+                  alt={activeConv.participant.name}
+                  className="w-20 h-20 rounded-full object-cover ring-2 ring-[#4A6757]/20"
+                />
+                {activeConv.isOnline && (
+                  <span className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" />
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <h4 className="text-sm font-bold text-[#1E2A23]">{activeConv.participant.name}</h4>
+                {activeConv.participant.verified && (
+                  <CheckCircle2 size={14} className="text-emerald-700" />
+                )}
+              </div>
+              <p className="text-xs text-[#7A8A82] mb-3">@{activeConv.participant.username}</p>
+
+              {activeConv.participant.bio && (
+                <p className="text-xs text-[#4E5F56] max-w-xs leading-relaxed mb-4">
+                  {activeConv.participant.bio}
+                </p>
+              )}
+
+              {/* Quick Action Buttons */}
+              <div className="flex items-center gap-2 w-full pt-1">
+                <button
+                  onClick={() => {
+                    auraAudio.playClick(600, 0.04);
+                    onStartCall(activeConv.participant, 'audio');
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2F4438] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Phone size={14} />
+                  <span>Call</span>
+                </button>
+                <button
+                  onClick={() => {
+                    auraAudio.playClick(600, 0.04);
+                    onStartCall(activeConv.participant, 'video');
+                  }}
+                  className="flex-1 py-2 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2F4438] text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Video size={14} />
+                  <span>Video</span>
+                </button>
+                <button
+                  onClick={() => onOpenUserProfile(activeConv.participant)}
+                  className="p-2 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2F4438] transition-colors cursor-pointer"
+                  title="View full profile"
+                >
+                  <ExternalLink size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* Shared Media Gallery */}
+            <div className="p-4 border-b border-[#E6EDE9] flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <h5 className="text-xs font-bold text-[#1E2A23] flex items-center gap-1.5">
+                  <ImageIcon size={14} className="text-[#4A6757]" />
+                  <span>Shared Photos ({sharedMedia.length})</span>
+                </h5>
+              </div>
+
+              {sharedMedia.length === 0 ? (
+                <p className="text-xs text-[#7A8A82] py-4 text-center">No photos shared yet</p>
+              ) : (
+                <div className="grid grid-cols-3 gap-1.5">
+                  {sharedMedia.slice(0, 9).map((m) => (
+                    <img
+                      key={m.id}
+                      src={m.file!.url}
+                      alt={m.file!.name}
+                      onClick={() => setLightboxImageUrl(m.file!.url)}
+                      className="w-full aspect-square object-cover rounded-xl cursor-pointer hover:opacity-80 transition-opacity border border-black/5"
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Shared Documents */}
+            {sharedDocuments.length > 0 && (
+              <div className="p-4 border-b border-[#E6EDE9]">
+                <h5 className="text-xs font-bold text-[#1E2A23] mb-2 flex items-center gap-1.5">
+                  <FileText size={14} className="text-[#4A6757]" />
+                  <span>Shared Files ({sharedDocuments.length})</span>
+                </h5>
+                <div className="space-y-1.5">
+                  {sharedDocuments.slice(0, 4).map((d) => (
+                    <a
+                      key={d.id}
+                      href={d.file!.url}
+                      download={d.file!.name}
+                      className="flex items-center gap-2 p-2 rounded-xl bg-[#F8FAF9] hover:bg-[#EBF1ED] text-xs text-[#2D3732] truncate transition-colors"
+                    >
+                      <FileText size={13} className="text-[#4A6757] shrink-0" />
+                      <span className="truncate flex-1">{d.file!.name}</span>
+                      <Download size={12} className="text-[#7A8A82] shrink-0" />
+                    </a>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Conversation Settings */}
+            <div className="p-4 space-y-2 mt-auto">
+              {confirmClearChat ? (
+                <div className="p-3 rounded-2xl bg-red-50 border border-red-200 text-center space-y-2">
+                  <p className="text-xs font-semibold text-red-800">Clear chat history?</p>
+                  <p className="text-[11px] text-red-600">All messages will be removed permanently.</p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <button
+                      onClick={handleClearHistory}
+                      className="flex-1 py-1.5 rounded-xl bg-red-600 text-white text-xs font-semibold hover:bg-red-700 cursor-pointer"
+                    >
+                      Yes, Clear
+                    </button>
+                    <button
+                      onClick={() => setConfirmClearChat(false)}
+                      className="flex-1 py-1.5 rounded-xl bg-white text-gray-700 text-xs font-semibold hover:bg-gray-50 border border-gray-200 cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmClearChat(true)}
+                  className="w-full py-2.5 px-3 rounded-2xl text-xs font-semibold text-red-600 hover:bg-red-50 transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Trash2 size={14} />
+                  <span>Clear Conversation History</span>
+                </button>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ========================================================
+          Image Lightbox Modal
+          ======================================================== */}
+      {lightboxImageUrl && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4"
+          onClick={() => setLightboxImageUrl(null)}
+        >
+          <div className="relative max-w-4xl max-h-[90vh] flex flex-col items-center">
+            <button
+              onClick={() => setLightboxImageUrl(null)}
+              className="absolute -top-12 right-0 p-2 text-white/80 hover:text-white cursor-pointer"
+            >
+              <X size={24} />
+            </button>
+            <img
+              src={lightboxImageUrl}
+              alt="Preview"
+              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        </div>
+      )}
 
       {/* ========================================================
           New Chat Modal: Search and initiate chat with any user

@@ -76,6 +76,7 @@ import {
   getAllUsers,
   getSuggestedUsers,
 } from './services/userService';
+import { seedCommunityDataIfEmpty } from './services/seedService';
 
 export default function App() {
   const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
@@ -83,6 +84,7 @@ export default function App() {
   // Navigation & View state
   const [currentTab, setCurrentTab] = useState<'feed' | 'reels' | 'messages' | 'explore' | 'profile'>('feed');
   const [targetChatUser, setTargetChatUser] = useState<User | null>(null);
+  const [isMobileChatActive, setIsMobileChatActive] = useState(false);
 
   // Firestore Real-time Data state
   const [posts, setPosts] = useState<Post[]>([]);
@@ -171,8 +173,11 @@ export default function App() {
     }
   };
 
-  // Load registered community creators from Firestore
+  // Load registered community creators from Firestore & verify seed data
   useEffect(() => {
+    seedCommunityDataIfEmpty(currentUser || undefined).catch((err) =>
+      console.warn('Initial community data seed:', err)
+    );
     if (!currentUser) return;
     refreshCommunity(currentUser.id);
   }, [currentUser?.id]);
@@ -766,9 +771,13 @@ export default function App() {
   );
 
   return (
-    <div className="min-h-screen bg-[#FAFAF9] text-[#2D3732] flex flex-col md:flex-row font-sans antialiased">
+    <div
+      className={`bg-[#FAFAF9] text-[#2D3732] flex flex-col md:flex-row font-sans antialiased ${
+        currentTab === 'messages' ? 'h-screen md:h-screen overflow-hidden' : 'min-h-screen'
+      }`}
+    >
       {/* Left Aside Navigation: Powerful Desktop & Tablet View */}
-      <div className="hidden md:block">
+      <div className="hidden md:block shrink-0 h-full">
         <SidebarNav
           currentTab={currentTab}
           currentUser={currentUser}
@@ -794,9 +803,15 @@ export default function App() {
       </div>
 
       {/* Main Content Wrapper */}
-      <div className="flex-1 flex flex-col min-w-0 pb-16 md:pb-6">
+      <div
+        className={`flex-1 flex flex-col min-w-0 ${
+          currentTab === 'messages'
+            ? 'h-full overflow-hidden'
+            : 'pb-16 md:pb-6'
+        }`}
+      >
         {/* Mobile & Tablet Top Navbar */}
-        <div className="md:hidden">
+        <div className={`md:hidden shrink-0 ${currentTab === 'messages' ? 'hidden' : ''}`}>
           <Navbar
             currentTab={currentTab}
             currentUser={currentUser}
@@ -816,7 +831,11 @@ export default function App() {
         </div>
 
         {/* Main Content Area based on Tab */}
-        <main className="w-full flex-1">
+        <main
+          className={`w-full flex-1 ${
+            currentTab === 'messages' ? 'h-full min-h-0 overflow-hidden' : ''
+          }`}
+        >
         {currentTab === 'feed' && (
           <Feed
             posts={posts}
@@ -871,6 +890,8 @@ export default function App() {
             onOpenUserProfile={handleOpenUserProfile}
             initialTargetUser={targetChatUser}
             onOpenAuth={() => setIsSettingsOpen(true)}
+            onMobileChatActiveChange={setIsMobileChatActive}
+            onNavigateTab={(tab) => setCurrentTab(tab)}
           />
         )}
 
@@ -916,18 +937,20 @@ export default function App() {
       </main>
       </div>
 
-      {/* Mobile Bottom Navigation */}
-      <BottomNav
-        currentTab={currentTab}
-        unreadMessagesCount={totalUnreadMessages}
-        onSelectTab={(tab) => {
-          if (tab === 'profile') {
-            setViewingUser(currentUser);
-          }
-          setCurrentTab(tab);
-        }}
-        onOpenCreatePost={() => setIsCreatePostOpen(true)}
-      />
+      {/* Mobile Bottom Navigation - hidden when chatting actively to let input attach to screen bottom */}
+      {!(currentTab === 'messages' && isMobileChatActive) && (
+        <BottomNav
+          currentTab={currentTab}
+          unreadMessagesCount={totalUnreadMessages}
+          onSelectTab={(tab) => {
+            if (tab === 'profile') {
+              setViewingUser(currentUser);
+            }
+            setCurrentTab(tab);
+          }}
+          onOpenCreatePost={() => setIsCreatePostOpen(true)}
+        />
+      )}
 
       {/* Modals & Overlays */}
       {isStoryViewerOpen && (

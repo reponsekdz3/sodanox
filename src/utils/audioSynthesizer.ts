@@ -80,6 +80,35 @@ class AudioSynthesizer {
   }
 
   /**
+   * Gentle, two-tone notification audio alert
+   */
+  public playNotification() {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+
+      [587.33, 880].forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, ctx.currentTime + i * 0.1);
+
+        gain.gain.setValueAtTime(0.05, ctx.currentTime + i * 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + i * 0.1 + 0.4);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(ctx.currentTime + i * 0.1);
+        osc.stop(ctx.currentTime + i * 0.1 + 0.4);
+      });
+    } catch {
+      // Audio suppressed
+    }
+  }
+
+  /**
    * Set ambient studio soundscape
    */
   public setAmbient(mode: 'off' | 'rain' | 'vinyl' | 'binaural' | 'forest') {

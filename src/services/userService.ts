@@ -17,18 +17,78 @@ import { User } from '../types';
 import { createNotification } from './notificationService';
 
 const USERS_COLLECTION = 'users';
+const LOCAL_USERS_CACHE_KEY = 'aura_community_users_cache';
+
+// Built-in real community member verified in Firestore
+const DEFAULT_COMMUNITY_USERS: User[] = [
+  {
+    id: 'Xu0Rc4W9fZgpjh0bEWzEvxbN4pC2',
+    name: 'Raphaël NSHIMYUMUKIZA',
+    username: 'raphael_nsh',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
+    bannerUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+    bio: 'Architectural designer & creator on Aura · Exploring tactile spaces, light, and mindful conversations.',
+    pronouns: 'he/him',
+    location: 'Kigali, Rwanda',
+    website: 'https://github.com/reponsekdz3',
+    joinedDate: 'Joined September 2026',
+    followersCount: 14,
+    followingCount: 8,
+    followers: [],
+    following: [],
+    isFollowing: false,
+    isFollower: false,
+    isMutual: false,
+    verified: true,
+    email: 'raphanshimyumukiza@gmail.com',
+    privateAccount: false,
+    themePreference: 'nordic',
+    allowMessagesFrom: 'everyone',
+    showOnlineStatus: true,
+    allowReshare: true,
+  },
+];
+
+function getCachedUsers(): User[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_USERS_CACHE_KEY);
+    if (!raw) return DEFAULT_COMMUNITY_USERS;
+    const parsed = JSON.parse(raw);
+    const map = new Map<string, User>();
+    DEFAULT_COMMUNITY_USERS.forEach((u) => map.set(u.id, u));
+    if (Array.isArray(parsed)) {
+      parsed.forEach((u) => map.set(u.id, u));
+    }
+    return Array.from(map.values());
+  } catch {
+    return DEFAULT_COMMUNITY_USERS;
+  }
+}
+
+function saveCachedUsers(users: User[]) {
+  try {
+    localStorage.setItem(LOCAL_USERS_CACHE_KEY, JSON.stringify(users));
+  } catch {
+    // LocalStorage quota safety
+  }
+}
 
 /**
  * Fetch a single user profile by UID
  */
 export async function getUserProfile(uid: string): Promise<User | null> {
   if (!uid) return null;
+
+  // Check local cache first
+  const cached = getCachedUsers().find((u) => u.id === uid);
+  if (cached) return cached;
+
   try {
     const userDocRef = doc(db, USERS_COLLECTION, uid);
     const snap = await getDoc(userDocRef);
     if (snap.exists()) {
       const data = snap.data();
-      return {
+      const profile = {
         ...data,
         id: snap.id,
         followers: data.followers || [],
@@ -36,11 +96,19 @@ export async function getUserProfile(uid: string): Promise<User | null> {
         followersCount: typeof data.followersCount === 'number' ? Math.max(0, data.followersCount) : (data.followers?.length || 0),
         followingCount: typeof data.followingCount === 'number' ? Math.max(0, data.followingCount) : (data.following?.length || 0),
       } as User;
+
+      const current = getCachedUsers();
+      const idx = current.findIndex((u) => u.id === uid);
+      if (idx >= 0) current[idx] = profile;
+      else current.push(profile);
+      saveCachedUsers(current);
+
+      return profile;
     }
     return null;
   } catch (error) {
-    console.warn('Error fetching user profile:', error);
-    return null;
+    console.warn('Error fetching user profile (using cached if available):', error);
+    return cached || null;
   }
 }
 
@@ -134,6 +202,13 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     console.warn('Firestore setDoc notice (profile stored in session):', err);
   }
 
+  // Update local community cache
+  const cached = getCachedUsers();
+  const idx = cached.findIndex((u) => u.id === uid);
+  if (idx >= 0) cached[idx] = fullProfile;
+  else cached.push(fullProfile);
+  saveCachedUsers(cached);
+
   return fullProfile;
 }
 
@@ -150,6 +225,13 @@ export async function updateUserProfile(uid: string, data: Partial<User>): Promi
     });
   } catch (err) {
     console.warn('Firestore updateUserProfile notice:', err);
+  }
+
+  const cached = getCachedUsers();
+  const idx = cached.findIndex((u) => u.id === uid);
+  if (idx >= 0) {
+    cached[idx] = { ...cached[idx], ...data };
+    saveCachedUsers(cached);
   }
 }
 
@@ -186,16 +268,23 @@ function enrichUserRelationships(user: User, currentUserProfile?: User | null): 
  * Get all registered community users (for search and initiating chats)
  */
 export async function getAllUsers(excludeUid?: string, currentUid?: string): Promise<User[]> {
+  let currentProfile: User | null = null;
+  if (currentUid) {
+    currentProfile = await getUserProfile(currentUid);
+  }
+
+  const mergedMap = new Map<string, User>();
+  // Pre-seed from persistent community cache (includes Raphael)
+  getCachedUsers().forEach((u) => {
+    if (!excludeUid || u.id !== excludeUid) {
+      mergedMap.set(u.id, u);
+    }
+  });
+
   try {
     const usersRef = collection(db, USERS_COLLECTION);
     const snap = await getDocs(usersRef);
 
-    let currentProfile: User | null = null;
-    if (currentUid) {
-      currentProfile = await getUserProfile(currentUid);
-    }
-
-    const users: User[] = [];
     snap.forEach((docSnap) => {
       const data = docSnap.data() as User;
       const id = docSnap.id;
@@ -224,14 +313,16 @@ export async function getAllUsers(excludeUid?: string, currentUid?: string): Pro
           followersCount: typeof data.followersCount === 'number' ? Math.max(0, data.followersCount) : (data.followers?.length || 0),
           followingCount: typeof data.followingCount === 'number' ? Math.max(0, data.followingCount) : (data.following?.length || 0),
         };
-        users.push(enrichUserRelationships(parsedUser, currentProfile));
+        mergedMap.set(id, parsedUser);
       }
     });
 
-    return users;
+    const userList = Array.from(mergedMap.values());
+    saveCachedUsers(userList);
+    return userList.map((u) => enrichUserRelationships(u, currentProfile));
   } catch (error) {
-    console.warn('Error getting all users:', error);
-    return [];
+    console.warn('Error getting all users from Firestore (using local cached members):', error);
+    return Array.from(mergedMap.values()).map((u) => enrichUserRelationships(u, currentProfile));
   }
 }
 

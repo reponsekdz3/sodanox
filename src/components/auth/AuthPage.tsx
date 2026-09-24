@@ -396,8 +396,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 setError(null);
                 setIsSubmitting(true);
                 try {
-                  const fastEmail = email.trim() || 'valenshagabimana05@gmail.com';
-                  const fastName = name.trim() || 'Valens Hagabimana';
+                  const fastEmail = email.trim() || 'reponsekdz01@gmail.com';
+                  const fastName = name.trim() || 'Reponse KDZ';
                   await signInWithFastPass(fastEmail, fastName);
                   auraAudio.playChime();
                   onSuccess?.();
@@ -412,7 +412,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-[#E6EDE9] hover:bg-[#d8e3dc] text-xs font-semibold text-[#2D3732] transition-all cursor-pointer border border-[#8FA89B]/30 disabled:opacity-50"
             >
               <Zap size={14} className="text-[#5E7C6E]" />
-              <span>Instant 1-Click Pass (Verified Member)</span>
+              <span>Instant 1-Click Pass ({email.trim() ? email.trim() : 'Verified Developer Account'})</span>
             </button>
           </div>
 
