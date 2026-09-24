@@ -1,7 +1,7 @@
 /**
  * Aura Browser Notification System
  * High-performance Web Notifications API integration with:
- * - Native desktop & browser popups
+ * - Native desktop & browser popups (via Service Worker showNotification & Notification constructor)
  * - Real Web Audio API notification chimes
  * - In-app floating toast dispatch
  * - Deep linking to chats, calls, and posts on click
@@ -14,6 +14,8 @@ export interface BrowserNotificationOptions {
   tag?: string;
   data?: any;
   silent?: boolean;
+  renotify?: boolean;
+  requireInteraction?: boolean;
   onClick?: () => void;
 }
 
@@ -80,7 +82,7 @@ export function playNotificationChime(pitch: 'high' | 'gentle' | 'call' = 'high'
 
     const baseFreq = pitch === 'high' ? 880 : pitch === 'call' ? 587.33 : 659.25;
 
-    // Harmonic two-tone chime (major third / fifth interval)
+    // Harmonic multi-tone chime (major third / fifth interval)
     const tones = pitch === 'call' ? [587.33, 880, 1174.66] : [baseFreq, baseFreq * 1.25];
 
     tones.forEach((freq, idx) => {
@@ -103,7 +105,7 @@ export function playNotificationChime(pitch: 'high' | 'gentle' | 'call' = 'high'
 
     setTimeout(() => {
       if (ctx.state !== 'closed') ctx.close().catch(() => {});
-    }, 1000);
+    }, 1200);
   } catch {
     // Ignore audio context errors in restricted environments
   }
@@ -134,7 +136,7 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
     if (result === 'granted') {
       playNotificationChime('gentle');
       // Show confirmation
-      sendBrowserNotification('Notifications Enabled 🎉', {
+      await sendBrowserNotification('Notifications Enabled 🎉', {
         body: 'You will now receive instant desktop notifications for messages, calls, and updates on Aura.',
         tag: 'aura-welcome',
       });
@@ -147,9 +149,26 @@ export async function requestBrowserNotificationPermission(): Promise<Notificati
 }
 
 /**
+ * Global map for notification click callbacks
+ */
+const notificationCallbacks = new Map<string, () => void>();
+
+if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    if (event.data?.type === 'NOTIFICATION_CLICK' && event.data.tag) {
+      const cb = notificationCallbacks.get(event.data.tag);
+      if (cb) {
+        cb();
+        notificationCallbacks.delete(event.data.tag);
+      }
+    }
+  });
+}
+
+/**
  * Send a browser desktop notification with in-app toast fallback
  */
-export function sendBrowserNotification(
+export async function sendBrowserNotification(
   title: string,
   options: BrowserNotificationOptions
 ) {
@@ -169,27 +188,62 @@ export function sendBrowserNotification(
 
   // If native Notification API is supported and granted, launch native desktop popup
   if (isBrowserNotificationSupported() && Notification.permission === 'granted') {
-    try {
-      const defaultIcon = '/pwa-192x192.png';
-      const notification = new Notification(title, {
-        body: options.body,
-        icon: options.icon || defaultIcon,
-        badge: '/pwa-192x192.png',
-        tag: options.tag || `aura_${Date.now()}`,
-        data: options.data,
-        silent: true, // We handle the Web Audio sound ourselves for consistency
-      });
+    const defaultIcon = '/pwa-192x192.png';
+    const tag = options.tag || `aura_${Date.now()}`;
 
-      notification.onclick = (e) => {
-        e.preventDefault();
-        window.focus();
-        if (options.onClick) {
-          options.onClick();
+    if (options.onClick) {
+      notificationCallbacks.set(tag, options.onClick);
+    }
+
+    let shownViaServiceWorker = false;
+
+    // Prefer Service Worker registration for persistent OS popups on Desktop & Android PWA
+    if ('serviceWorker' in navigator) {
+      try {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration && 'showNotification' in registration) {
+          const swOptions = {
+            body: options.body,
+            icon: options.icon || defaultIcon,
+            badge: options.badge || defaultIcon,
+            tag,
+            data: options.data,
+            renotify: options.renotify ?? true,
+            requireInteraction: options.requireInteraction ?? false,
+          } as NotificationOptions;
+          await registration.showNotification(title, swOptions);
+          shownViaServiceWorker = true;
         }
-        notification.close();
-      };
-    } catch (err) {
-      console.warn('Native notification spawn failed:', err);
+      } catch (swErr) {
+        console.warn('SW showNotification fallback:', swErr);
+      }
+    }
+
+    // Fallback to standard Notification constructor
+    if (!shownViaServiceWorker) {
+      try {
+        const standardOptions = {
+          body: options.body,
+          icon: options.icon || defaultIcon,
+          badge: options.badge || defaultIcon,
+          tag,
+          data: options.data,
+          renotify: options.renotify ?? true,
+          requireInteraction: options.requireInteraction ?? false,
+        } as NotificationOptions;
+        const notification = new Notification(title, standardOptions);
+
+        notification.onclick = (e) => {
+          e.preventDefault();
+          window.focus();
+          if (options.onClick) {
+            options.onClick();
+          }
+          notification.close();
+        };
+      } catch (err) {
+        console.warn('Native notification spawn failed:', err);
+      }
     }
   }
 }
@@ -198,9 +252,12 @@ export function sendBrowserNotification(
  * Quick trigger to test notifications directly from the UI
  */
 export function triggerTestNotification() {
-  sendBrowserNotification('Aura Social Test Notification', {
-    body: 'Real-time notifications are active and ready! You will be alerted when someone messages or calls you.',
+  sendBrowserNotification('Aura Social Desktop Alert', {
+    body: 'Real-time notifications are active and ready! You will be alerted when creators message or call you.',
     icon: '/pwa-192x192.png',
     tag: 'test-notification',
+    onClick: () => {
+      window.focus();
+    },
   });
 }

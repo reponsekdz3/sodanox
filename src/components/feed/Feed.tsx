@@ -5,6 +5,7 @@ import { PostCard } from './PostCard';
 import { RightAside } from '../layout/RightAside';
 import { Sparkles, Hash, X } from 'lucide-react';
 import { calculateTrendingTopics } from '../../services/trendingService';
+import { BrowserNotificationBanner } from '../common/BrowserNotificationBanner';
 
 interface FeedProps {
   posts: Post[];
@@ -104,6 +105,9 @@ export const Feed: React.FC<FeedProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* Main Feed Column */}
         <div className="lg:col-span-8">
+          {/* Real Browser Notification & Desktop Popups Banner */}
+          <BrowserNotificationBanner />
+
           {/* Create Post Prompt Card */}
           <div className="bg-[#F1F5F2] rounded-3xl p-4 sm:p-5 mb-6 shadow-soft flex items-center gap-3 border border-[#E6EDE9]">
             <img

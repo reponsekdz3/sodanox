@@ -568,6 +568,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    stageFile(file);
+    if (imageInputRef.current) {
+      imageInputRef.current.value = '';
+    }
+  };
+
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -874,7 +883,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             className={`h-full flex flex-col bg-[#FAFAF9] relative overflow-hidden min-h-0 transition-all duration-200 ${
               isSidebarCollapsed
                 ? showChatInfo
-                  ? 'md:col-span-8 lg:col-span-9 xl:col-span-9'
+                  ? 'md:col-span-12 lg:col-span-9 xl:col-span-9'
                   : 'md:col-span-12 lg:col-span-12 xl:col-span-12'
                 : showChatInfo
                 ? 'md:col-span-7 lg:col-span-5 xl:col-span-5'
@@ -1373,6 +1382,54 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   </div>
                 )}
 
+                {/* Staged Attachment Preview Card */}
+                {stagedAttachment && (
+                  <div className="mb-2 p-2.5 bg-[#EBF1ED] border border-[#C6D8CE] rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-in slide-in-from-bottom-2 duration-150">
+                    <div className="flex items-center gap-3 min-w-0">
+                      {stagedAttachment.isImage ? (
+                        <div className="w-12 h-12 rounded-xl overflow-hidden bg-black/10 shrink-0 border border-white/60">
+                          <img
+                            src={stagedAttachment.dataUrl}
+                            alt={stagedAttachment.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="w-11 h-11 rounded-xl bg-[#2F4438] text-white flex items-center justify-center shrink-0">
+                          <FileText size={20} />
+                        </div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-bold text-[#1E2A23] truncate">
+                            {stagedAttachment.name}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded-md bg-white/70 text-[10px] font-mono text-[#4A6757] font-semibold uppercase shrink-0">
+                            {stagedAttachment.size}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-[#62736B] truncate">
+                          {stagedAttachment.isImage
+                            ? 'Photo ready · Press send or add a caption'
+                            : 'Document ready · Press send or add a caption'}
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        auraAudio.playClick(400, 0.03);
+                        setStagedAttachment(null);
+                      }}
+                      className="p-1.5 rounded-xl text-[#62736B] hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer shrink-0"
+                      title="Discard attachment"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
+
                 {isRecordingVoice ? (
                   <VoiceRecorderBar
                     onCancel={() => setIsRecordingVoice(false)}
@@ -1381,26 +1438,48 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                 ) : (
                   <form
                     onSubmit={handleSendText}
-                    className="flex items-center gap-1.5 sm:gap-2 bg-[#F1F5F2] focus-within:bg-white rounded-2xl p-1.5 pl-2.5 sm:pl-3 border border-[#DDE6E1] focus-within:border-[#4A6757] transition-all shadow-xs"
+                    className="flex items-center gap-1.5 sm:gap-2 bg-[#F1F5F2] focus-within:bg-white rounded-2xl p-1.5 pl-2 sm:pl-2.5 border border-[#DDE6E1] focus-within:border-[#4A6757] transition-all shadow-xs"
                   >
-                    {/* File Upload Hidden Input */}
+                    {/* Hidden Image Input */}
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                    />
+
+                    {/* Hidden Document / File Upload Input */}
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept="image/*,.pdf,.doc,.docx,.zip,.txt,.ts,.json"
+                      accept=".pdf,.doc,.docx,.zip,.rar,.tar.gz,.txt,.ts,.tsx,.json,.xlsx,.csv"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
 
-                    {/* Attachment Icon Button */}
+                    {/* Image Attachment Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        auraAudio.playClick(500, 0.03);
+                        imageInputRef.current?.click();
+                      }}
+                      className="p-1.5 text-[#55635C] hover:text-[#1E2A23] hover:bg-white rounded-xl transition-colors shrink-0 cursor-pointer"
+                      title="Send photo / image"
+                    >
+                      <ImageIcon size={18} />
+                    </button>
+
+                    {/* Document Attachment Button */}
                     <button
                       type="button"
                       onClick={() => {
                         auraAudio.playClick(500, 0.03);
                         fileInputRef.current?.click();
                       }}
-                      className="p-1.5 text-[#7A8A82] hover:text-[#1E2A23] transition-colors shrink-0 cursor-pointer"
-                      title="Attach image or document"
+                      className="p-1.5 text-[#55635C] hover:text-[#1E2A23] hover:bg-white rounded-xl transition-colors shrink-0 cursor-pointer"
+                      title="Attach document / file"
                     >
                       <Paperclip size={18} />
                     </button>
@@ -1411,12 +1490,16 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       type="text"
                       value={inputText}
                       onChange={handleTextChange}
-                      placeholder={`Message ${activeConv.participant.name}...`}
+                      placeholder={
+                        stagedAttachment
+                          ? `Add caption for ${stagedAttachment.isImage ? 'photo' : 'file'}...`
+                          : `Message ${activeConv.participant.name}...`
+                      }
                       className="flex-1 bg-transparent text-xs sm:text-sm text-[#1E2A23] placeholder-[#7A8A82] focus:outline-none px-1"
                     />
 
                     {/* Voice Note / Send Button */}
-                    {inputText.trim().length > 0 ? (
+                    {inputText.trim().length > 0 || stagedAttachment !== null ? (
                       <button
                         type="submit"
                         disabled={isSending}
@@ -1424,7 +1507,9 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         title="Send message"
                       >
                         <Send size={15} className="stroke-[2.5]" />
-                        <span className="hidden sm:inline text-xs font-semibold">Send</span>
+                        <span className="hidden sm:inline text-xs font-semibold">
+                          {stagedAttachment ? (stagedAttachment.isImage ? 'Send Photo' : 'Send File') : 'Send'}
+                        </span>
                       </button>
                     ) : (
                       <button
@@ -1469,19 +1554,26 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
         {/* ========================================================
             COLUMN 3: Participant Info & Shared Media Drawer
+            Slide-over drawer on Mobile/Tablet, docked on Desktop
             ======================================================== */}
         {showChatInfo && activeConv && (
-          <div className="hidden lg:flex lg:col-span-3 xl:col-span-3 h-full border-l border-[#E6EDE9] bg-white flex-col overflow-y-auto overscroll-contain animate-in slide-in-from-right duration-200">
-            {/* Header */}
-            <div className="p-4 border-b border-[#E6EDE9] flex items-center justify-between">
-              <h3 className="text-xs font-bold text-[#1E2A23] uppercase tracking-wider">Chat Details</h3>
-              <button
-                onClick={() => setShowChatInfo(false)}
-                className="p-1 rounded-lg text-[#7A8A82] hover:text-[#1E2A23] hover:bg-[#F1F5F2] cursor-pointer"
-              >
-                <X size={15} />
-              </button>
-            </div>
+          <>
+            {/* Tablet & Mobile Slide-over Backdrop */}
+            <div
+              className="lg:hidden fixed inset-0 z-40 bg-[#1E2A23]/40 backdrop-blur-2xs transition-opacity animate-in fade-in duration-200"
+              onClick={() => setShowChatInfo(false)}
+            />
+            <div className="fixed inset-y-0 right-0 z-50 w-80 max-w-[85vw] shadow-2xl lg:shadow-none lg:static lg:z-auto lg:flex lg:col-span-3 xl:col-span-3 h-full border-l border-[#E6EDE9] bg-white flex flex-col overflow-y-auto overscroll-contain animate-in slide-in-from-right duration-200">
+              {/* Header */}
+              <div className="p-4 border-b border-[#E6EDE9] flex items-center justify-between">
+                <h3 className="text-xs font-bold text-[#1E2A23] uppercase tracking-wider">Chat Details</h3>
+                <button
+                  onClick={() => setShowChatInfo(false)}
+                  className="p-1.5 rounded-xl text-[#7A8A82] hover:text-[#1E2A23] hover:bg-[#F1F5F2] cursor-pointer"
+                >
+                  <X size={16} />
+                </button>
+              </div>
 
             {/* Profile Overview */}
             <div className="p-5 flex flex-col items-center text-center border-b border-[#E6EDE9]">
@@ -1622,7 +1714,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               )}
             </div>
           </div>
-        )}
+        </>
+      )}
       </div>
 
       {/* ========================================================

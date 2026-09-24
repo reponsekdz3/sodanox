@@ -5,7 +5,7 @@ import { PWAInstallModal } from './PWAInstallModal';
 import { auraAudio } from '../../utils/audioSynthesizer';
 
 interface PWAInstallButtonProps {
-  variant?: 'compact' | 'sidebar' | 'header';
+  variant?: 'compact' | 'sidebar' | 'header' | 'menu';
   className?: string;
 }
 
@@ -20,6 +20,29 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     auraAudio.playClick(580, 0.04);
     setModalOpen(true);
   };
+
+  if (variant === 'menu') {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={handleClick}
+          className={`w-full px-4 py-2.5 text-left text-xs font-medium text-[#2D3732] hover:bg-[#F1F5F2] flex items-center justify-between cursor-pointer ${className}`}
+        >
+          <div className="flex items-center gap-2.5">
+            <Laptop size={15} className="text-[#5E7C6E]" />
+            <span>{isInstalled ? 'Aura Desktop App' : 'Install Aura on PC (PWA)'}</span>
+          </div>
+          {isInstallable && (
+            <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full font-bold">
+              Ready
+            </span>
+          )}
+        </button>
+        <PWAInstallModal isOpen={modalOpen} onClose={() => setModalOpen(false)} />
+      </>
+    );
+  }
 
   if (isInstalled && variant === 'header') {
     return (

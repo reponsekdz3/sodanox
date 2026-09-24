@@ -3,6 +3,7 @@ import { User, Post, Reel, Story, Message, Poll } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { INITIAL_CREATORS } from '../services/seedService';
 import { auraAudio } from '../utils/audioSynthesizer';
+import { extractUrls } from '../components/messages/LinkPreviewCard';
 
 describe('Data Modeling & Architecture Verification', () => {
   it('validates User entity contract and required fields', () => {
@@ -272,4 +273,31 @@ describe('Story Highlights & Multimedia Curation', () => {
     expect(highlight.title).toBe('Kyoto Archive');
   });
 });
+
+describe('Browser Notifications & Rich Messaging Media', () => {
+  it('extracts valid HTTP/HTTPS URLs from message text for live preview cards', () => {
+    const textWithUrls = 'Take a look at https://example.com/design and http://aurasocial.org/feed!';
+    const urls = extractUrls(textWithUrls);
+    expect(urls).toHaveLength(2);
+    expect(urls[0]).toBe('https://example.com/design');
+    expect(urls[1]).toBe('http://aurasocial.org/feed!');
+  });
+
+  it('handles empty message texts safely in extractUrls', () => {
+    expect(extractUrls('')).toEqual([]);
+    expect(extractUrls('Just regular chat with no link')).toEqual([]);
+  });
+
+  it('validates VoiceNoteMeta and waveform serialization contract', () => {
+    const sampleVoice = {
+      duration: 5,
+      waveform: [20, 45, 60, 80, 50, 30, 70, 90, 40],
+      audioUrl: 'data:audio/webm;base64,GkXfo59ChoEBQveBAULygQ8tGAE88tGAAU10bQ==',
+    };
+    expect(sampleVoice.duration).toBe(5);
+    expect(sampleVoice.waveform.length).toBe(9);
+    expect(sampleVoice.audioUrl).toMatch(/^data:audio/);
+  });
+});
+
 

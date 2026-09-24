@@ -24,6 +24,7 @@ import {
 } from '@heroicons/react/24/solid';
 import { auraAudio } from '../../utils/audioSynthesizer';
 import { ModernAvatar } from '../common/ModernAvatar';
+import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface NavbarProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -259,6 +260,9 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </button>
 
+          {/* PWA PC Desktop App Installation Trigger */}
+          <PWAInstallButton variant="header" className="hidden sm:flex" />
+
           {/* Modern and Powerful Post / Add Action Button with Hero PlusIcon from @heroicons/react */}
           <button
             type="button"
@@ -340,6 +344,8 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <Settings size={15} className="text-[#5E7C6E]" />
                     <span>Settings & Privacy</span>
                   </button>
+
+                  <PWAInstallButton variant="menu" />
                 </div>
 
                 {/* Real Logout Item */}

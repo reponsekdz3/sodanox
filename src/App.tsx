@@ -85,6 +85,7 @@ import {
   getAllUsers,
   getSuggestedUsers,
 } from './services/userService';
+import { sendBrowserNotification } from './services/browserNotificationService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from './components/common/ModernAvatar';
 
 export default function App() {
@@ -119,6 +120,20 @@ export default function App() {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
+
+  // Message notification tracking & PWA shortcuts
+  const prevSeenMsgIdsRef = React.useRef<Set<string>>(new Set());
+  const hasInitialConvsLoaded = React.useRef(false);
+
+  // Parse PWA desktop shortcuts / parameters (?tab=messages, ?tab=explore, etc.)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const tabParam = params.get('tab');
+    if (tabParam && ['feed', 'reels', 'messages', 'explore', 'profile'].includes(tabParam)) {
+      setCurrentTab(tabParam as any);
+    }
+  }, []);
 
   // Current active user (guaranteed non-null when authenticated)
   const currentUser: User | null = useMemo(() => {
@@ -252,6 +267,42 @@ export default function App() {
       currentUser.id,
       (convs) => {
         setConversations(convs);
+
+        // Check for new incoming messages to trigger real-time browser desktop pop-up
+        if (!hasInitialConvsLoaded.current) {
+          hasInitialConvsLoaded.current = true;
+          convs.forEach((c) => {
+            if (c.lastMessage?.id) prevSeenMsgIdsRef.current.add(c.lastMessage.id);
+          });
+        } else {
+          convs.forEach((c) => {
+            const lastMsg = c.lastMessage;
+            if (lastMsg?.id && !prevSeenMsgIdsRef.current.has(lastMsg.id)) {
+              prevSeenMsgIdsRef.current.add(lastMsg.id);
+              if (lastMsg.senderId !== currentUser.id) {
+                const bodyText =
+                  lastMsg.type === 'voice'
+                    ? '🎙️ Sent a voice note'
+                    : lastMsg.type === 'image'
+                    ? '📷 Sent a photo'
+                    : lastMsg.type === 'file'
+                    ? `📎 ${lastMsg.file?.name || 'Sent a file'}`
+                    : lastMsg.text || 'Sent you a message';
+
+                sendBrowserNotification(c.participant.name, {
+                  body: bodyText,
+                  icon: c.participant.avatar,
+                  tag: `conv_${c.id}_${lastMsg.id}`,
+                  onClick: () => {
+                    window.focus();
+                    setTargetChatUser(c.participant);
+                    setCurrentTab('messages');
+                  },
+                });
+              }
+            }
+          });
+        }
       },
       (err) => console.warn('Convs sync error:', err)
     );
@@ -719,6 +770,18 @@ export default function App() {
     const unsub = subscribeToIncomingCalls(currentUser.id, (incoming) => {
       if (incoming && (!activeCall || activeCall.status !== 'connected')) {
         setIncomingCall(incoming);
+        const callerName = incoming.caller?.name || 'Someone';
+        const callerAvatar = incoming.caller?.avatar || '/pwa-192x192.png';
+        sendBrowserNotification(`Incoming ${incoming.type === 'video' ? 'Video' : 'Audio'} Call`, {
+          body: `${callerName} is calling you on Aura. Tap to answer.`,
+          icon: callerAvatar,
+          tag: `call_${incoming.id}`,
+          requireInteraction: true,
+          onClick: () => {
+            window.focus();
+            setIncomingCall(incoming);
+          },
+        });
       } else if (!incoming) {
         setIncomingCall(null);
       }
