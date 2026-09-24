@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, oAuthClientId } from '../firebase/config';
 import { User } from '../types';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 export interface GoogleUserProfile {
   sub?: string;
@@ -237,18 +238,16 @@ export async function syncGoogleProfileWithFirestore(
   const isNewUser = !existingUser;
   const targetUid = userId || googleProfile.uid || `user_g_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
-  // Default avatar if none provided
-  const avatar =
-    googleProfile.picture ||
-    existingUser?.avatar ||
-    `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80`;
+  // Modern Empty Avatar if none provided or if it is mock
+  const rawAvatar = googleProfile.picture || existingUser?.avatar;
+  const avatar = isMockOrEmptyAvatar(rawAvatar) ? MODERN_EMPTY_AVATAR_DATA_URI : rawAvatar!;
 
   if (existingUser) {
     // Merge latest Google information into existing profile
     const updatedProfile: User = {
       ...existingUser,
       name: existingUser.name || googleProfile.name,
-      avatar: existingUser.avatar || avatar,
+      avatar: isMockOrEmptyAvatar(existingUser.avatar) ? avatar : existingUser.avatar,
       email: cleanEmail,
       emailVerified: true,
     };
@@ -290,7 +289,7 @@ export async function syncGoogleProfileWithFirestore(
     name: googleProfile.name || cleanEmail.split('@')[0],
     username,
     avatar,
-    bannerUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+    bannerUrl: '',
     bio: 'Mindful creator on Aura · Signed in with verified Google account.',
     pronouns: '',
     location: '',

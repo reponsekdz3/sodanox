@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Send, Copy, Check, Share2, MessageSquare } from 'lucide-react';
 import { Post, User } from '../../types';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface SharePostModalProps {
   post: Post;
@@ -81,10 +82,11 @@ export const SharePostModal: React.FC<SharePostModalProps> = ({
 
         {/* Post Quick Preview */}
         <div className="p-4 mx-4 mt-4 bg-[#F1F5F2]/70 rounded-2xl border border-[#E6EDE9]/60 flex items-start gap-3">
-          <img
+          <ModernAvatar
             src={post.author.avatar}
             alt={post.author.name}
-            className="w-9 h-9 rounded-full object-cover shrink-0"
+            size="sm"
+            className="shrink-0"
           />
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold text-[#2D3732]">{post.author.name}</p>
@@ -149,10 +151,11 @@ export const SharePostModal: React.FC<SharePostModalProps> = ({
                     className="flex items-center justify-between p-2 rounded-2xl hover:bg-[#F1F5F2]/70 transition-colors"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <img
+                      <ModernAvatar
                         src={user.avatar}
                         alt={user.name}
-                        className="w-8 h-8 rounded-full object-cover shrink-0"
+                        size="sm"
+                        className="shrink-0"
                       />
                       <div className="min-w-0">
                         <p className="text-xs font-medium text-[#2D3732] truncate">{user.name}</p>

@@ -85,6 +85,7 @@ import {
   getAllUsers,
   getSuggestedUsers,
 } from './services/userService';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from './components/common/ModernAvatar';
 
 export default function App() {
   const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
@@ -121,22 +122,26 @@ export default function App() {
 
   // Current active user (guaranteed non-null when authenticated)
   const currentUser: User | null = useMemo(() => {
-    if (userProfile) return userProfile;
+    if (userProfile) {
+      return {
+        ...userProfile,
+        avatar: isMockOrEmptyAvatar(userProfile.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : userProfile.avatar,
+      };
+    }
     if (fbAuthUser) {
       const rawName = fbAuthUser.displayName || (fbAuthUser.email ? fbAuthUser.email.split('@')[0] : 'Aura Creator');
       const cleanUsername = (fbAuthUser.email ? fbAuthUser.email.split('@')[0] : `aura_${fbAuthUser.uid.slice(0, 5)}`)
         .toLowerCase()
         .replace(/[^a-z0-9_.]/g, '');
+      const rawAvatar = fbAuthUser.photoURL;
+      const avatar = isMockOrEmptyAvatar(rawAvatar) ? MODERN_EMPTY_AVATAR_DATA_URI : rawAvatar!;
       return {
         id: fbAuthUser.uid,
         name: rawName,
         username: cleanUsername,
-        avatar:
-          fbAuthUser.photoURL ||
-          'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-        bannerUrl:
-          'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
-        bio: 'Exploring architecture, craft, and slow reflections on Aura.',
+        avatar,
+        bannerUrl: '',
+        bio: 'Exploring craft, mindfulness, and slow reflections on Aura.',
         pronouns: '',
         location: '',
         website: '',

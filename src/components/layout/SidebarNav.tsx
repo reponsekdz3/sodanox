@@ -17,6 +17,7 @@ import { User } from '../../types';
 import { AuraLogo } from '../common/AuraLogo';
 import { useAuth } from '../../context/AuthContext';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernAvatar } from '../common/ModernAvatar';
 import {
   FilmIcon as HeroFilmOutline,
   PlusIcon as HeroPlusOutline,
@@ -238,14 +239,14 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             onClick={() => onSelectTab('profile')}
             className="flex items-center gap-3 p-2.5 rounded-2xl hover:bg-[#F1F5F2] transition-colors cursor-pointer group"
           >
-            <div className="relative shrink-0">
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-[#8FA89B]/40 group-hover:ring-[#8FA89B] transition-all"
-              />
-              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 ring-2 ring-[#FAFAF9]" />
-            </div>
+            <ModernAvatar
+              src={currentUser.avatar}
+              alt={currentUser.name}
+              size="md"
+              status="online"
+              ring
+              className="shrink-0 group-hover:ring-[#8FA89B] transition-all"
+            />
             <div className="min-w-0 flex-1">
               <div className="text-xs font-semibold text-[#2D3732] truncate group-hover:underline">
                 {currentUser.name}

@@ -26,6 +26,7 @@ import {
 import { User, Post, Reel, StoryHighlight } from '../../types';
 import { PostCard } from '../feed/PostCard';
 import { FollowButton } from '../common/FollowButton';
+import { ModernAvatar } from '../common/ModernAvatar';
 import {
   subscribeToUserHighlights,
   deleteStoryHighlight,
@@ -186,11 +187,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           <div className="flex flex-col sm:flex-row items-center sm:items-end justify-between -mt-14 sm:-mt-16 gap-4 sm:gap-6 mb-4">
             {/* Avatar anchored onto banner */}
             <div className="relative">
-              <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-[#FAFAF9] shadow-lg">
-                <img
+              <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full p-1 bg-[#FAFAF9] shadow-lg flex items-center justify-center">
+                <ModernAvatar
                   src={user.avatar}
                   alt={user.name}
-                  className="w-full h-full rounded-full object-cover ring-2 ring-[#8FA89B]"
+                  size="2xl"
+                  ring
+                  className="w-full h-full"
                 />
               </div>
             </div>
@@ -647,10 +650,11 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                         onNavigateToUser?.(member);
                       }}
                     >
-                      <img
+                      <ModernAvatar
                         src={member.avatar}
                         alt={member.name}
-                        className="w-10 h-10 rounded-full object-cover border border-[#2D3732]/10 shrink-0"
+                        size="md"
+                        className="shrink-0"
                       />
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5">

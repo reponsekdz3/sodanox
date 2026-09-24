@@ -23,6 +23,7 @@ import {
   PlusIcon as HeroPlusSolid,
 } from '@heroicons/react/24/solid';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface NavbarProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -283,19 +284,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               className="flex items-center gap-1.5 p-0.5 sm:p-1 rounded-2xl hover:bg-[#F1F5F2] transition-colors focus-visible:outline-none cursor-pointer"
               title="Account & Settings"
             >
-              <div
-                className={`w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-2xl overflow-hidden p-0.5 transition-all ${
-                  currentTab === 'profile'
-                    ? 'ring-2 ring-[#5E7C6E]'
-                    : 'hover:ring-2 hover:ring-[#8FA89B]/50'
-                }`}
-              >
-                <img
-                  src={currentUser.avatar}
-                  alt={currentUser.name}
-                  className="w-full h-full rounded-xl object-cover"
-                />
-              </div>
+              <ModernAvatar
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                size="sm"
+                ring={currentTab === 'profile'}
+                className="transition-all"
+              />
               <ChevronDown size={14} className="text-[#7A8A82] hidden sm:block transition-transform duration-200" />
             </button>
 
@@ -307,10 +302,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 {/* Creator Header Card */}
                 <div className="px-4 py-3">
                   <div className="flex items-center gap-2.5">
-                    <img
+                    <ModernAvatar
                       src={currentUser.avatar}
                       alt={currentUser.name}
-                      className="w-10 h-10 rounded-full object-cover ring-2 ring-[#8FA89B]/30"
+                      size="md"
+                      ring
                     />
                     <div className="min-w-0 flex-1">
                       <p className="text-xs font-semibold text-[#2D3732] truncate">

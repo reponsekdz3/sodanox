@@ -13,6 +13,7 @@ import {
 import { db } from '../firebase/config';
 import { User } from '../types';
 import { createNotification } from './notificationService';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 export interface CallSession {
   id: string;
@@ -67,14 +68,14 @@ export async function initiateCallSession(
       id: caller.id,
       name: caller.name,
       username: caller.username,
-      avatar: caller.avatar,
+      avatar: isMockOrEmptyAvatar(caller.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : caller.avatar,
     },
     recipientId: recipient.id,
     recipient: {
       id: recipient.id,
       name: recipient.name,
       username: recipient.username,
-      avatar: recipient.avatar,
+      avatar: isMockOrEmptyAvatar(recipient.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : recipient.avatar,
     },
     type,
     status: 'ringing',

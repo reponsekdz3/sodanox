@@ -23,6 +23,7 @@ import { Story, StoryItem, User, StoryFilter, StorySticker } from '../../types';
 import { voteStoryPoll, answerStoryQuestion, createStoryHighlight } from '../../services/storyService';
 import { getUserProfile } from '../../services/userService';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface StoryViewerModalProps {
   stories: Story[];
@@ -344,10 +345,11 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               }
             }}
           >
-            <img
+            <ModernAvatar
               src={currentStory.userAvatar}
               alt={currentStory.userName}
-              className="w-9 h-9 rounded-full object-cover border border-white/50 group-hover:scale-105 transition-transform"
+              size="sm"
+              className="border border-white/50 group-hover:scale-105 transition-transform"
             />
             <div>
               <div className="flex items-center gap-1.5">
@@ -817,10 +819,10 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 viewersProfiles.map((viewer) => (
                   <div key={viewer.id} className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <img
+                      <ModernAvatar
                         src={viewer.avatar}
                         alt={viewer.name}
-                        className="w-10 h-10 rounded-full object-cover border border-[#2D3732]/10"
+                        size="md"
                       />
                       <div>
                         <div className="text-xs font-semibold text-[#2D3732]">{viewer.name}</div>

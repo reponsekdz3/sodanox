@@ -24,6 +24,7 @@ import {
 import { ActiveCall, User } from '../../types';
 import { audioSynth } from '../../utils/audioSynth';
 import { AuraLogo } from '../common/AuraLogo';
+import { ModernAvatar } from '../common/ModernAvatar';
 import {
   subscribeToCallSession,
   endCallSession,
@@ -460,10 +461,12 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
                 {/* Participant Identity Badge Overlay */}
                 <div className="absolute flex flex-col items-center gap-2 z-10">
                   <div className="relative">
-                    <img
+                    <ModernAvatar
                       src={call.participant.avatar}
                       alt={call.participant.name}
-                      className="w-24 h-24 sm:w-28 sm:h-28 rounded-full object-cover ring-4 ring-white/30 shadow-2xl"
+                      size="2xl"
+                      ring
+                      className="shadow-2xl"
                     />
                     <div className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-[#8FA89B] text-white ring-2 ring-[#222A25]">
                       <Video size={14} />
@@ -534,11 +537,12 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
                     call.status === 'connected' ? 'animate-pulse' : 'animate-ping'
                   }`}
                 />
-                <div className="relative w-36 h-36 rounded-full p-1 bg-gradient-to-tr from-[#8FA89B] to-[#5A7B6D] shadow-2xl">
-                  <img
+                <div className="relative w-36 h-36 rounded-full p-1 bg-gradient-to-tr from-[#8FA89B] to-[#5A7B6D] shadow-2xl flex items-center justify-center">
+                  <ModernAvatar
                     src={call.participant.avatar}
                     alt={call.participant.name}
-                    className="w-full h-full rounded-full object-cover"
+                    size="2xl"
+                    className="w-full h-full"
                   />
                 </div>
               </div>

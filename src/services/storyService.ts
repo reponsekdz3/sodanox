@@ -18,6 +18,7 @@ import { Story, StoryItem, User, StoryHighlight } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
 import { isMockArtifact } from './postService';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const STORIES_COLLECTION = 'stories';
 const HIGHLIGHTS_COLLECTION = 'highlights';
@@ -61,7 +62,7 @@ export function subscribeToStories(
           userId: d.userId,
           userName: d.userName,
           userUsername: d.userUsername,
-          userAvatar: d.userAvatar,
+          userAvatar: isMockOrEmptyAvatar(d.userAvatar) ? MODERN_EMPTY_AVATAR_DATA_URI : d.userAvatar,
           hasUnseen,
           items: d.items || [],
           viewers,

@@ -30,11 +30,15 @@ import {
   Calendar,
   MapPin,
   ExternalLink,
+  PanelLeft,
+  Globe,
 } from 'lucide-react';
 import { ChatConversation, Message, MessageReplyInfo, User, VoiceNoteMeta } from '../../types';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
 import { VoiceRecorderBar } from './VoiceRecorderBar';
 import { FileAttachmentCard } from './FileAttachmentCard';
+import { LinkPreviewCard, extractUrls } from './LinkPreviewCard';
+import { sendBrowserNotification } from '../../services/browserNotificationService';
 import {
   subscribeToMessages,
   subscribeToUserConversations,
@@ -49,6 +53,7 @@ import {
 } from '../../services/chatService';
 import { getAllUsers } from '../../services/userService';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface MessagesViewProps {
   currentUser: User;
@@ -93,7 +98,19 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     onMobileChatActiveChange?.(mobileShowChat);
   }, [mobileShowChat, onMobileChatActiveChange]);
   const [showChatInfo, setShowChatInfo] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [convFilter, setConvFilter] = useState<'all' | 'unread' | 'online'>('all');
+
+  // Staged File/Image Attachment & Drag-and-Drop
+  const [stagedAttachment, setStagedAttachment] = useState<{
+    file: File;
+    name: string;
+    size: string;
+    type: string;
+    dataUrl: string;
+    isImage: boolean;
+  } | null>(null);
+  const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
 
   // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -121,6 +138,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   // Refs
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageElementsRef = useRef<{ [key: string]: HTMLDivElement | null }>({});
@@ -200,6 +218,30 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         );
         if (hasUnreadFromOther) {
           markConversationAsRead(activeConvId, currentUser.id).catch(() => {});
+        }
+
+        // Trigger browser notification if page is backgrounded or user is viewing another tab
+        const lastMsg = msgs[msgs.length - 1];
+        if (
+          lastMsg &&
+          lastMsg.senderId !== currentUser.id &&
+          typeof document !== 'undefined' &&
+          document.hidden
+        ) {
+          sendBrowserNotification(activeConv?.participant.name || 'New Message', {
+            body:
+              lastMsg.text ||
+              (lastMsg.type === 'image'
+                ? 'Sent a photo'
+                : lastMsg.type === 'file'
+                ? `Sent file: ${lastMsg.file?.name}`
+                : 'Sent a voice note'),
+            icon: activeConv?.participant.avatar,
+            tag: `msg_${lastMsg.id}`,
+            onClick: () => {
+              window.focus();
+            },
+          });
         }
       },
       (err) => console.error('Messages subscription error:', err)
@@ -397,6 +439,66 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
     setReplyingTo(null);
 
+    // If an image or file is staged, send it (with caption if provided)
+    if (stagedAttachment) {
+      const isImg = stagedAttachment.isImage;
+      const fileToSend = stagedAttachment;
+      const caption = inputText.trim();
+      setStagedAttachment(null);
+      setInputText('');
+      setIsSending(true);
+
+      const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const optimisticMsg: Message = {
+        id: tempMsgId,
+        senderId: currentUser.id,
+        senderName: currentUser.name,
+        senderAvatar: currentUser.avatar,
+        timestamp: nowTime,
+        type: isImg ? 'image' : 'file',
+        text: caption || fileToSend.name,
+        file: {
+          name: fileToSend.name,
+          size: fileToSend.size,
+          type: fileToSend.type,
+          url: fileToSend.dataUrl,
+        },
+        status: 'sent',
+        replyTo: replyPayload,
+      };
+
+      setMessages((prev) => [...prev, optimisticMsg]);
+      setTimeout(() => scrollToBottom('smooth'), 40);
+
+      try {
+        auraAudio.playClick(640, 0.05);
+        await sendChatMessage(
+          activeConvId,
+          {
+            type: isImg ? 'image' : 'file',
+            text: caption || fileToSend.name,
+            file: {
+              name: fileToSend.name,
+              size: fileToSend.size,
+              type: fileToSend.type,
+              url: fileToSend.dataUrl,
+            },
+          },
+          currentUser,
+          activeConv.participant.id,
+          replyPayload
+        );
+      } catch (err) {
+        console.error('Error sending file/image message:', err);
+      } finally {
+        setIsSending(false);
+      }
+      return;
+    }
+
+    if (!textToSend) return;
+
     // Instant optimistic render
     const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -434,101 +536,57 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const stageFile = (file: File) => {
     if (!file || !activeConvId || !activeConv) return;
-
     const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
     const sizeStr = `${sizeInMb} MB`;
     const isImage = file.type.startsWith('image/');
 
-    const replyPayload: MessageReplyInfo | undefined = replyingTo
-      ? {
-          id: replyingTo.id,
-          senderId: replyingTo.senderId,
-          senderName:
-            replyingTo.senderId === currentUser.id
-              ? 'You'
-              : replyingTo.senderName || activeConv.participant.name,
-          text: replyingTo.text,
-          type: replyingTo.type,
-        }
-      : undefined;
-
-    setReplyingTo(null);
-
     const reader = new FileReader();
-    reader.onload = async (event) => {
+    reader.onload = (event) => {
       const dataUrl = event.target?.result as string;
       if (!dataUrl) return;
-
-      const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-      const optimisticMsg: Message = {
-        id: tempMsgId,
-        senderId: currentUser.id,
-        senderName: currentUser.name,
-        senderAvatar: currentUser.avatar,
-        timestamp: nowTime,
-        type: isImage ? 'image' : 'file',
-        text: file.name,
-        file: {
-          name: file.name,
-          size: sizeStr,
-          type: file.type,
-          url: dataUrl,
-        },
-        status: 'sent',
-        replyTo: replyPayload,
-      };
-
-      setMessages((prev) => [...prev, optimisticMsg]);
-      setTimeout(() => scrollToBottom('smooth'), 40);
-
-      try {
-        auraAudio.playClick(640, 0.05);
-        if (isImage) {
-          await sendChatMessage(
-            activeConvId,
-            {
-              type: 'image',
-              text: file.name,
-              file: {
-                name: file.name,
-                size: sizeStr,
-                type: file.type,
-                url: dataUrl,
-              },
-            },
-            currentUser,
-            activeConv.participant.id,
-            replyPayload
-          );
-        } else {
-          await sendChatMessage(
-            activeConvId,
-            {
-              type: 'file',
-              file: {
-                name: file.name,
-                size: sizeStr,
-                type: file.type,
-                url: dataUrl,
-              },
-            },
-            currentUser,
-            activeConv.participant.id,
-            replyPayload
-          );
-        }
-      } catch (err) {
-        console.error('Error sending file:', err);
-      }
+      setStagedAttachment({
+        file,
+        name: file.name,
+        size: sizeStr,
+        type: file.type,
+        dataUrl,
+        isImage,
+      });
+      auraAudio.playClick(580, 0.04);
     };
     reader.readAsDataURL(file);
+  };
 
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    stageFile(file);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      stageFile(file);
     }
   };
 
@@ -604,11 +662,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         
         {/* ========================================================
             COLUMN 1: Conversations List Sidebar
-            Visible on Desktop/Tablet, hidden on Mobile when chat active
+            Visible on Desktop/Tablet, collapsible on Tablet/PC
             ======================================================== */}
         <div
-          className={`h-full border-r border-[#E6EDE9] flex flex-col md:col-span-5 lg:col-span-4 xl:col-span-4 bg-[#FAFAF9] overflow-hidden min-h-0 ${
+          className={`h-full border-r border-[#E6EDE9] flex flex-col transition-all duration-200 bg-[#FAFAF9] overflow-hidden min-h-0 ${
             mobileShowChat ? 'hidden md:flex' : 'flex'
+          } ${
+            isSidebarCollapsed ? 'hidden' : 'md:col-span-5 lg:col-span-4 xl:col-span-4'
           }`}
         >
           {/* Sidebar Header & Filters */}
@@ -724,14 +784,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       onClick={() => handleStartChatWithUser(user)}
                       className="w-full p-2.5 flex items-center gap-3 rounded-2xl hover:bg-[#EBF1ED] text-left transition-all cursor-pointer border border-transparent hover:border-[#8FA89B]/30"
                     >
-                      <div className="relative shrink-0">
-                        <img
-                          src={user.avatar}
-                          alt={user.name}
-                          className="w-10 h-10 rounded-full object-cover border border-[#2D3732]/10"
-                        />
-                        <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white" />
-                      </div>
+                      <ModernAvatar
+                        src={user.avatar}
+                        alt={user.name}
+                        size="md"
+                        status="online"
+                        className="shrink-0"
+                      />
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
                           <span className="text-xs font-bold text-[#1E2A23] truncate">{user.name}</span>
@@ -756,16 +815,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         : 'border-transparent hover:bg-[#F4F7F5]'
                     }`}
                   >
-                    <div className="relative shrink-0">
-                      <img
-                        src={conv.participant.avatar}
-                        alt={conv.participant.name}
-                        className="w-11 h-11 rounded-full object-cover border border-[#2D3732]/10"
-                      />
-                      {conv.isOnline && (
-                        <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
-                      )}
-                    </div>
+                    <ModernAvatar
+                      src={conv.participant.avatar}
+                      alt={conv.participant.name}
+                      size="md"
+                      status={conv.isOnline ? 'online' : undefined}
+                      className="shrink-0"
+                    />
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-0.5">
@@ -811,18 +867,37 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
         {/* ========================================================
             COLUMN 2: Main Active Chat Window
+            Responsive Tablet / PC layout with drag & drop upload
             ======================================================== */}
         {activeConv ? (
           <div
-            className={`h-full flex flex-col bg-[#FAFAF9] relative overflow-hidden min-h-0 ${
-              showChatInfo
+            className={`h-full flex flex-col bg-[#FAFAF9] relative overflow-hidden min-h-0 transition-all duration-200 ${
+              isSidebarCollapsed
+                ? showChatInfo
+                  ? 'md:col-span-8 lg:col-span-9 xl:col-span-9'
+                  : 'md:col-span-12 lg:col-span-12 xl:col-span-12'
+                : showChatInfo
                 ? 'md:col-span-7 lg:col-span-5 xl:col-span-5'
                 : 'md:col-span-7 lg:col-span-8 xl:col-span-8'
             } ${mobileShowChat ? 'flex' : 'hidden md:flex'}`}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
           >
+            {/* Drag & Drop Visual Backdrop */}
+            {isDraggingOver && (
+              <div className="absolute inset-0 z-40 bg-[#1E2A23]/85 backdrop-blur-xs flex flex-col items-center justify-center p-6 text-white border-2 border-dashed border-emerald-400 m-3 rounded-3xl animate-fadeIn pointer-events-none">
+                <div className="w-16 h-16 rounded-2xl bg-white/20 flex items-center justify-center mb-3">
+                  <Paperclip size={32} className="animate-bounce text-emerald-300" />
+                </div>
+                <h3 className="text-base font-bold">Drop files here to share</h3>
+                <p className="text-xs text-white/80 mt-1">Photos, audio, or documents up to 25 MB</p>
+              </div>
+            )}
+
             {/* Top Chat Bar Header */}
             <div className="h-14 sm:h-16 px-3 sm:px-5 border-b border-[#E6EDE9] flex items-center justify-between shrink-0 bg-white/90 backdrop-blur-md z-20 shadow-2xs">
-              <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 {/* Back button on mobile */}
                 <button
                   onClick={() => {
@@ -835,21 +910,32 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   <ArrowLeft size={20} className="stroke-[2.5]" />
                 </button>
 
+                {/* Sidebar toggle button on tablet and desktop */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    auraAudio.playClick(500, 0.02);
+                    setIsSidebarCollapsed(!isSidebarCollapsed);
+                  }}
+                  className="hidden md:flex p-2 text-[#4A6757] hover:bg-[#F1F5F2] rounded-xl transition-colors cursor-pointer shrink-0"
+                  title={isSidebarCollapsed ? 'Show conversations sidebar' : 'Expand chat window'}
+                >
+                  <PanelLeft size={18} />
+                </button>
+
                 {/* Participant Identity */}
                 <div
                   onClick={() => onOpenUserProfile(activeConv.participant)}
-                  className="flex items-center gap-3 cursor-pointer group min-w-0"
+                  className="flex items-center gap-2.5 sm:gap-3 cursor-pointer group min-w-0"
                 >
-                  <div className="relative shrink-0">
-                    <img
-                      src={activeConv.participant.avatar}
-                      alt={activeConv.participant.name}
-                      className="w-10 h-10 rounded-full object-cover ring-1 ring-[#2D3732]/10 group-hover:ring-2 group-hover:ring-[#4A6757] transition-all"
-                    />
-                    {activeConv.isOnline && (
-                      <span className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white" />
-                    )}
-                  </div>
+                  <ModernAvatar
+                    src={activeConv.participant.avatar}
+                    alt={activeConv.participant.name}
+                    size="md"
+                    status={activeConv.isOnline ? 'online' : undefined}
+                    ring
+                    className="shrink-0 group-hover:ring-[#4A6757] transition-all"
+                  />
 
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5">
@@ -1104,11 +1190,16 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             </div>
                           )}
 
-                          {/* Text Message */}
+                          {/* Text Message with Link Previews */}
                           {msg.type === 'text' && (
-                            <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words select-text">
-                              {msg.text}
-                            </p>
+                            <div>
+                              <p className="text-xs sm:text-sm leading-relaxed whitespace-pre-wrap break-words select-text">
+                                {msg.text}
+                              </p>
+                              {extractUrls(msg.text || '').map((url, idx) => (
+                                <LinkPreviewCard key={idx} url={url} isSelf={isSelf} />
+                              ))}
+                            </div>
                           )}
 
                           {/* Image Message */}
@@ -1394,15 +1485,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
             {/* Profile Overview */}
             <div className="p-5 flex flex-col items-center text-center border-b border-[#E6EDE9]">
-              <div className="relative mb-3">
-                <img
+              <div className="mb-3">
+                <ModernAvatar
                   src={activeConv.participant.avatar}
                   alt={activeConv.participant.name}
-                  className="w-20 h-20 rounded-full object-cover ring-2 ring-[#4A6757]/20"
+                  size="xl"
+                  status={activeConv.isOnline ? 'online' : undefined}
+                  ring
                 />
-                {activeConv.isOnline && (
-                  <span className="absolute bottom-1 right-1 w-4 h-4 rounded-full bg-emerald-500 border-2 border-white" />
-                )}
               </div>
               <div className="flex items-center gap-1.5 mb-0.5">
                 <h4 className="text-sm font-bold text-[#1E2A23]">{activeConv.participant.name}</h4>
@@ -1606,10 +1696,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     onClick={() => handleStartChatWithUser(user)}
                     className="w-full p-3 flex items-center gap-3 rounded-2xl hover:bg-[#F4F7F5] text-left transition-colors cursor-pointer"
                   >
-                    <img
+                    <ModernAvatar
                       src={user.avatar}
                       alt={user.name}
-                      className="w-10 h-10 rounded-full object-cover border border-[#2D3732]/10 shrink-0"
+                      size="md"
+                      className="shrink-0"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">

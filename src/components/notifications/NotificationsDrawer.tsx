@@ -18,6 +18,7 @@ import {
 import { NotificationItem, User } from '../../types';
 import { FollowButton } from '../common/FollowButton';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface NotificationsDrawerProps {
   notifications: NotificationItem[];
@@ -253,10 +254,11 @@ export const NotificationsDrawer: React.FC<NotificationsDrawerProps> = ({
                       onClose();
                     }}
                   >
-                    <img
+                    <ModernAvatar
                       src={notif.user.avatar}
                       alt={notif.user.name}
-                      className="w-10 h-10 rounded-full object-cover ring-1 ring-[#2D3732]/10 hover:ring-2 hover:ring-[#5E7C6E] transition-all"
+                      size="md"
+                      className="hover:ring-2 hover:ring-[#5E7C6E] transition-all"
                     />
                     <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-[#FAFAF9] border border-[#2D3732]/10 flex items-center justify-center shadow-xs">
                       {getIcon(notif.type)}

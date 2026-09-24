@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { X, Camera, Upload, Check, Image as ImageIcon, Shield, Sparkles } from 'lucide-react';
 import { User } from '../../types';
 import { checkUsernameAvailable } from '../../services/userService';
+import { ModernAvatar, MODERN_EMPTY_AVATAR_DATA_URI } from '../common/ModernAvatar';
 
 interface EditProfileModalProps {
   currentUser: User;
@@ -193,19 +194,16 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
               {/* Avatar anchored onto banner */}
               <div className="absolute bottom-2 left-4">
-                <div className="relative group/avatar">
-                  <img
+                <div className="relative group/avatar cursor-pointer" onClick={() => fileInputRef.current?.click()}>
+                  <ModernAvatar
                     src={avatarUrl}
-                    alt="Avatar"
-                    className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md ring-2 ring-[#8FA89B]"
+                    size="xl"
+                    ring
+                    className="border-2 border-white shadow-md"
                   />
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
-                  >
-                    <Camera size={16} />
-                  </button>
+                  <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-white">
+                    <Camera size={18} />
+                  </div>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -215,6 +213,22 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Avatar controls: Reset to Modern Empty Avatar */}
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[11px] text-[#7A8A82]">
+                Avatar: Single modern geometric SVG aesthetic
+              </span>
+              {avatarUrl !== MODERN_EMPTY_AVATAR_DATA_URI && (
+                <button
+                  type="button"
+                  onClick={() => setAvatarUrl(MODERN_EMPTY_AVATAR_DATA_URI)}
+                  className="text-xs text-[#5E7C6E] hover:underline font-medium cursor-pointer"
+                >
+                  Use Modern Empty Avatar
+                </button>
+              )}
             </div>
 
             {/* Banner Presets */}

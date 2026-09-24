@@ -15,6 +15,7 @@ import { Post, User } from '../../types';
 import { FollowButton } from '../common/FollowButton';
 import { getUserProfile } from '../../services/userService';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface PostEngagementModalProps {
   post: Post;
@@ -216,10 +217,11 @@ export const PostEngagementModal: React.FC<PostEngagementModalProps> = ({
                           onClose();
                         }}
                       >
-                        <img
+                        <ModernAvatar
                           src={u.avatar}
                           alt={u.name}
-                          className="w-10 h-10 rounded-full object-cover ring-1 ring-[#2D3732]/10 group-hover:ring-[#5E7C6E] transition-all"
+                          size="md"
+                          className="group-hover:ring-1 group-hover:ring-[#5E7C6E] transition-all"
                         />
                         <div className="min-w-0">
                           <div className="flex items-center gap-1.5">

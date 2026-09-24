@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { Reel, User } from '../../types';
 import { FollowButton } from '../common/FollowButton';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface ReelsFeedProps {
   reels: Reel[];
@@ -279,10 +280,11 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
               className="flex items-center gap-2 cursor-pointer group"
               onClick={() => onOpenUserProfile(currentReel.author)}
             >
-              <img
+              <ModernAvatar
                 src={currentReel.author.avatar}
                 alt={currentReel.author.name}
-                className="w-9 h-9 rounded-full object-cover border border-white/40"
+                size="sm"
+                className="border border-white/40"
               />
               <span className="text-sm font-medium drop-shadow-sm group-hover:underline">
                 @{currentReel.author.username}
@@ -369,16 +371,20 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
               ) : (
                 activeCommentsReel.comments.map((c) => (
                   <div key={c.id} className="flex items-start gap-2.5">
-                    <img
-                      src={c.author.avatar}
-                      alt={c.author.name}
+                    <div
                       onClick={() => {
                         setActiveCommentsReel(null);
                         onOpenUserProfile(c.author);
                       }}
-                      className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                      className="cursor-pointer shrink-0 mt-0.5 hover:ring-2 hover:ring-[#8FA89B] rounded-full transition-all"
                       title={`View ${c.author.name}'s profile`}
-                    />
+                    >
+                      <ModernAvatar
+                        src={c.author.avatar}
+                        alt={c.author.name}
+                        size="xs"
+                      />
+                    </div>
                     <div className="flex-1 min-w-0 bg-[#F1F5F2] p-2.5 rounded-2xl">
                       <div className="flex items-center justify-between mb-0.5">
                         <span

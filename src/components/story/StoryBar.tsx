@@ -1,6 +1,7 @@
 import React from 'react';
 import { Plus } from 'lucide-react';
 import { Story, User } from '../../types';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface StoryBarProps {
   stories: Story[];
@@ -39,12 +40,12 @@ export const StoryBar: React.FC<StoryBarProps> = ({
                   : 'bg-[#E6EDE9] hover:bg-[#8FA89B]/40'
               }`}
             >
-              <div className="w-full h-full rounded-full p-[2px] bg-[#FAFAF9]">
-                <img
+              <div className="w-full h-full rounded-full p-[2px] bg-[#FAFAF9] flex items-center justify-center">
+                <ModernAvatar
                   src={currentUser.avatar}
                   alt={currentUser.name}
-                  referrerPolicy="no-referrer"
-                  className="w-full h-full object-cover rounded-full"
+                  size="lg"
+                  className="w-full h-full"
                 />
               </div>
             </button>
@@ -85,12 +86,12 @@ export const StoryBar: React.FC<StoryBarProps> = ({
                       : 'bg-[#E6EDE9]'
                   }`}
                 >
-                  <div className="w-full h-full rounded-full p-[2px] bg-[#FAFAF9]">
-                    <img
+                  <div className="w-full h-full rounded-full p-[2px] bg-[#FAFAF9] flex items-center justify-center">
+                    <ModernAvatar
                       src={story.userAvatar}
                       alt={story.userName}
-                      referrerPolicy="no-referrer"
-                      className="w-full h-full object-cover rounded-full"
+                      size="lg"
+                      className="w-full h-full"
                     />
                   </div>
                 </div>

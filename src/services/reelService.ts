@@ -19,6 +19,7 @@ import { Reel, Comment, User } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
 import { isMockArtifact } from './postService';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const REELS_COLLECTION = 'reels';
 
@@ -51,9 +52,22 @@ export function subscribeToReels(
         const likedBy: string[] = d.likedBy || [];
         const bookmarkedBy: string[] = d.bookmarkedBy || [];
 
+        const authorAvatar = isMockOrEmptyAvatar(d.author?.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : d.author?.avatar;
+        const reelAuthor = d.author ? { ...d.author, avatar: authorAvatar } : d.author;
+        const rawComments: any[] = d.comments || [];
+        const comments: Comment[] = rawComments.map((c) => ({
+          ...c,
+          author: c.author
+            ? {
+                ...c.author,
+                avatar: isMockOrEmptyAvatar(c.author.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : c.author.avatar,
+              }
+            : c.author,
+        }));
+
         list.push({
           id: docSnap.id,
-          author: d.author,
+          author: reelAuthor,
           videoUrl: d.videoUrl,
           posterUrl: d.posterUrl || '',
           caption: d.caption || '',
@@ -61,8 +75,8 @@ export function subscribeToReels(
           audioTrack: d.audioTrack || { title: 'Original Sound', artist: d.author?.name || 'Creator' },
           likesCount: likedBy.length || d.likesCount || 0,
           hasLiked: likedBy.includes(currentUid),
-          commentsCount: (d.comments || []).length || d.commentsCount || 0,
-          comments: d.comments || [],
+          commentsCount: comments.length || d.commentsCount || 0,
+          comments,
           sharesCount: d.sharesCount || 0,
           isSaved: bookmarkedBy.includes(currentUid),
         });

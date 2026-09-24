@@ -14,6 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { NotificationItem, User } from '../types';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const NOTIFICATIONS_COLLECTION = 'notifications';
 const LOCAL_NOTIF_PREFIX = 'aura_cached_notifs_';
@@ -75,9 +76,9 @@ export function subscribeToNotifications(
               id: d.actorId || 'someone',
               name: d.actorName || 'Aura Member',
               username: d.actorUsername || 'user',
-              avatar:
-                d.actorAvatar ||
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+              avatar: isMockOrEmptyAvatar(d.actorAvatar)
+                ? MODERN_EMPTY_AVATAR_DATA_URI
+                : (d.actorAvatar || MODERN_EMPTY_AVATAR_DATA_URI),
               bio: '',
               joinedDate: '',
               followersCount: 0,

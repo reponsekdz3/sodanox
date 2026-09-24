@@ -3,6 +3,7 @@ import { Search, Hash, TrendingUp, Play, Heart, MessageCircle, Flame, Users, Che
 import { Post, Reel, User } from '../../types';
 import { calculateTrendingTopics } from '../../services/trendingService';
 import { FollowButton } from '../common/FollowButton';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface ExploreViewProps {
   posts: Post[];
@@ -120,10 +121,12 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   className="flex items-start gap-3 cursor-pointer mb-3"
                   onClick={() => onOpenUserProfile(user)}
                 >
-                  <img
+                  <ModernAvatar
                     src={user.avatar}
                     alt={user.name}
-                    className="w-12 h-12 rounded-full object-cover ring-2 ring-[#8FA89B]/30 shrink-0"
+                    size="lg"
+                    ring
+                    className="shrink-0"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
@@ -270,10 +273,11 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                           onOpenUserProfile(post.author);
                         }}
                       >
-                        <img
+                        <ModernAvatar
                           src={post.author.avatar}
                           alt={post.author.name}
-                          className="w-6 h-6 rounded-full object-cover hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                          size="xs"
+                          className="hover:ring-1 hover:ring-[#8FA89B] transition-all"
                         />
                         <span className="text-xs font-medium text-[#2D3732] hover:underline">
                           {post.author.name}

@@ -23,6 +23,7 @@ import { SharePostModal } from './SharePostModal';
 import { QuotePostModal } from './QuotePostModal';
 import { PostEngagementModal } from './PostEngagementModal';
 import { recordPostView } from '../../services/postService';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 const PostMediaCarousel: React.FC<{ mediaUrls: string[] }> = ({ mediaUrls }) => {
   const [curr, setCurr] = useState(0);
@@ -178,14 +179,13 @@ export const PostCard: React.FC<PostCardProps> = ({
           className="flex items-center gap-3 cursor-pointer group"
           onClick={() => onOpenUserProfile?.(post.author)}
         >
-          <div className="relative">
-            <img
-              src={post.author.avatar}
-              alt={post.author.name}
-              referrerPolicy="no-referrer"
-              className="w-11 h-11 rounded-full object-cover ring-2 ring-[#E6EDE9] group-hover:ring-[#8FA89B] transition-all"
-            />
-          </div>
+          <ModernAvatar
+            src={post.author.avatar}
+            alt={post.author.name}
+            size="md"
+            ring
+            className="group-hover:ring-[#8FA89B] transition-all"
+          />
           <div>
             <div className="flex items-center gap-1.5">
               <span className="text-sm font-medium text-[#2D3732] group-hover:underline">
@@ -375,10 +375,11 @@ export const PostCard: React.FC<PostCardProps> = ({
               onOpenUserProfile?.(post.quotedPost!.author);
             }}
           >
-            <img
+            <ModernAvatar
               src={post.quotedPost.author.avatar}
               alt={post.quotedPost.author.name}
-              className="w-6 h-6 rounded-full object-cover group-hover:ring-2 group-hover:ring-[#8FA89B] transition-all"
+              size="xs"
+              className="group-hover:ring-1 group-hover:ring-[#8FA89B]"
             />
             <span className="text-xs font-semibold text-[#2D3732] group-hover:underline">
               {post.quotedPost.author.name}
@@ -571,13 +572,18 @@ export const PostCard: React.FC<PostCardProps> = ({
               </div>
             )}
             <div className="flex items-center gap-2">
-              <img
-                src={currentUser.avatar}
-                alt={currentUser.name}
+              <div
                 onClick={() => onOpenUserProfile?.(currentUser)}
-                className="w-8 h-8 rounded-full object-cover shrink-0 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                className="cursor-pointer"
                 title="View your profile"
-              />
+              >
+                <ModernAvatar
+                  src={currentUser.avatar}
+                  alt={currentUser.name}
+                  size="sm"
+                  className="hover:ring-1 hover:ring-[#8FA89B] transition-all"
+                />
+              </div>
               <input
                 type="text"
                 value={newCommentText}
@@ -609,13 +615,18 @@ export const PostCard: React.FC<PostCardProps> = ({
               post.comments.map((comment) => (
                 <div key={comment.id} className="space-y-2">
                   <div className="flex items-start gap-2.5 bg-[#FAFAF9] p-3 rounded-2xl border border-[#E6EDE9]/50">
-                    <img
-                      src={comment.author.avatar}
-                      alt={comment.author.name}
+                    <div
                       onClick={() => onOpenUserProfile?.(comment.author)}
-                      className="w-7 h-7 rounded-full object-cover shrink-0 mt-0.5 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                      className="cursor-pointer shrink-0 mt-0.5"
                       title={`View ${comment.author.name}'s profile`}
-                    />
+                    >
+                      <ModernAvatar
+                        src={comment.author.avatar}
+                        alt={comment.author.name}
+                        size="xs"
+                        className="hover:ring-1 hover:ring-[#8FA89B] transition-all"
+                      />
+                    </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-1">
                         <span
@@ -681,13 +692,18 @@ export const PostCard: React.FC<PostCardProps> = ({
                           key={reply.id}
                           className="flex items-start gap-2.5 bg-[#FAFAF9]/80 p-2.5 rounded-2xl border border-[#E6EDE9]/40"
                         >
-                          <img
-                            src={reply.author.avatar}
-                            alt={reply.author.name}
+                          <div
                             onClick={() => onOpenUserProfile?.(reply.author)}
-                            className="w-6 h-6 rounded-full object-cover shrink-0 mt-0.5 cursor-pointer hover:ring-2 hover:ring-[#8FA89B] transition-all"
+                            className="cursor-pointer shrink-0 mt-0.5"
                             title={`View ${reply.author.name}'s profile`}
-                          />
+                          >
+                            <ModernAvatar
+                              src={reply.author.avatar}
+                              alt={reply.author.name}
+                              size="xs"
+                              className="hover:ring-1 hover:ring-[#8FA89B] transition-all"
+                            />
+                          </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center justify-between mb-1">
                               <span

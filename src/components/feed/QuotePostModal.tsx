@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { X, Repeat2, Send } from 'lucide-react';
 import { Post, User } from '../../types';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface QuotePostModalProps {
   post: Post;
@@ -44,10 +45,11 @@ export const QuotePostModal: React.FC<QuotePostModalProps> = ({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* User's input thoughts */}
           <div className="flex items-start gap-3">
-            <img
+            <ModernAvatar
               src={currentUser.avatar}
               alt={currentUser.name}
-              className="w-10 h-10 rounded-full object-cover shrink-0"
+              size="md"
+              className="shrink-0"
             />
             <textarea
               value={comment}
@@ -63,10 +65,10 @@ export const QuotePostModal: React.FC<QuotePostModalProps> = ({
           {/* Embedded original post card preview */}
           <div className="p-3.5 rounded-2xl bg-[#F1F5F2]/70 border border-[#E6EDE9] space-y-2">
             <div className="flex items-center gap-2">
-              <img
+              <ModernAvatar
                 src={post.author.avatar}
                 alt={post.author.name}
-                className="w-5 h-5 rounded-full object-cover"
+                size="xs"
               />
               <span className="text-xs font-semibold text-[#2D3732]">{post.author.name}</span>
               <span className="text-[11px] text-[#7A8A82]">@{post.author.username}</span>

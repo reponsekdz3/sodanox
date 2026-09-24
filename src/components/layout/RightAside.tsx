@@ -17,6 +17,7 @@ import {
 import { User, Post } from '../../types';
 import { FollowButton } from '../common/FollowButton';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface RightAsideProps {
   currentUser: User;
@@ -223,12 +224,13 @@ export const RightAside: React.FC<RightAsideProps> = ({
             className="relative shrink-0 cursor-pointer group"
             title={`${currentUser.name} (@${currentUser.username}) - You`}
           >
-            <img
+            <ModernAvatar
               src={currentUser.avatar}
               alt={currentUser.name}
-              className="w-10 h-10 rounded-full object-cover ring-2 ring-[#8FA89B]"
+              size="md"
+              status="online"
+              ring
             />
-            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#F1F5F2]" />
           </div>
           {suggestedUsers.slice(0, 5).map((u) => (
             <div
@@ -237,12 +239,13 @@ export const RightAside: React.FC<RightAsideProps> = ({
               className="relative shrink-0 cursor-pointer group"
               title={`${u.name} (@${u.username})`}
             >
-              <img
+              <ModernAvatar
                 src={u.avatar}
                 alt={u.name}
-                className="w-10 h-10 rounded-full object-cover ring-2 ring-transparent group-hover:ring-[#8FA89B] transition-all transform group-hover:scale-105"
+                size="md"
+                status="online"
+                className="transition-transform group-hover:scale-105"
               />
-              <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-[#F1F5F2]" />
             </div>
           ))}
         </div>
@@ -272,10 +275,11 @@ export const RightAside: React.FC<RightAsideProps> = ({
                   className="flex items-center gap-2.5 min-w-0 cursor-pointer group flex-1"
                   onClick={() => onOpenUserProfile(user)}
                 >
-                  <img
+                  <ModernAvatar
                     src={user.avatar}
                     alt={user.name}
-                    className="w-9 h-9 rounded-full object-cover shrink-0 ring-1 ring-[#8FA89B]/30 group-hover:ring-[#8FA89B] transition-all"
+                    size="sm"
+                    className="shrink-0 group-hover:ring-1 group-hover:ring-[#8FA89B]"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">

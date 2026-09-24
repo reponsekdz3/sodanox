@@ -4,6 +4,7 @@ import { checkUsernameAvailable } from '../../services/userService';
 import { AuraLogo } from '../common/AuraLogo';
 import { auraAudio } from '../../utils/audioSynthesizer';
 import { GoogleAuthModal } from './GoogleAuthModal';
+import { ModernAvatar, MODERN_EMPTY_AVATAR_DATA_URI } from '../common/ModernAvatar';
 import {
   Sparkles,
   Lock,
@@ -26,33 +27,6 @@ import {
   Zap,
 } from 'lucide-react';
 
-const PRESET_AVATARS = [
-  {
-    label: 'Ceramicist',
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    label: 'Nordic Architect',
-    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    label: 'Visual Craftsman',
-    url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    label: 'Spatial Designer',
-    url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    label: 'Sound Artist',
-    url: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=400&q=80',
-  },
-  {
-    label: 'Material Archivist',
-    url: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80',
-  },
-];
-
 interface AuthPageProps {
   onSuccess?: () => void;
 }
@@ -70,7 +44,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   const [bio, setBio] = useState('');
   const [location, setLocation] = useState('');
   const [website, setWebsite] = useState('');
-  const [avatar, setAvatar] = useState(PRESET_AVATARS[0].url);
+  const [avatar, setAvatar] = useState(MODERN_EMPTY_AVATAR_DATA_URI);
   const [agreedToManifesto, setAgreedToManifesto] = useState(true);
 
   // Forgot password state
@@ -483,28 +457,28 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   </div>
 
                   <div className="flex items-center gap-4">
-                    <img
+                    <ModernAvatar
                       src={avatar}
-                      alt="Avatar preview"
-                      className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md ring-2 ring-[#8FA89B]"
+                      size="xl"
+                      ring
+                      className="border-2 border-white shadow-md"
                     />
                     <div className="flex-1">
-                      <div className="text-[11px] text-[#7A8A82] mb-1.5">Or choose a persona:</div>
-                      <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                        {PRESET_AVATARS.map((p, idx) => (
-                          <button
-                            key={idx}
-                            type="button"
-                            onClick={() => setAvatar(p.url)}
-                            className={`w-9 h-9 rounded-full overflow-hidden border-2 transition-transform shrink-0 ${
-                              avatar === p.url ? 'border-[#8FA89B] scale-110 shadow-sm' : 'border-transparent opacity-75 hover:opacity-100'
-                            }`}
-                            title={p.label}
-                          >
-                            <img src={p.url} alt={p.label} className="w-full h-full object-cover" />
-                          </button>
-                        ))}
+                      <div className="text-xs font-semibold text-[#2D3732] mb-0.5">
+                        Modern Empty Avatar
                       </div>
+                      <div className="text-[11px] text-[#7A8A82] leading-snug">
+                        Minimalist geometric aesthetic default. You can also upload your own picture anytime.
+                      </div>
+                      {avatar !== MODERN_EMPTY_AVATAR_DATA_URI && (
+                        <button
+                          type="button"
+                          onClick={() => setAvatar(MODERN_EMPTY_AVATAR_DATA_URI)}
+                          className="mt-1.5 text-[11px] text-[#5E7C6E] hover:underline font-medium cursor-pointer"
+                        >
+                          Reset to default Modern Avatar
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -621,26 +595,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      setEmail('icedrick444@gmail.com');
+                      setEmail('ericmusitafa8@gmail.com');
                       setPassword('Password123!');
                       setError(null);
                     }}
                     className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E5EAE7]/70 hover:bg-[#8FA89B]/20 text-[#2D3732] text-[11px] font-medium transition-colors border border-[#2D3732]/10 cursor-pointer"
                   >
-                    <span>icedrick444@gmail.com</span>
-                    <span className="text-[9px] px-1 py-0.2 bg-[#8FA89B]/20 text-[#3A5245] rounded font-semibold">Dev</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('raphanshimyumukiza@gmail.com');
-                      setPassword('Password123!');
-                      setError(null);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E5EAE7]/70 hover:bg-[#8FA89B]/20 text-[#2D3732] text-[11px] font-medium transition-colors border border-[#2D3732]/10 cursor-pointer"
-                  >
-                    <span>raphanshimyumukiza@gmail.com</span>
-                    <span className="text-[9px] px-1 py-0.2 bg-[#8FA89B]/20 text-[#3A5245] rounded font-semibold">Founder</span>
+                    <span>ericmusitafa8@gmail.com</span>
+                    <span className="text-[9px] px-1 py-0.2 bg-[#8FA89B]/20 text-[#3A5245] rounded font-semibold">User</span>
                   </button>
                 </div>
               )}
@@ -653,7 +615,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={mode === 'signin' ? 'icedrick444@gmail.com' : 'elena@nordic.design'}
+                  placeholder={mode === 'signin' ? 'ericmusitafa8@gmail.com' : 'elena@nordic.design'}
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
                 />
               </div>
@@ -862,8 +824,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
         isOpen={showGoogleModal}
         onClose={() => setShowGoogleModal(false)}
         initialTab={googleModalTab}
-        defaultEmail={email.trim() || 'icedrick444@gmail.com'}
-        defaultName={name.trim() || 'Icedrick'}
+        defaultEmail={email.trim() || 'ericmusitafa8@gmail.com'}
+        defaultName={name.trim() || 'Eric Musitafa'}
         onConfirmGoogleAuth={async (confirmedEmail, confirmedName, confirmedAvatar) => {
           await signInWithGoogle({
             email: confirmedEmail,

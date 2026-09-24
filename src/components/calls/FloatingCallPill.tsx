@@ -1,6 +1,7 @@
 import React from 'react';
 import { Maximize2, PhoneOff, Video, MicOff } from 'lucide-react';
 import { ActiveCall } from '../../types';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface FloatingCallPillProps {
   call: ActiveCall;
@@ -22,13 +23,14 @@ export const FloatingCallPill: React.FC<FloatingCallPillProps> = ({
   return (
     <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 bg-[#FAFAF9] border border-[#8FA89B] rounded-2xl shadow-soft-float p-2.5 flex items-center gap-3 animate-fadeIn">
       {/* Participant avatar with pulsing online indicator */}
-      <div className="relative cursor-pointer" onClick={onMaximize}>
-        <img
+      <div className="cursor-pointer" onClick={onMaximize}>
+        <ModernAvatar
           src={call.participant.avatar}
           alt={call.participant.name}
-          className="w-10 h-10 rounded-full object-cover ring-2 ring-[#8FA89B]"
+          size="md"
+          status="online"
+          ring
         />
-        <span className="absolute -top-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#8FA89B] border-2 border-white animate-pulse" />
       </div>
 
       {/* Info & Duration */}

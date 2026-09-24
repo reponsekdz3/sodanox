@@ -20,6 +20,7 @@ import { db } from '../firebase/config';
 import { Post, Comment, User, Poll } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const POSTS_COLLECTION = 'posts';
 
@@ -77,18 +78,20 @@ export function subscribeToPosts(
         const comments: Comment[] = rawComments.map((c) => {
           const cLikedBy: string[] = c.likedBy || [];
           const rawReplies: any[] = c.replies || [];
+          const cAvatar = isMockOrEmptyAvatar(c.author?.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : c.author?.avatar;
           return {
             id: c.id,
-            author: c.author,
+            author: c.author ? { ...c.author, avatar: cAvatar } : c.author,
             content: c.content,
             timestamp: c.timestamp || 'Just now',
             likesCount: cLikedBy.length || c.likesCount || 0,
             hasLiked: cLikedBy.includes(currentUid) || !!c.hasLiked,
             replies: rawReplies.map((r) => {
               const rLikedBy: string[] = r.likedBy || [];
+              const rAvatar = isMockOrEmptyAvatar(r.author?.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : r.author?.avatar;
               return {
                 id: r.id,
-                author: r.author,
+                author: r.author ? { ...r.author, avatar: rAvatar } : r.author,
                 content: r.content,
                 timestamp: r.timestamp || 'Just now',
                 likesCount: rLikedBy.length || r.likesCount || 0,
@@ -99,10 +102,26 @@ export function subscribeToPosts(
         });
 
         const viewsCount = typeof d.viewsCount === 'number' ? d.viewsCount : viewedBy.length;
+        const postAuthorAvatar = isMockOrEmptyAvatar(d.author?.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : d.author?.avatar;
+        const postAuthor = d.author ? { ...d.author, avatar: postAuthorAvatar } : d.author;
+
+        const quotedPostData = d.quotedPost
+          ? {
+              ...d.quotedPost,
+              author: d.quotedPost.author
+                ? {
+                    ...d.quotedPost.author,
+                    avatar: isMockOrEmptyAvatar(d.quotedPost.author.avatar)
+                      ? MODERN_EMPTY_AVATAR_DATA_URI
+                      : d.quotedPost.author.avatar,
+                  }
+                : d.quotedPost.author,
+            }
+          : undefined;
 
         postList.push({
           id: docSnap.id,
-          author: d.author,
+          author: postAuthor,
           timestamp: d.timestamp || 'Recent',
           content: d.content || '',
           mediaUrl: d.mediaUrl,
@@ -124,7 +143,7 @@ export function subscribeToPosts(
           sharedBy,
           repostAuthor: d.repostAuthor,
           repostComment: d.repostComment,
-          quotedPost: d.quotedPost,
+          quotedPost: quotedPostData,
           commentsCount: comments.length,
           comments,
           tags: d.tags || [],

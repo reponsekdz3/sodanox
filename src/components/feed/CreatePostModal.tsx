@@ -14,6 +14,7 @@ import {
   Check,
 } from 'lucide-react';
 import { User, Post, Poll } from '../../types';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface CreatePostModalProps {
   currentUser: User;
@@ -154,10 +155,11 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           {/* Author info & Audience Selector */}
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <img
+              <ModernAvatar
                 src={currentUser.avatar}
                 alt={currentUser.name}
-                className="w-10 h-10 rounded-full object-cover ring-1 ring-[#8FA89B]"
+                size="md"
+                ring
               />
               <div>
                 <p className="text-sm font-semibold text-[#2D3732]">

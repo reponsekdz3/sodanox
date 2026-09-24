@@ -3,6 +3,7 @@ import { Phone, PhoneOff, Video, ShieldCheck } from 'lucide-react';
 import { CallSession } from '../../services/callService';
 import { audioSynth } from '../../utils/audioSynth';
 import { AuraLogo } from '../common/AuraLogo';
+import { ModernAvatar } from '../common/ModernAvatar';
 
 interface IncomingCallModalProps {
   incomingCall: CallSession;
@@ -51,11 +52,12 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
         <div className="relative my-2">
           <div className="absolute -inset-4 rounded-full bg-[#8FA89B]/30 animate-ping" />
           <div className="absolute -inset-2 rounded-full bg-[#8FA89B]/40 animate-pulse" />
-          <div className="relative w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-[#8FA89B] to-[#5C7567] shadow-2xl">
-            <img
+          <div className="relative w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-[#8FA89B] to-[#5C7567] shadow-2xl flex items-center justify-center">
+            <ModernAvatar
               src={incomingCall.caller.avatar}
               alt={incomingCall.caller.name}
-              className="w-full h-full rounded-full object-cover"
+              size="2xl"
+              className="w-full h-full"
             />
           </div>
         </div>

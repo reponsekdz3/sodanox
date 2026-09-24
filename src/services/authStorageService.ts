@@ -2,6 +2,7 @@ import { doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp
 import { db } from '../firebase/config';
 import { User } from '../types';
 import { INITIAL_CREATORS } from './seedService';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 export interface UserCredentialRecord {
   uid: string;
@@ -125,16 +126,16 @@ export async function registerAccount(
   // Build clean User Profile
   const now = new Date();
   const formattedDate = `Joined ${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}`;
+  const cleanAvatar = isMockOrEmptyAvatar(profileData.avatar)
+    ? MODERN_EMPTY_AVATAR_DATA_URI
+    : (profileData.avatar || MODERN_EMPTY_AVATAR_DATA_URI);
+
   const fullProfile: User = {
     id: uid,
     name: profileData.name?.trim() || cleanEmail.split('@')[0],
     username: cleanUsername,
-    avatar:
-      profileData.avatar ||
-      `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80`,
-    bannerUrl:
-      profileData.bannerUrl ||
-      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+    avatar: cleanAvatar,
+    bannerUrl: profileData.bannerUrl || '',
     bio: profileData.bio?.trim() || 'Mindful creator on Aura · Exploring quiet design and genuine connections.',
     pronouns: profileData.pronouns?.trim() || '',
     location: profileData.location?.trim() || '',

@@ -11,10 +11,13 @@ import {
   arrayRemove,
   increment,
   serverTimestamp,
+  onSnapshot,
+  Unsubscribe,
 } from 'firebase/firestore';
 import { db, auth } from '../firebase/config';
 import { User } from '../types';
 import { createNotification } from './notificationService';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const USERS_COLLECTION = 'users';
 const LOCAL_USERS_CACHE_KEY = 'aura_pure_users_cache';
@@ -149,16 +152,16 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     .toLowerCase()
     .replace(/[^a-z0-9_.]/g, '');
 
+  const cleanAvatar = isMockOrEmptyAvatar(profileData.avatar)
+    ? MODERN_EMPTY_AVATAR_DATA_URI
+    : (profileData.avatar || MODERN_EMPTY_AVATAR_DATA_URI);
+
   const fullProfile: User = {
     id: uid,
     name: profileData.name || 'Aura Member',
     username: cleanUsername,
-    avatar:
-      profileData.avatar ||
-      `https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80`,
-    bannerUrl:
-      profileData.bannerUrl ||
-      'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+    avatar: cleanAvatar,
+    bannerUrl: profileData.bannerUrl || '',
     bio: profileData.bio || 'Exploring design, craft, and quiet conversations on Aura.',
     pronouns: profileData.pronouns || '',
     location: profileData.location || '',
@@ -334,6 +337,59 @@ function enrichUserRelationships(user: User, currentUserProfile?: User | null): 
 }
 
 /**
+ * Real-time subscription to community users in Firestore
+ */
+export function subscribeToCommunityUsers(
+  currentUid: string,
+  onUpdate: (users: User[]) => void
+): Unsubscribe {
+  if (!currentUid || currentUid === 'guest_user') return () => {};
+
+  try {
+    const usersRef = collection(db, USERS_COLLECTION);
+    return onSnapshot(
+      usersRef,
+      (snapshot) => {
+        const users: User[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data() as User;
+          const id = docSnap.id;
+          const lowerId = id.toLowerCase();
+          if (
+            lowerId.startsWith('test_') ||
+            lowerId.startsWith('mock_') ||
+            lowerId.startsWith('demo_') ||
+            lowerId.startsWith('creator_')
+          ) {
+            return;
+          }
+          if (id !== currentUid) {
+            const rawAvatar = data.avatar;
+            const cleanAvatar = isMockOrEmptyAvatar(rawAvatar) ? MODERN_EMPTY_AVATAR_DATA_URI : rawAvatar;
+            users.push({
+              ...data,
+              id,
+              avatar: cleanAvatar,
+              bannerUrl: data.bannerUrl || '',
+              followers: data.followers || [],
+              following: data.following || [],
+              followersCount: typeof data.followersCount === 'number' ? Math.max(0, data.followersCount) : (data.followers?.length || 0),
+              followingCount: typeof data.followingCount === 'number' ? Math.max(0, data.followingCount) : (data.following?.length || 0),
+            });
+          }
+        });
+        saveCachedUsers(users);
+        onUpdate(users);
+      },
+      (err) => console.warn('Community live sync note:', err)
+    );
+  } catch (err) {
+    console.warn('Error subscribing to community users:', err);
+    return () => {};
+  }
+}
+
+/**
  * Get all registered community users (for search and initiating chats)
  */
 export async function getAllUsers(excludeUid?: string, currentUid?: string): Promise<User[]> {
@@ -346,7 +402,8 @@ export async function getAllUsers(excludeUid?: string, currentUid?: string): Pro
   // Include existing cached real users
   getCachedUsers().forEach((u) => {
     if (!excludeUid || u.id !== excludeUid) {
-      mergedMap.set(u.id, u);
+      const cleanAvatar = isMockOrEmptyAvatar(u.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : u.avatar;
+      mergedMap.set(u.id, { ...u, avatar: cleanAvatar });
     }
   });
 
@@ -370,9 +427,13 @@ export async function getAllUsers(excludeUid?: string, currentUid?: string): Pro
       }
 
       if (!excludeUid || id !== excludeUid) {
+        const rawAvatar = data.avatar;
+        const cleanAvatar = isMockOrEmptyAvatar(rawAvatar) ? MODERN_EMPTY_AVATAR_DATA_URI : rawAvatar;
         const parsedUser: User = {
           ...data,
           id,
+          avatar: cleanAvatar,
+          bannerUrl: data.bannerUrl || '',
           followers: data.followers || [],
           following: data.following || [],
           followersCount: typeof data.followersCount === 'number' ? Math.max(0, data.followersCount) : (data.followers?.length || 0),

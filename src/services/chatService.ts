@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { ChatConversation, Message, MessageReplyInfo, User } from '../types';
+import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const LOCAL_CONVS_KEY = 'aura_chat_conversations';
 const LOCAL_MSGS_PREFIX = 'aura_chat_msgs_';
@@ -260,15 +261,17 @@ export function subscribeToUserConversations(
             (id) => id !== currentUid
           );
 
-          const participantObj =
-            data.participants?.[otherParticipantId || ''] || {
-              id: otherParticipantId || 'unknown',
-              name: 'Community Creator',
-              username: 'creator',
-              avatar:
-                'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-              verified: false,
-            };
+          const rawParticipant = data.participants?.[otherParticipantId || ''];
+          const rawAvatar = rawParticipant?.avatar;
+          const cleanAvatar = isMockOrEmptyAvatar(rawAvatar) ? MODERN_EMPTY_AVATAR_DATA_URI : rawAvatar;
+
+          const participantObj = {
+            id: otherParticipantId || 'unknown',
+            name: rawParticipant?.name || 'Community Member',
+            username: rawParticipant?.username || 'member',
+            avatar: cleanAvatar,
+            verified: Boolean(rawParticipant?.verified),
+          };
 
           const isTyping = Boolean(data.typing?.[otherParticipantId || '']);
           const unreadCount = Number(data.unreadCounts?.[currentUid] || 0);
