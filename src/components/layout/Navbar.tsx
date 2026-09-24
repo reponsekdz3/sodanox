@@ -14,8 +14,14 @@ import {
 import { User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { AuraLogo } from '../common/AuraLogo';
-import { HeroReelIcon } from '../common/HeroReelIcon';
-import { HeroAddIcon } from '../common/HeroAddIcon';
+import {
+  FilmIcon as HeroFilmOutline,
+  PlusIcon as HeroPlusOutline,
+} from '@heroicons/react/24/outline';
+import {
+  FilmIcon as HeroFilmSolid,
+  PlusIcon as HeroPlusSolid,
+} from '@heroicons/react/24/solid';
 import { auraAudio } from '../../utils/audioSynthesizer';
 
 interface NavbarProps {
@@ -142,7 +148,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Feed</span>
           </button>
 
-          {/* Reels Cinema Tab with HeroReelIcon */}
+          {/* Reels Cinema Tab with Hero FilmIcon from @heroicons/react */}
           <button
             type="button"
             onClick={() => handleTabClick('reels')}
@@ -152,7 +158,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/60'
             }`}
           >
-            <HeroReelIcon size={19} active={currentTab === 'reels'} />
+            {currentTab === 'reels' ? (
+              <HeroFilmSolid className="w-5 h-5 text-[#2D3732] shrink-0" />
+            ) : (
+              <HeroFilmOutline className="w-5 h-5 text-[#7A8A82] group-hover:text-[#2D3732] shrink-0" />
+            )}
             <span>Reels</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#8FA89B]/15 text-[#5E7C6E] font-mono">
               HD
@@ -214,18 +224,22 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Zone 4: Mobile & Desktop Actions (Hero Reel Icon, Modern Powerful Post Button, Account) */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
-          {/* Mobile Cinema Reels shortcut with authentic HeroReelIcon */}
+          {/* Mobile Cinema Reels shortcut with authentic Hero FilmIcon from @heroicons/react */}
           <button
             type="button"
             onClick={() => handleTabClick('reels')}
-            className={`md:hidden p-1.5 sm:p-2 rounded-2xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+            className={`md:hidden p-2 rounded-2xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
               currentTab === 'reels'
                 ? 'bg-[#E6EDE9] border-[#8FA89B]/50 ring-2 ring-[#5E7C6E]/20 text-[#2D3732] shadow-xs'
                 : 'border-[#2D3732]/10 bg-white/80 hover:bg-[#E6EDE9]/60 text-[#3C4A42]'
             }`}
             title="Cinema & Reels"
           >
-            <HeroReelIcon size={22} active={currentTab === 'reels'} />
+            {currentTab === 'reels' ? (
+              <HeroFilmSolid className="w-5 h-5 text-[#2D3732]" />
+            ) : (
+              <HeroFilmOutline className="w-5 h-5 text-[#3C4A42]" />
+            )}
           </button>
 
           {/* Mobile Notifications Trigger */}
@@ -244,7 +258,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             )}
           </button>
 
-          {/* Modern and Powerful Post / Add Action Button with HeroAddIcon */}
+          {/* Modern and Powerful Post / Add Action Button with Hero PlusIcon from @heroicons/react */}
           <button
             type="button"
             onClick={() => {
@@ -254,7 +268,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="group relative flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl bg-gradient-to-r from-[#2F4438] via-[#4A6757] to-[#719181] text-white text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg hover:brightness-110 active:scale-95 whitespace-nowrap cursor-pointer ring-1 ring-white/30 border border-white/20"
             title="Create Reflection or Post"
           >
-            <HeroAddIcon size={16} />
+            <HeroPlusSolid className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2] transition-transform duration-200 group-hover:rotate-90 shrink-0" />
             <span className="font-bold tracking-wide text-xs sm:text-sm">Post</span>
           </button>
 

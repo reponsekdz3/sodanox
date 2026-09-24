@@ -2,7 +2,6 @@ import {
   collection,
   doc,
   setDoc,
-  addDoc,
   updateDoc,
   query,
   where,
@@ -10,120 +9,31 @@ import {
   onSnapshot,
   serverTimestamp,
   getDoc,
+  getDocs,
+  writeBatch,
   increment,
   Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
-import { ChatConversation, Message, User } from '../types';
+import { ChatConversation, Message, MessageReplyInfo, User } from '../types';
 
 export function getDeterministicConvId(uid1: string, uid2: string): string {
   const sorted = [uid1, uid2].sort();
   return `conv_${sorted[0]}_${sorted[1]}`;
 }
 
-const LOCAL_CONVS_PREFIX = 'aura_cached_convs_';
-const LOCAL_MSGS_PREFIX = 'aura_cached_msgs_';
-
-function getLocalConversations(uid: string): ChatConversation[] {
-  try {
-    const raw = localStorage.getItem(`${LOCAL_CONVS_PREFIX}${uid}`);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalConversations(uid: string, convs: ChatConversation[]): void {
-  try {
-    localStorage.setItem(`${LOCAL_CONVS_PREFIX}${uid}`, JSON.stringify(convs));
-  } catch {
-    // Quota safe
-  }
-}
-
-export function saveLocalConversation(uid: string, conv: ChatConversation): void {
-  try {
-    const existing = getLocalConversations(uid);
-    const index = existing.findIndex((c) => c.id === conv.id);
-    let updated: ChatConversation[];
-    if (index >= 0) {
-      updated = [...existing];
-      updated[index] = { ...updated[index], ...conv };
-    } else {
-      updated = [conv, ...existing];
-    }
-    saveLocalConversations(uid, updated);
-  } catch {
-    // Quota safe
-  }
-}
-
-function getLocalMessages(convId: string): Message[] {
-  try {
-    const raw = localStorage.getItem(`${LOCAL_MSGS_PREFIX}${convId}`);
-    return raw ? JSON.parse(raw) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveLocalMessage(convId: string, msg: Message): void {
-  try {
-    const existing = getLocalMessages(convId);
-    if (!existing.some((m) => m.id === msg.id)) {
-      const updated = [...existing, msg];
-      localStorage.setItem(`${LOCAL_MSGS_PREFIX}${convId}`, JSON.stringify(updated));
-    }
-  } catch {
-    // Quota safe
-  }
-}
-
 /**
- * Creates or retrieves a conversation between two users
- * Guaranteed to succeed and return convId with instant local fallback
+ * Creates or retrieves a conversation between two users directly in Firestore
  */
 export async function getOrCreateConversation(
   currentUser: User,
   targetUser: User
 ): Promise<string> {
   const convId = getDeterministicConvId(currentUser.id, targetUser.id);
+  const convRef = doc(db, 'conversations', convId);
 
-  // 1. Immediately ensure local conversation exists for seamless instant redirect
-  const fallbackConv: ChatConversation = {
-    id: convId,
-    participant: {
-      ...targetUser,
-      isFollowing: targetUser.isFollowing || false,
-      joinedDate: targetUser.joinedDate || '',
-      followersCount: targetUser.followersCount || 0,
-      followingCount: targetUser.followingCount || 0,
-      bio: targetUser.bio || '',
-    },
-    lastMessage: {
-      id: `init_${Date.now()}`,
-      senderId: currentUser.id,
-      timestamp: 'Just now',
-      type: 'text',
-      text: 'Direct chat initiated',
-      status: 'read',
-    },
-    unreadCount: 0,
-    isOnline: true,
-    isTyping: false,
-    messages: [],
-  };
-  saveLocalConversation(currentUser.id, fallbackConv);
-  saveLocalConversation(targetUser.id, {
-    ...fallbackConv,
-    participant: currentUser,
-  });
-
-  // 2. Persist to Firestore gracefully
   try {
-    const convRef = doc(db, 'conversations', convId);
     const snap = await getDoc(convRef);
-
     if (!snap.exists()) {
       await setDoc(convRef, {
         id: convId,
@@ -149,7 +59,7 @@ export async function getOrCreateConversation(
           senderId: currentUser.id,
           timestamp: 'Just now',
           type: 'text',
-          text: 'Direct chat initiated',
+          text: 'Conversation started',
           status: 'read',
         },
         unreadCounts: {
@@ -160,123 +70,101 @@ export async function getOrCreateConversation(
           [currentUser.id]: false,
           [targetUser.id]: false,
         },
-        updatedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
     }
   } catch (err) {
-    // Non-blocking catch to guarantee navigation works 100% of the time
-    console.warn('Firestore conversation sync note (fallback active):', err);
+    console.error('Firestore getOrCreateConversation error:', err);
   }
 
   return convId;
 }
 
 /**
- * Real-time subscription to all conversations for the current user
+ * Real-time Firestore subscription to all conversations for current user
  */
 export function subscribeToUserConversations(
   currentUid: string,
   onUpdate: (conversations: ChatConversation[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
-  if (!currentUid || currentUid === 'guest_user' || currentUid === 'user_fallback') {
+  if (!currentUid || currentUid === 'guest_user') {
     return () => {};
   }
 
-  // Instantly broadcast cached conversations
-  const cached = getLocalConversations(currentUid);
-  if (cached.length > 0) {
-    onUpdate(cached);
-  }
+  const convsRef = collection(db, 'conversations');
+  const q = query(
+    convsRef,
+    where('participantIds', 'array-contains', currentUid)
+  );
 
-  try {
-    const convsRef = collection(db, 'conversations');
-    const q = query(
-      convsRef,
-      where('participantIds', 'array-contains', currentUid)
-    );
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const convList: ChatConversation[] = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const otherParticipantId = (data.participantIds as string[])?.find(
+          (id) => id !== currentUid
+        );
 
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const convList: ChatConversation[] = [];
-        snapshot.forEach((docSnap) => {
-          const data = docSnap.data();
-          const otherParticipantId = (data.participantIds as string[]).find(
-            (id) => id !== currentUid
-          );
+        const participantObj =
+          data.participants?.[otherParticipantId || ''] || {
+            id: otherParticipantId || 'unknown',
+            name: 'Community Creator',
+            username: 'creator',
+            avatar:
+              'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+            verified: false,
+          };
 
-          const participantObj =
-            data.participants?.[otherParticipantId || ''] || {
-              id: otherParticipantId || 'unknown',
-              name: 'Community Member',
-              username: 'member',
-              avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-            };
+        const isTyping = Boolean(data.typing?.[otherParticipantId || '']);
+        const unreadCount = Number(data.unreadCounts?.[currentUid] || 0);
 
-          const isTyping = Boolean(data.typing?.[otherParticipantId || '']);
-          const unreadCount = Number(data.unreadCounts?.[currentUid] || 0);
-
-          convList.push({
-            id: docSnap.id,
-            participant: {
-              ...participantObj,
-              isFollowing: false,
-              joinedDate: '',
-              followersCount: 0,
-              followingCount: 0,
-              bio: '',
-            },
-            lastMessage: data.lastMessage || {
-              id: 'm_none',
-              senderId: '',
-              timestamp: '',
-              type: 'text',
-              text: 'No messages yet',
-              status: 'read',
-            },
-            unreadCount,
-            isOnline: true,
-            isTyping,
-            messages: [],
-          });
+        convList.push({
+          id: docSnap.id,
+          participant: {
+            ...participantObj,
+            isFollowing: false,
+            joinedDate: '',
+            followersCount: 0,
+            followingCount: 0,
+            bio: '',
+          },
+          lastMessage: data.lastMessage || {
+            id: 'm_init',
+            senderId: '',
+            timestamp: '',
+            type: 'text',
+            text: 'No messages yet',
+            status: 'read',
+          },
+          unreadCount,
+          isOnline: true,
+          isTyping,
+          messages: [],
         });
+      });
 
-        // Merge with local conversations that might be pending remote sync
-        const currentLocal = getLocalConversations(currentUid);
-        for (const loc of currentLocal) {
-          if (!convList.some((c) => c.id === loc.id)) {
-            convList.push(loc);
-          }
-        }
+      // Sort by last message or updated time descending
+      convList.sort((a, b) => {
+        const timeA = a.lastMessage?.timestamp || '';
+        const timeB = b.lastMessage?.timestamp || '';
+        return timeB.localeCompare(timeA);
+      });
 
-        // Sort by updatedAt descending
-        convList.sort((a, b) => {
-          const timeA = a.lastMessage?.timestamp || '';
-          const timeB = b.lastMessage?.timestamp || '';
-          return timeB.localeCompare(timeA);
-        });
-
-        saveLocalConversations(currentUid, convList);
-        onUpdate(convList);
-      },
-      (err) => {
-        console.warn('Conversation sync fallback to local cache:', err);
-        const fallback = getLocalConversations(currentUid);
-        onUpdate(fallback);
-        if (onError) onError(err);
-      }
-    );
-  } catch (err) {
-    console.warn('Subscription initialization note:', err);
-    onUpdate(getLocalConversations(currentUid));
-    return () => {};
-  }
+      onUpdate(convList);
+    },
+    (err) => {
+      console.error('subscribeToUserConversations snapshot error:', err);
+      if (onError) onError(err);
+    }
+  );
 }
 
 /**
- * Real-time subscription to messages inside a specific conversation
+ * Real-time Firestore subscription to messages inside a specific conversation
  */
 export function subscribeToMessages(
   conversationId: string,
@@ -287,191 +175,200 @@ export function subscribeToMessages(
     return () => {};
   }
 
-  // Instantly broadcast cached messages
-  const cached = getLocalMessages(conversationId);
-  if (cached.length > 0) {
-    onUpdate(cached);
-  }
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const q = query(messagesRef, orderBy('createdAt', 'asc'));
 
-  try {
-    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-    const q = query(messagesRef, orderBy('createdAt', 'asc'));
-
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const msgs: Message[] = [];
-        snapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          msgs.push({
-            id: docSnap.id,
-            senderId: d.senderId,
-            timestamp: d.timestamp || 'Just now',
-            type: d.type || 'text',
-            text: d.text || '',
-            file: d.file,
-            voice: d.voice,
-            status: d.status || 'delivered',
-            reaction: d.reaction,
-          });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const msgs: Message[] = [];
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        msgs.push({
+          id: docSnap.id,
+          senderId: d.senderId,
+          senderName: d.senderName,
+          senderAvatar: d.senderAvatar,
+          timestamp: d.timestamp || 'Just now',
+          type: d.type || 'text',
+          text: d.text || '',
+          file: d.file || undefined,
+          voice: d.voice || undefined,
+          status: d.status || 'delivered',
+          reaction: d.reaction,
+          replyTo: d.replyTo || undefined,
+          readAt: d.readAt,
+          createdAt: d.createdAt,
         });
-
-        // Save to local cache
-        try {
-          localStorage.setItem(
-            `${LOCAL_MSGS_PREFIX}${conversationId}`,
-            JSON.stringify(msgs)
-          );
-        } catch {
-          // Quota safe
-        }
-
-        onUpdate(msgs);
-      },
-      (err) => {
-        console.warn('Messages subscription fallback to cached data:', err);
-        const fallback = getLocalMessages(conversationId);
-        onUpdate(fallback);
-        if (onError) onError(err);
-      }
-    );
-  } catch (err) {
-    console.warn('Messages subscription error, using local fallback:', err);
-    onUpdate(getLocalMessages(conversationId));
-    return () => {};
-  }
+      });
+      onUpdate(msgs);
+    },
+    (err) => {
+      console.error('subscribeToMessages snapshot error:', err);
+      if (onError) onError(err);
+    }
+  );
 }
 
 /**
- * Send a message in a conversation (text, file, voice, or image)
+ * Send a message directly to Firestore with optional replyTo data
  */
 export async function sendChatMessage(
   conversationId: string,
   messageData: Partial<Message>,
   currentUser: User,
-  recipientId: string
-): Promise<void> {
+  recipientId: string,
+  replyTo?: MessageReplyInfo
+): Promise<string> {
   const now = new Date();
   const timeFormatted = now.toLocaleTimeString([], {
     hour: '2-digit',
     minute: '2-digit',
   });
 
-  const localMsg: Message = {
-    id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const msgDocRef = doc(messagesRef);
+  const convRef = doc(db, 'conversations', conversationId);
+
+  const payload: any = {
+    id: msgDocRef.id,
+    conversationId,
     senderId: currentUser.id,
+    senderName: currentUser.name,
+    senderAvatar: currentUser.avatar,
     timestamp: timeFormatted,
     type: messageData.type || 'text',
     text: messageData.text || '',
-    file: messageData.file || undefined,
-    voice: messageData.voice || undefined,
     status: 'sent',
+    createdAt: serverTimestamp(),
   };
 
-  // 1. Immediately store in local cache
-  saveLocalMessage(conversationId, localMsg);
-
-  // Update conversation last message in local cache
-  const localConvs = getLocalConversations(currentUser.id);
-  const targetConv = localConvs.find((c) => c.id === conversationId);
-  if (targetConv) {
-    targetConv.lastMessage = {
-      id: localMsg.id,
-      senderId: currentUser.id,
-      timestamp: timeFormatted,
-      type: localMsg.type,
-      text:
-        messageData.type === 'voice'
-          ? '🎙️ Voice note'
-          : messageData.type === 'file'
-          ? `📎 ${messageData.file?.name || 'File attachment'}`
-          : messageData.type === 'image'
-          ? '📷 Photo'
-          : messageData.text || '',
-      status: 'sent',
+  if (messageData.file) {
+    payload.file = messageData.file;
+  }
+  if (messageData.voice) {
+    payload.voice = messageData.voice;
+  }
+  if (replyTo) {
+    payload.replyTo = {
+      id: replyTo.id,
+      senderId: replyTo.senderId,
+      senderName: replyTo.senderName || 'Sender',
+      text: replyTo.text || '',
+      type: replyTo.type || 'text',
     };
-    saveLocalConversations(currentUser.id, localConvs);
   }
 
-  // 2. Persist to Firestore
-  try {
-    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-    const convRef = doc(db, 'conversations', conversationId);
+  // 1. Write the message document
+  await setDoc(msgDocRef, payload);
 
-    const messageDoc = {
-      conversationId,
+  // 2. Update conversation header: lastMessage, recipient unread count, typing cleared
+  const lastMessageSnippet =
+    messageData.type === 'voice'
+      ? '🎙️ Voice note'
+      : messageData.type === 'file'
+      ? `📎 ${messageData.file?.name || 'File'}`
+      : messageData.type === 'image'
+      ? '📷 Photo'
+      : messageData.text || '';
+
+  await updateDoc(convRef, {
+    lastMessage: {
+      id: msgDocRef.id,
       senderId: currentUser.id,
-      senderName: currentUser.name,
-      senderAvatar: currentUser.avatar,
       timestamp: timeFormatted,
       type: messageData.type || 'text',
-      text: messageData.text || '',
-      file: messageData.file || null,
-      voice: messageData.voice || null,
+      text: lastMessageSnippet,
       status: 'sent',
-      createdAt: serverTimestamp(),
-    };
+    },
+    updatedAt: serverTimestamp(),
+    [`unreadCounts.${recipientId}`]: increment(1),
+    [`typing.${currentUser.id}`]: false,
+  });
 
-    // Add to subcollection
-    await addDoc(messagesRef, messageDoc);
-
-    // Update conversation parent
-    await updateDoc(convRef, {
-      lastMessage: {
-        id: localMsg.id,
-        senderId: currentUser.id,
-        timestamp: timeFormatted,
-        type: messageData.type || 'text',
-        text:
-          messageData.type === 'voice'
-            ? '🎙️ Voice note'
-            : messageData.type === 'file'
-            ? `📎 ${messageData.file?.name || 'File attachment'}`
-            : messageData.type === 'image'
-            ? '📷 Photo'
-            : messageData.text || '',
-        status: 'sent',
-      },
-      updatedAt: serverTimestamp(),
-      [`unreadCounts.${recipientId}`]: increment(1),
-      [`typing.${currentUser.id}`]: false,
-    });
-  } catch (err) {
-    console.warn('Firestore message upload note (saved locally):', err);
-  }
+  return msgDocRef.id;
 }
 
 /**
- * Mark all messages in a conversation as read for current user
+ * Mark all incoming messages in a conversation as read in Firestore
  */
 export async function markConversationAsRead(
   conversationId: string,
   currentUid: string
 ): Promise<void> {
+  if (!conversationId || !currentUid) return;
+
   try {
     const convRef = doc(db, 'conversations', conversationId);
+    // Reset user's unread counter
     await updateDoc(convRef, {
       [`unreadCounts.${currentUid}`]: 0,
     });
+
+    // Update unread messages sent by the other participant to 'read'
+    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+    const unreadQuery = query(
+      messagesRef,
+      where('senderId', '!=', currentUid)
+    );
+    const snap = await getDocs(unreadQuery);
+
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      let needsCommit = false;
+      snap.forEach((docSnap) => {
+        const data = docSnap.data();
+        if (data.status !== 'read') {
+          batch.update(docSnap.ref, {
+            status: 'read',
+            readAt: serverTimestamp(),
+          });
+          needsCommit = true;
+        }
+      });
+      if (needsCommit) {
+        await batch.commit();
+      }
+    }
   } catch (err) {
-    console.warn('Mark read note:', err);
+    console.error('markConversationAsRead error:', err);
   }
 }
 
 /**
- * Update real-time typing indicator
+ * Update real-time typing indicator directly on the conversation doc in Firestore
  */
 export async function setTypingIndicator(
   conversationId: string,
   currentUid: string,
   isTyping: boolean
 ): Promise<void> {
+  if (!conversationId || !currentUid) return;
   try {
     const convRef = doc(db, 'conversations', conversationId);
     await updateDoc(convRef, {
       [`typing.${currentUid}`]: isTyping,
     });
-  } catch {
-    // Ignore transient typing error
+  } catch (err) {
+    // Non-fatal
+  }
+}
+
+/**
+ * React to a message in Firestore
+ */
+export async function addMessageReaction(
+  conversationId: string,
+  messageId: string,
+  reaction: string
+): Promise<void> {
+  if (!conversationId || !messageId) return;
+  try {
+    const msgRef = doc(db, 'conversations', conversationId, 'messages', messageId);
+    await updateDoc(msgRef, {
+      reaction,
+    });
+  } catch (err) {
+    console.error('addMessageReaction error:', err);
   }
 }

@@ -17,8 +17,14 @@ import { User } from '../../types';
 import { AuraLogo } from '../common/AuraLogo';
 import { useAuth } from '../../context/AuthContext';
 import { auraAudio } from '../../utils/audioSynthesizer';
-import { HeroReelIcon } from '../common/HeroReelIcon';
-import { HeroAddIcon } from '../common/HeroAddIcon';
+import {
+  FilmIcon as HeroFilmOutline,
+  PlusIcon as HeroPlusOutline,
+} from '@heroicons/react/24/outline';
+import {
+  FilmIcon as HeroFilmSolid,
+  PlusIcon as HeroPlusSolid,
+} from '@heroicons/react/24/solid';
 
 interface SidebarNavProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -98,7 +104,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             <span className="text-[14px]">Explore & Search</span>
           </button>
 
-          {/* Reels / Cinema */}
+          {/* Reels / Cinema with Hero FilmIcon from @heroicons/react */}
           <button
             type="button"
             onClick={() => onSelectTab('reels')}
@@ -108,10 +114,11 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 : 'text-[#55635C] hover:bg-[#F1F5F2] hover:text-[#2D3732]'
             }`}
           >
-            <HeroReelIcon
-              size={20}
-              active={currentTab === 'reels'}
-            />
+            {currentTab === 'reels' ? (
+              <HeroFilmSolid className="w-5 h-5 text-[#5E7C6E] shrink-0" />
+            ) : (
+              <HeroFilmOutline className="w-5 h-5 text-[#55635C] shrink-0" />
+            )}
             <span className="text-[14px]">Cinema & Reels</span>
           </button>
 
@@ -219,7 +226,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
           }}
           className="group w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-2xl bg-gradient-to-r from-[#2F4438] via-[#4A6757] to-[#719181] hover:brightness-110 text-white text-sm font-semibold shadow-soft hover:shadow-soft-lg transition-all active:scale-98 cursor-pointer ring-1 ring-white/25"
         >
-          <HeroAddIcon size={18} />
+          <HeroPlusSolid className="w-5 h-5 transition-transform duration-200 group-hover:rotate-90 shrink-0" />
           <span>New Reflection</span>
         </button>
       </div>

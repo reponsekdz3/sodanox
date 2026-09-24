@@ -131,6 +131,29 @@
         "typing": { "type": "object" }
       },
       "required": ["participantIds"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Direct message with text, voice note, photo, file, replyTo, reactions, and seen status",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "conversationId": { "type": "string" },
+        "senderId": { "type": "string" },
+        "senderName": { "type": "string" },
+        "senderAvatar": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "type": { "type": "string" },
+        "text": { "type": "string" },
+        "file": { "type": "object" },
+        "voice": { "type": "object" },
+        "replyTo": { "type": "object" },
+        "reaction": { "type": "string" },
+        "status": { "type": "string" },
+        "readAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["senderId", "type"]
     }
   },
   "firestore": {

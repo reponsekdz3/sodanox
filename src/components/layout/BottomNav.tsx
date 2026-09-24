@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, Compass, Film, MessageSquare, User as UserIcon } from 'lucide-react';
+import { Home, Compass, MessageSquare, User as UserIcon } from 'lucide-react';
 import { auraAudio } from '../../utils/audioSynthesizer';
-import { HeroAddIcon } from '../common/HeroAddIcon';
+import { PlusIcon as HeroPlusSolid } from '@heroicons/react/24/solid';
 
 interface BottomNavProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -75,7 +75,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px] tracking-tight">Explore</span>
         </button>
 
-        {/* 3. Center Elevated Quick Create Button */}
+        {/* 3. Center Elevated Quick Create Button with Hero PlusIcon */}
         <div className="flex items-center justify-center">
           <button
             type="button"
@@ -83,7 +83,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
             className="group w-11 h-11 rounded-2xl bg-gradient-to-r from-[#2F4438] via-[#4A6757] to-[#719181] hover:brightness-110 text-white flex items-center justify-center shadow-md active:scale-95 transition-all cursor-pointer ring-1 ring-white/30 border border-white/20"
             title="Create Post or Reflection"
           >
-            <HeroAddIcon size={20} />
+            <HeroPlusSolid className="w-5 h-5 transition-transform duration-200 group-hover:rotate-90 stroke-[2]" />
           </button>
         </div>
 

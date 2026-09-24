@@ -203,9 +203,19 @@ export interface VoiceNoteMeta {
   audioUrl?: string;
 }
 
+export interface MessageReplyInfo {
+  id: string;
+  senderId: string;
+  senderName?: string;
+  text?: string;
+  type?: 'text' | 'file' | 'voice' | 'image';
+}
+
 export interface Message {
   id: string;
   senderId: string;
+  senderName?: string;
+  senderAvatar?: string;
   timestamp: string;
   type: 'text' | 'file' | 'voice' | 'image';
   text?: string;
@@ -213,6 +223,9 @@ export interface Message {
   voice?: VoiceNoteMeta;
   status: 'sent' | 'delivered' | 'read';
   reaction?: string;
+  replyTo?: MessageReplyInfo;
+  readAt?: any;
+  createdAt?: any;
 }
 
 export interface ChatConversation {
