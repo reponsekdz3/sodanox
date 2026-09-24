@@ -25,6 +25,7 @@ interface AuraLogoProps {
   currentUser?: User | null;
   onOpenCreatePost?: () => void;
   onToggleTheme?: (theme: 'nordic' | 'alabaster' | 'dusk') => void;
+  onNavigateHome?: () => void;
   isInteractive?: boolean;
 }
 
@@ -36,6 +37,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
   currentUser,
   onOpenCreatePost,
   onToggleTheme,
+  onNavigateHome,
   isInteractive = true,
 }) => {
   const [isDockOpen, setIsDockOpen] = useState(false);
@@ -190,26 +192,34 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
         )}
       </div>
 
-      {/* Wordmark cleanly styled without Studio badge */}
+      {/* Wordmark cleanly styled with real brand identity */}
       {showWordmark && (
         <div
-          onClick={handleLogoClick}
-          className={`flex flex-col justify-center leading-none ${
-            isInteractive ? 'cursor-pointer' : ''
+          onClick={(e) => {
+            if (onNavigateHome) {
+              e.stopPropagation();
+              auraAudio.playClick(600, 0.04);
+              onNavigateHome();
+            } else {
+              handleLogoClick(e);
+            }
+          }}
+          className={`flex flex-col justify-center leading-tight select-none ${
+            isInteractive || onNavigateHome ? 'cursor-pointer' : ''
           }`}
         >
           <div className="flex items-center gap-1.5">
             <span
-              className={`font-serif font-semibold tracking-wide ${currentSize.text} ${textColor}`}
+              className={`font-serif font-bold tracking-tight ${currentSize.text} ${textColor}`}
             >
               Aura
             </span>
-            <span className="px-1.5 py-0.5 rounded-full bg-[#8FA89B]/15 text-[#55635C] font-mono text-[9px] font-semibold tracking-wider uppercase border border-[#8FA89B]/30 flex items-center gap-1">
+            <span className="px-1.5 py-0.5 rounded-full bg-[#8FA89B]/20 text-[#3C5246] font-mono text-[9px] font-bold tracking-wider uppercase border border-[#8FA89B]/35 flex items-center gap-1 shadow-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
               <span>Social</span>
             </span>
           </div>
-          <span className={`${currentSize.sub} text-[#7A8A82] font-mono tracking-wider mt-0.5`}>
+          <span className={`${currentSize.sub} text-[#7A8A82] font-mono tracking-wider mt-0.5 hidden sm:block`}>
             mindful network
           </span>
         </div>

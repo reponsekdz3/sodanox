@@ -17,8 +17,8 @@ import { User } from '../../types';
 import { AuraLogo } from '../common/AuraLogo';
 import { useAuth } from '../../context/AuthContext';
 import { auraAudio } from '../../utils/audioSynthesizer';
-import { ModernReelIcon } from '../common/ModernReelIcon';
-import { ModernCreateIcon } from '../common/ModernCreateIcon';
+import { HeroReelIcon } from '../common/HeroReelIcon';
+import { HeroAddIcon } from '../common/HeroAddIcon';
 
 interface SidebarNavProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -108,7 +108,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
                 : 'text-[#55635C] hover:bg-[#F1F5F2] hover:text-[#2D3732]'
             }`}
           >
-            <ModernReelIcon
+            <HeroReelIcon
               size={20}
               active={currentTab === 'reels'}
             />
@@ -217,9 +217,9 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             auraAudio.playClick(520, 0.05);
             onOpenCreatePost();
           }}
-          className="group w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-2xl bg-gradient-to-r from-[#5E7C6E] via-[#6B8B7C] to-[#8FA89B] hover:brightness-105 text-white text-sm font-semibold shadow-soft hover:shadow-soft-lg transition-all active:scale-98 cursor-pointer ring-1 ring-white/20"
+          className="group w-full flex items-center justify-center gap-2.5 py-3 px-4 rounded-2xl bg-gradient-to-r from-[#2F4438] via-[#4A6757] to-[#719181] hover:brightness-110 text-white text-sm font-semibold shadow-soft hover:shadow-soft-lg transition-all active:scale-98 cursor-pointer ring-1 ring-white/25"
         >
-          <ModernCreateIcon size={18} />
+          <HeroAddIcon size={18} />
           <span>New Reflection</span>
         </button>
       </div>

@@ -10,14 +10,12 @@ import {
   LogOut,
   Search,
   Sparkles,
-  Wifi,
-  Radio,
 } from 'lucide-react';
 import { User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
 import { AuraLogo } from '../common/AuraLogo';
-import { ModernReelIcon } from '../common/ModernReelIcon';
-import { ModernCreateIcon } from '../common/ModernCreateIcon';
+import { HeroReelIcon } from '../common/HeroReelIcon';
+import { HeroAddIcon } from '../common/HeroAddIcon';
 import { auraAudio } from '../../utils/audioSynthesizer';
 
 interface NavbarProps {
@@ -73,15 +71,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#FAFAF9]/90 backdrop-blur-xl border-b border-[#E6EDE9]/80 shadow-xs transition-all">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2 sm:gap-4">
-        {/* Zone 1: Modern Brand & Real-time Live Status */}
-        <div className="flex items-center gap-3 shrink-0">
+    <header className="sticky top-0 z-40 w-full bg-[#FAFAF9]/95 backdrop-blur-xl border-b border-[#E6EDE9]/80 shadow-xs transition-all">
+      <div className="max-w-7xl mx-auto px-2.5 sm:px-6 h-16 flex items-center justify-between gap-1.5 sm:gap-4">
+        {/* Zone 1: Authentic Real Brand Logo & Live Status */}
+        <div className="flex items-center gap-2 sm:gap-3 shrink-0">
           <AuraLogo
             size="md"
             showWordmark={true}
             currentUser={currentUser}
             onOpenCreatePost={onOpenCreatePost}
+            onNavigateHome={() => handleTabClick('feed')}
           />
 
           {/* Discreet Live Sync Indicator */}
@@ -127,7 +126,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           </form>
         </div>
 
-        {/* Zone 3: Interactive Main Navigation Links */}
+        {/* Zone 3: Interactive Main Navigation Links (Desktop) */}
         <nav className="hidden md:flex items-center gap-1 lg:gap-2">
           {/* Feed Tab */}
           <button
@@ -143,7 +142,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Feed</span>
           </button>
 
-          {/* Reels Cinema Tab with Custom ModernReelIcon SVG */}
+          {/* Reels Cinema Tab with HeroReelIcon */}
           <button
             type="button"
             onClick={() => handleTabClick('reels')}
@@ -153,7 +152,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/60'
             }`}
           >
-            <ModernReelIcon size={18} active={currentTab === 'reels'} />
+            <HeroReelIcon size={19} active={currentTab === 'reels'} />
             <span>Reels</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#8FA89B]/15 text-[#5E7C6E] font-mono">
               HD
@@ -213,18 +212,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         </nav>
 
-        {/* Zone 4: Primary Actions & User Profile */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* Mobile Cinema Reels shortcut with ModernReelIcon */}
+        {/* Zone 4: Mobile & Desktop Actions (Hero Reel Icon, Modern Powerful Post Button, Account) */}
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+          {/* Mobile Cinema Reels shortcut with authentic HeroReelIcon */}
           <button
             type="button"
             onClick={() => handleTabClick('reels')}
-            className={`md:hidden p-2 rounded-2xl transition-colors cursor-pointer ${
-              currentTab === 'reels' ? 'bg-[#E6EDE9] text-[#2D3732]' : 'text-[#7A8A82] hover:text-[#2D3732]'
+            className={`md:hidden p-1.5 sm:p-2 rounded-2xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+              currentTab === 'reels'
+                ? 'bg-[#E6EDE9] border-[#8FA89B]/50 ring-2 ring-[#5E7C6E]/20 text-[#2D3732] shadow-xs'
+                : 'border-[#2D3732]/10 bg-white/80 hover:bg-[#E6EDE9]/60 text-[#3C4A42]'
             }`}
-            title="Reels Cinema"
+            title="Cinema & Reels"
           >
-            <ModernReelIcon size={20} active={currentTab === 'reels'} />
+            <HeroReelIcon size={22} active={currentTab === 'reels'} />
           </button>
 
           {/* Mobile Notifications Trigger */}
@@ -234,26 +235,27 @@ export const Navbar: React.FC<NavbarProps> = ({
               auraAudio.playClick(500, 0.04);
               onOpenNotifications();
             }}
-            className="md:hidden p-2 rounded-2xl text-[#7A8A82] hover:text-[#2D3732] relative cursor-pointer"
+            className="md:hidden p-2 rounded-2xl text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/70 relative cursor-pointer transition-colors"
             title="Activity"
           >
-            <Bell size={20} />
+            <Bell size={19} />
             {unreadNotificationsCount > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" />
             )}
           </button>
 
-          {/* Powerful Modern Create Post Button with Custom ModernCreateIcon SVG */}
+          {/* Modern and Powerful Post / Add Action Button with HeroAddIcon */}
           <button
             type="button"
             onClick={() => {
-              auraAudio.playClick(520, 0.05);
+              auraAudio.playClick(540, 0.05);
               onOpenCreatePost();
             }}
-            className="group relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-[#5E7C6E] via-[#6B8B7C] to-[#8FA89B] text-white text-xs sm:text-sm font-medium transition-all shadow-md hover:shadow-lg hover:brightness-105 active:scale-95 whitespace-nowrap cursor-pointer ring-1 ring-white/20"
+            className="group relative flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl bg-gradient-to-r from-[#2F4438] via-[#4A6757] to-[#719181] text-white text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg hover:brightness-110 active:scale-95 whitespace-nowrap cursor-pointer ring-1 ring-white/30 border border-white/20"
+            title="Create Reflection or Post"
           >
-            <ModernCreateIcon size={16} />
-            <span className="hidden sm:inline font-semibold tracking-wide">Create</span>
+            <HeroAddIcon size={16} />
+            <span className="font-bold tracking-wide text-xs sm:text-sm">Post</span>
           </button>
 
           {/* Account Profile Pill Dropdown */}
@@ -264,11 +266,11 @@ export const Navbar: React.FC<NavbarProps> = ({
                 auraAudio.playClick(440, 0.04);
                 setIsDropdownOpen(!isDropdownOpen);
               }}
-              className="flex items-center gap-2 p-1 rounded-2xl hover:bg-[#F1F5F2] transition-colors focus-visible:outline-none cursor-pointer"
+              className="flex items-center gap-1.5 p-0.5 sm:p-1 rounded-2xl hover:bg-[#F1F5F2] transition-colors focus-visible:outline-none cursor-pointer"
               title="Account & Settings"
             >
               <div
-                className={`w-9 h-9 rounded-2xl overflow-hidden p-0.5 transition-all ${
+                className={`w-8.5 h-8.5 sm:w-9 sm:h-9 rounded-2xl overflow-hidden p-0.5 transition-all ${
                   currentTab === 'profile'
                     ? 'ring-2 ring-[#5E7C6E]'
                     : 'hover:ring-2 hover:ring-[#8FA89B]/50'
