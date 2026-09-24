@@ -551,6 +551,42 @@ export default function App() {
 
   const handleCreatePost = async (newPostData: Partial<Post>) => {
     if (!currentUser) return;
+    const optimisticPostId = `post_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const optimisticPost: Post = {
+      id: optimisticPostId,
+      author: currentUser,
+      content: newPostData.content || '',
+      mediaUrl: newPostData.mediaUrl,
+      mediaUrls: newPostData.mediaUrls || (newPostData.mediaUrl ? [newPostData.mediaUrl] : []),
+      mediaType: newPostData.mediaType || 'image',
+      tags: newPostData.tags || [],
+      location: newPostData.location,
+      audience: newPostData.audience || 'public',
+      commentsDisabled: newPostData.commentsDisabled || false,
+      likesCount: 0,
+      likedBy: [],
+      hasLiked: false,
+      bookmarksCount: 0,
+      bookmarkedBy: [],
+      isBookmarked: false,
+      repostsCount: 0,
+      repostedBy: [],
+      hasReposted: false,
+      commentsCount: 0,
+      comments: [],
+      sharesCount: 0,
+      sharedBy: [],
+      viewsCount: 0,
+      viewedBy: [],
+      poll: newPostData.poll,
+      quotedPost: newPostData.quotedPost,
+      timestamp: 'Just now',
+      createdAt: { toMillis: () => Date.now() } as any,
+    };
+
+    // Optimistically update posts state so it shows up instantly at feed and profile
+    setPosts((prev) => [optimisticPost, ...prev]);
+
     try {
       await createNewPost(
         currentUser,
@@ -908,9 +944,15 @@ export default function App() {
   }
 
   // 3. Authenticated App Experience
-  const viewingUserPosts = posts.filter(
-    (p) => p.author.id === (viewingUser?.id || currentUser.id)
-  );
+  const viewingUserPosts = useMemo(() => {
+    const targetId = viewingUser?.id || currentUser.id;
+    const targetUsername = (viewingUser?.username || currentUser.username).toLowerCase();
+    return posts.filter((p) => {
+      const authorId = p.author?.id || (p as any).authorId;
+      const authorUsername = (p.author?.username || '').toLowerCase();
+      return (authorId && authorId === targetId) || (authorUsername && authorUsername === targetUsername);
+    });
+  }, [posts, viewingUser, currentUser]);
 
   return (
     <div
@@ -918,8 +960,8 @@ export default function App() {
         currentTab === 'messages' ? 'h-screen md:h-screen overflow-hidden' : 'min-h-screen'
       }`}
     >
-      {/* Left Aside Navigation: Powerful Desktop & Tablet View */}
-      <div className="hidden md:block shrink-0 h-full">
+      {/* Left Aside Navigation: Powerful Desktop & Tablet View - Fixed & Independent Scrolling */}
+      <div className="hidden md:block shrink-0 sticky top-0 h-screen overflow-y-auto scrollbar-none z-30">
         <SidebarNav
           currentTab={currentTab}
           currentUser={currentUser}
@@ -1059,6 +1101,7 @@ export default function App() {
             suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id)}
             onToggleFollow={handleToggleFollow}
             onOpenEditProfile={() => setIsEditProfileOpen(true)}
+            onOpenCreatePost={() => setIsCreatePostOpen(true)}
             onStartCall={handleStartCall}
             onOpenDirectChat={handleOpenDirectChat}
             onLikePost={handleLikePost}

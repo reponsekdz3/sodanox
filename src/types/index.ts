@@ -156,6 +156,7 @@ export interface Post {
   likedBy?: string[];
   bookmarksCount: number;
   isBookmarked: boolean;
+  bookmarkedBy?: string[];
   commentsCount: number;
   comments: Comment[];
   tags: string[];

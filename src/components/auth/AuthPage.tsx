@@ -348,30 +348,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           <div className="space-y-3 mb-6">
             <button
               type="button"
-              onClick={async () => {
+              onClick={() => {
                 setError(null);
-                setIsSubmitting(true);
-                try {
-                  const targetEmail = email.trim() || undefined;
-                  const targetName = name.trim() || undefined;
-                  if (targetEmail) {
-                    await signInWithGoogle({ email: targetEmail, name: targetName });
-                  } else {
-                    await signInWithGoogle();
-                  }
-                  auraAudio.playChime();
-                  onSuccess?.();
-                } catch (err: unknown) {
-                  const e = err as { message?: string; code?: string };
-                  const isOriginError =
-                    e.message?.includes('origin_mismatch') ||
-                    e.message?.includes('unauthorized') ||
-                    e.code === 'auth/unauthorized-domain';
-                  setGoogleModalTab(isOriginError ? 'origin-guide' : 'signin');
-                  setShowGoogleModal(true);
-                } finally {
-                  setIsSubmitting(false);
-                }
+                setGoogleModalTab('signin');
+                setShowGoogleModal(true);
               }}
               disabled={isSubmitting}
               className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white border border-[#2D3732]/15 hover:bg-[#F1F5F2] text-xs sm:text-sm font-medium text-[#2D3732] shadow-sm transition-all cursor-pointer disabled:opacity-50"
@@ -824,8 +804,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
         isOpen={showGoogleModal}
         onClose={() => setShowGoogleModal(false)}
         initialTab={googleModalTab}
-        defaultEmail={email.trim() || 'ericmusitafa8@gmail.com'}
-        defaultName={name.trim() || 'Eric Musitafa'}
+        defaultEmail={email.trim() || 'obamamunyehirwe@gmail.com'}
+        defaultName={name.trim() || 'Munyehirwe'}
         onConfirmGoogleAuth={async (confirmedEmail, confirmedName, confirmedAvatar) => {
           await signInWithGoogle({
             email: confirmedEmail,

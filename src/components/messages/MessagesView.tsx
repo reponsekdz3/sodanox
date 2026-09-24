@@ -100,6 +100,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [showChatInfo, setShowChatInfo] = useState<boolean>(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [convFilter, setConvFilter] = useState<'all' | 'unread' | 'online'>('all');
+  const [sidebarSection, setSidebarSection] = useState<'chats' | 'contacts'>('chats');
 
   // Staged File/Image Attachment & Drag-and-Drop
   const [stagedAttachment, setStagedAttachment] = useState<{
@@ -191,14 +192,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     return () => unsubscribe();
   }, [currentUser?.id]);
 
-  // Fetch community users for New Chat modal
+  // Fetch community users on mount and when modal opens
   useEffect(() => {
-    if (isNewChatModalOpen) {
-      getAllUsers(currentUser.id).then((users) => {
+    if (!currentUser?.id) return;
+    getAllUsers(currentUser.id)
+      .then((users) => {
         setAvailableUsers(users);
-      });
-    }
-  }, [isNewChatModalOpen, currentUser.id]);
+      })
+      .catch((e) => console.error('Contacts load error:', e));
+  }, [currentUser?.id, isNewChatModalOpen]);
 
   // Real-time messages subscription
   useEffect(() => {
@@ -305,6 +307,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       return true;
     });
   }, [conversations, searchTerm, convFilter]);
+
+  const filteredContacts = useMemo(() => {
+    if (!searchTerm.trim()) return availableUsers;
+    const q = searchTerm.toLowerCase();
+    return availableUsers.filter(
+      (u) =>
+        u.name.toLowerCase().includes(q) ||
+        u.username.toLowerCase().includes(q) ||
+        (u.bio && u.bio.toLowerCase().includes(q))
+    );
+  }, [availableUsers, searchTerm]);
 
   const displayedMessages = useMemo(() => {
     if (!searchInChatQuery.trim()) return messages;
@@ -743,44 +756,121 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               )}
             </div>
 
-            {/* Filter Pills: All / Unread / Online */}
-            <div className="flex items-center gap-1.5 pt-0.5">
+            {/* Segmented Switcher: Active Chats vs All Contacts */}
+            <div className="flex p-0.5 bg-[#EAEFEA] rounded-xl text-xs font-semibold">
               <button
-                onClick={() => setConvFilter('all')}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  convFilter === 'all'
-                    ? 'bg-[#2F4438] text-white shadow-xs'
-                    : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                type="button"
+                onClick={() => setSidebarSection('chats')}
+                className={`flex-1 py-1.5 text-center rounded-lg transition-all cursor-pointer ${
+                  sidebarSection === 'chats'
+                    ? 'bg-white text-[#1E2A23] shadow-xs'
+                    : 'text-[#6A7B73] hover:text-[#1E2A23]'
                 }`}
               >
-                All ({conversations.length})
+                Chats ({conversations.length})
               </button>
               <button
-                onClick={() => setConvFilter('unread')}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  convFilter === 'unread'
-                    ? 'bg-[#2F4438] text-white shadow-xs'
-                    : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                type="button"
+                onClick={() => setSidebarSection('contacts')}
+                className={`flex-1 py-1.5 text-center rounded-lg transition-all cursor-pointer ${
+                  sidebarSection === 'contacts'
+                    ? 'bg-white text-[#1E2A23] shadow-xs'
+                    : 'text-[#6A7B73] hover:text-[#1E2A23]'
                 }`}
               >
-                Unread
-              </button>
-              <button
-                onClick={() => setConvFilter('online')}
-                className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
-                  convFilter === 'online'
-                    ? 'bg-[#2F4438] text-white shadow-xs'
-                    : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
-                }`}
-              >
-                Online
+                All Contacts ({availableUsers.length})
               </button>
             </div>
+
+            {/* Filter Pills when in Chats view */}
+            {sidebarSection === 'chats' && (
+              <div className="flex items-center gap-1.5 pt-0.5">
+                <button
+                  onClick={() => setConvFilter('all')}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    convFilter === 'all'
+                      ? 'bg-[#2F4438] text-white shadow-xs'
+                      : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                  }`}
+                >
+                  All ({conversations.length})
+                </button>
+                <button
+                  onClick={() => setConvFilter('unread')}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    convFilter === 'unread'
+                      ? 'bg-[#2F4438] text-white shadow-xs'
+                      : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                  }`}
+                >
+                  Unread
+                </button>
+                <button
+                  onClick={() => setConvFilter('online')}
+                  className={`px-3 py-1 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                    convFilter === 'online'
+                      ? 'bg-[#2F4438] text-white shadow-xs'
+                      : 'bg-[#EBF1ED] text-[#4A6757] hover:bg-[#DEE7E1]'
+                  }`}
+                >
+                  Online
+                </button>
+              </div>
+            )}
           </div>
 
-          {/* Conversation List Items */}
+          {/* Conversation / Contacts List Items */}
           <div className="flex-1 overflow-y-auto min-h-0 divide-y divide-[#EAEFEA] overscroll-contain touch-pan-y scroll-smooth pb-20 md:pb-4">
-            {filteredConversations.length === 0 ? (
+            {sidebarSection === 'contacts' ? (
+              /* All Community Contacts View */
+              filteredContacts.length === 0 ? (
+                <div className="p-8 text-center text-xs text-[#7A8A82]">
+                  No contacts found matching "{searchTerm}"
+                </div>
+              ) : (
+                filteredContacts.map((user) => (
+                  <div
+                    key={user.id}
+                    onClick={() => handleStartChatWithUser(user)}
+                    className="w-full p-3 sm:p-3.5 flex items-center justify-between gap-3 text-left hover:bg-[#EBF1ED] transition-colors cursor-pointer group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <ModernAvatar
+                        src={user.avatar}
+                        alt={user.name}
+                        size="md"
+                        status="online"
+                        className="shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs sm:text-sm font-bold text-[#1E2A23] truncate group-hover:text-[#4A6757]">
+                            {user.name}
+                          </span>
+                          {user.verified && <CheckCircle2 size={12} className="text-emerald-700 shrink-0" />}
+                        </div>
+                        <p className="text-[11px] text-[#7A8A82] truncate">@{user.username}</p>
+                        {user.bio && (
+                          <p className="text-[10px] text-[#62736B] truncate max-w-[200px] mt-0.5">
+                            {user.bio}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleStartChatWithUser(user);
+                      }}
+                      className="px-2.5 py-1 rounded-xl bg-[#2F4438] text-white text-[11px] font-semibold hover:bg-[#4A6757] transition-all shrink-0 cursor-pointer shadow-xs"
+                    >
+                      Chat
+                    </button>
+                  </div>
+                ))
+              )
+            ) : filteredConversations.length === 0 ? (
               <div className="p-4 space-y-4">
                 <div className="text-center py-4 space-y-2">
                   <p className="text-xs font-semibold text-[#1E2A23]">Start a Conversation</p>
@@ -913,10 +1003,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     auraAudio.playClick(480, 0.03);
                     setMobileShowChat(false);
                   }}
-                  className="md:hidden p-2 -ml-1 text-[#4A6757] hover:bg-[#F1F5F2] rounded-xl transition-colors cursor-pointer shrink-0"
-                  title="Back to conversations"
+                  className="md:hidden p-1.5 -ml-1 text-[#4A6757] hover:bg-[#F1F5F2] rounded-xl transition-colors cursor-pointer shrink-0 flex items-center gap-1 font-semibold text-xs"
+                  title="Back to contacts"
                 >
-                  <ArrowLeft size={20} className="stroke-[2.5]" />
+                  <ArrowLeft size={18} className="stroke-[2.5]" />
+                  <span>Contacts</span>
                 </button>
 
                 {/* Sidebar toggle button on tablet and desktop */}
@@ -1530,25 +1621,59 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
             </div>
           </div>
         ) : (
-          <div className="hidden md:flex md:col-span-7 lg:col-span-8 xl:col-span-8 h-full flex-col items-center justify-center p-6 text-center bg-[#FAFAF9]">
-            <div className="w-16 h-16 rounded-3xl bg-[#E6EDE9] flex items-center justify-center text-[#4A6757] mb-4 shadow-xs">
-              <Smile size={32} />
+          <div className="hidden md:flex md:col-span-7 lg:col-span-8 xl:col-span-8 h-full flex-col items-center justify-center p-6 text-center bg-[#FAFAF9] overflow-y-auto">
+            <div className="max-w-lg w-full space-y-4">
+              <div className="w-16 h-16 rounded-3xl bg-[#E6EDE9] flex items-center justify-center text-[#4A6757] mx-auto shadow-xs">
+                <Smile size={32} />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-[#1E2A23] mb-1">
+                  Community Direct Messaging
+                </h3>
+                <p className="text-xs text-[#7A8A82] max-w-sm mx-auto leading-relaxed">
+                  Real-time messaging with live voice waveforms, photos, document attachments, and link previews.
+                </p>
+              </div>
+
+              {availableUsers.length > 0 && (
+                <div className="pt-2 text-left">
+                  <p className="text-xs font-semibold text-[#1E2A23] mb-2 px-1">
+                    Select a Contact to Chat:
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto p-1">
+                    {availableUsers.map((user) => (
+                      <button
+                        key={user.id}
+                        type="button"
+                        onClick={() => handleStartChatWithUser(user)}
+                        className="p-3 rounded-2xl bg-white border border-[#E6EDE9] hover:border-[#8FA89B] hover:shadow-xs flex items-center gap-3 text-left transition-all cursor-pointer group"
+                      >
+                        <ModernAvatar src={user.avatar} alt={user.name} size="md" status="online" className="shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1">
+                            <span className="text-xs font-bold text-[#1E2A23] truncate group-hover:text-[#4A6757]">
+                              {user.name}
+                            </span>
+                            {user.verified && <CheckCircle2 size={11} className="text-emerald-700" />}
+                          </div>
+                          <p className="text-[10px] text-[#7A8A82] truncate">@{user.username}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={() => {
+                  auraAudio.playClick(600, 0.04);
+                  setIsNewChatModalOpen(true);
+                }}
+                className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#2F4438] to-[#4A6757] text-white text-xs font-semibold hover:brightness-110 transition-all shadow-soft cursor-pointer ring-1 ring-white/20 inline-block"
+              >
+                Start New Chat
+              </button>
             </div>
-            <h3 className="text-base font-bold text-[#1E2A23] mb-1">
-              Select or Start a Conversation
-            </h3>
-            <p className="text-xs text-[#7A8A82] max-w-sm mb-4 leading-relaxed">
-              Direct messages sync live in real-time with full support for replies, voice notes, photos, and file transfers.
-            </p>
-            <button
-              onClick={() => {
-                auraAudio.playClick(600, 0.04);
-                setIsNewChatModalOpen(true);
-              }}
-              className="px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#2F4438] to-[#4A6757] text-white text-xs font-semibold hover:brightness-110 transition-all shadow-soft cursor-pointer ring-1 ring-white/20"
-            >
-              Start New Chat
-            </button>
           </div>
         )}
 

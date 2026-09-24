@@ -43,6 +43,7 @@ interface ProfileViewProps {
   suggestedUsers?: User[];
   onToggleFollow: (userId: string) => void;
   onOpenEditProfile: () => void;
+  onOpenCreatePost?: () => void;
   onStartCall: (participant: User, type: 'audio' | 'video') => void;
   onOpenDirectChat: (participant: User) => void;
   onLikePost: (postId: string) => void;
@@ -69,6 +70,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   suggestedUsers = [],
   onToggleFollow,
   onOpenEditProfile,
+  onOpenCreatePost,
   onStartCall,
   onOpenDirectChat,
   onLikePost,
@@ -495,6 +497,28 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       <div>
         {activeTab === 'posts' && (
           <div className="space-y-6">
+            {/* Quick Create Post for Profile Owner */}
+            {isSelf && onOpenCreatePost && (
+              <div className="bg-[#F1F5F2] rounded-3xl p-4 sm:p-5 border border-[#E6EDE9] shadow-soft flex items-center gap-3">
+                <ModernAvatar src={currentUser.avatar} alt={currentUser.name} size="md" className="shrink-0" />
+                <button
+                  type="button"
+                  onClick={onOpenCreatePost}
+                  className="flex-1 text-left bg-[#FAFAF9] hover:bg-white border border-[#E6EDE9] rounded-2xl px-4 py-2.5 text-xs sm:text-sm text-[#7A8A82] hover:text-[#2D3732] transition-colors shadow-soft cursor-pointer"
+                >
+                  Share what you are creating or thinking today...
+                </button>
+                <button
+                  type="button"
+                  onClick={onOpenCreatePost}
+                  className="inline-flex items-center px-4 py-2.5 rounded-2xl bg-[#8FA89B] hover:bg-[#7e9689] text-white text-xs font-semibold transition-all shadow-soft active:scale-[0.98] cursor-pointer"
+                >
+                  <Plus size={14} className="mr-1" />
+                  Post
+                </button>
+              </div>
+            )}
+
             {userPosts.length === 0 ? (
               <div className="text-center py-16 text-xs sm:text-sm text-[#7A8A82] bg-[#F1F5F2]/40 rounded-3xl border border-dashed border-[#2D3732]/10">
                 <p>No community posts shared yet.</p>

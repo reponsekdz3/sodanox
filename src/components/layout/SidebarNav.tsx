@@ -57,7 +57,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   return (
-    <aside className="md:w-20 lg:w-64 xl:w-72 shrink-0 h-screen sticky top-0 flex flex-col justify-between py-5 lg:py-6 px-2 lg:px-6 border-r border-[#E6EDE9] bg-[#FAFAF9]/95 backdrop-blur-md select-none transition-all duration-200">
+    <aside className="md:w-20 lg:w-64 xl:w-72 shrink-0 h-screen sticky top-0 flex flex-col justify-between py-5 lg:py-6 px-2 lg:px-6 border-r border-[#E6EDE9] bg-[#FAFAF9]/95 backdrop-blur-md select-none transition-all duration-200 overflow-y-auto scrollbar-none">
       {/* Top Header & Navigation Links */}
       <div className="space-y-5 lg:space-y-6">
         {/* Advanced Functional Brand Wordmark & Aura Icon */}
