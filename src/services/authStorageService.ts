@@ -1,6 +1,7 @@
 import { doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { User } from '../types';
+import { INITIAL_CREATORS } from './seedService';
 
 export interface UserCredentialRecord {
   uid: string;
@@ -186,11 +187,16 @@ export async function registerAccount(
       followers: [],
       following: [],
       verified: false,
+      email: cleanEmail,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
+  } catch (err) {
+    console.warn('Firestore user profile write note:', err);
+  }
 
-    // Save sensitive fields to private subcollection: users/{userId}/private/settings
+  // Save sensitive preferences to private subcollection: users/{userId}/private/settings
+  try {
     const privateSettingsRef = doc(db, 'users', uid, 'private', 'settings');
     await setDoc(privateSettingsRef, {
       email: cleanEmail,
@@ -204,7 +210,7 @@ export async function registerAccount(
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
-    console.warn('Firestore user profile write note:', err);
+    console.warn('Firestore private settings write note:', err);
   }
 
   return { uid, profile: fullProfile };
@@ -286,7 +292,71 @@ export async function authenticateAccount(
     return { uid: credRecord.uid, profile: fallbackProfile };
   }
 
-  // Fallback: Query by email in users collection
+  // 2. Check if this is a recognized platform creator (e.g. icedrick444@gmail.com)
+  const initialCreator = INITIAL_CREATORS.find(
+    (c) => c.email?.toLowerCase() === cleanEmail
+  );
+  if (initialCreator) {
+    const salt = generateSalt();
+    const passwordHash = await hashPassword(pass, salt);
+    const newCred: UserCredentialRecord = {
+      uid: initialCreator.id,
+      email: cleanEmail,
+      passwordHash,
+      salt,
+      createdAt: new Date().toISOString(),
+    };
+    saveLocalCredential(newCred);
+
+    // Ensure initial creator profile is saved in Firestore users collection
+    try {
+      const userDocRef = doc(db, 'users', initialCreator.id);
+      await setDoc(
+        userDocRef,
+        {
+          id: initialCreator.id,
+          name: initialCreator.name,
+          username: initialCreator.username,
+          avatar: initialCreator.avatar,
+          bannerUrl: initialCreator.bannerUrl,
+          bio: initialCreator.bio,
+          pronouns: initialCreator.pronouns,
+          location: initialCreator.location,
+          website: initialCreator.website,
+          joinedDate: initialCreator.joinedDate,
+          followersCount: initialCreator.followersCount,
+          followingCount: initialCreator.followingCount,
+          followers: initialCreator.followers,
+          following: initialCreator.following,
+          verified: initialCreator.verified,
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      const privateSettingsRef = doc(db, 'users', initialCreator.id, 'private', 'settings');
+      await setDoc(
+        privateSettingsRef,
+        {
+          email: cleanEmail,
+          blockedUsers: [],
+          privateAccount: false,
+          showOnlineStatus: true,
+          allowReshare: true,
+          themePreference: 'nordic',
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } catch (err) {
+      console.warn('Initial creator Firestore sync note:', err);
+    }
+
+    return { uid: initialCreator.id, profile: initialCreator };
+  }
+
+  // 3. Fallback: Query by email in users collection
   try {
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('email', '==', cleanEmail));
@@ -294,13 +364,21 @@ export async function authenticateAccount(
     if (!snap.empty) {
       const docData = snap.docs[0];
       const profile = { ...docData.data(), id: docData.id } as User;
+      const salt = generateSalt();
+      const passwordHash = await hashPassword(pass, salt);
+      saveLocalCredential({
+        uid: docData.id,
+        email: cleanEmail,
+        passwordHash,
+        salt,
+      });
       return { uid: docData.id, profile };
     }
   } catch (err) {
     console.warn('Firestore fallback user query note:', err);
   }
 
-  throw new Error(`No account found for "${cleanEmail}". Please click "Create one now" below to register!`);
+  throw new Error(`No account found for "${cleanEmail}". Click "Create one now" below to register in 1 click!`);
 }
 
 /**
@@ -313,16 +391,48 @@ export async function resetAccountPassword(email: string, newPass: string): Prom
 
   const localCreds = getLocalCredentials();
   const existing = localCreds[cleanEmail];
-  if (!existing) {
-    throw new Error(`No account found with email "${cleanEmail}"`);
+  if (existing) {
+    const updated: UserCredentialRecord = {
+      ...existing,
+      passwordHash,
+      salt,
+      updatedAt: Date.now(),
+    };
+    saveLocalCredential(updated);
+    return;
   }
 
-  const updated: UserCredentialRecord = {
-    ...existing,
-    passwordHash,
-    salt,
-    updatedAt: Date.now(),
-  };
+  // Check initial creators
+  const initial = INITIAL_CREATORS.find((c) => c.email?.toLowerCase() === cleanEmail);
+  if (initial) {
+    saveLocalCredential({
+      uid: initial.id,
+      email: cleanEmail,
+      passwordHash,
+      salt,
+      updatedAt: Date.now(),
+    });
+    return;
+  }
 
-  saveLocalCredential(updated);
+  // Check Firestore users collection
+  try {
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('email', '==', cleanEmail));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      saveLocalCredential({
+        uid: snap.docs[0].id,
+        email: cleanEmail,
+        passwordHash,
+        salt,
+        updatedAt: Date.now(),
+      });
+      return;
+    }
+  } catch (err) {
+    console.warn('Reset password user query note:', err);
+  }
+
+  throw new Error(`No account found with email "${cleanEmail}"`);
 }

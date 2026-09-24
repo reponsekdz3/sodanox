@@ -301,6 +301,7 @@ export async function syncGoogleProfileWithFirestore(
     followers: [],
     following: [],
     verified: false,
+    email: cleanEmail,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -330,10 +331,15 @@ export async function syncGoogleProfileWithFirestore(
   try {
     const userRef = doc(db, 'users', targetUid);
     await setDoc(userRef, publicData, { merge: true });
+  } catch (err) {
+    console.warn('Firestore new Google user write note:', err);
+  }
+
+  try {
     const privateRef = doc(db, 'users', targetUid, 'private', 'settings');
     await setDoc(privateRef, privateData, { merge: true });
   } catch (err) {
-    console.warn('Firestore new Google user write note:', err);
+    console.warn('Firestore private settings write note:', err);
   }
 
   return { user: fullUser, isNewUser: true };

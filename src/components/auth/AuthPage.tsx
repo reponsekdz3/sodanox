@@ -344,9 +344,29 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
           {/* Error Alert */}
           {error && (
-            <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex items-start gap-3 animate-fade-in">
-              <AlertCircle size={18} className="shrink-0 mt-0.5 text-red-500" />
-              <div className="flex-1">{error}</div>
+            <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex flex-col gap-2.5 animate-fade-in">
+              <div className="flex items-start gap-3">
+                <AlertCircle size={18} className="shrink-0 mt-0.5 text-red-500" />
+                <div className="flex-1 leading-relaxed">{error}</div>
+              </div>
+              {(error.includes('No account found') || error.includes('Create one now')) && mode === 'signin' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('signup');
+                    setError(null);
+                    if (!name && email) {
+                      setName(email.split('@')[0]);
+                    }
+                    if (!username && email) {
+                      setUsername(email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, ''));
+                    }
+                  }}
+                  className="self-start text-xs font-medium px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors shadow-sm ml-7 cursor-pointer"
+                >
+                  Create account with {email || 'this email'} →
+                </button>
+              )}
             </div>
           )}
 
@@ -587,17 +607,53 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
             {/* Email Address */}
             <div>
-              <label className="block text-xs font-medium text-[#2D3732] mb-1">
-                Email Address *
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-xs font-medium text-[#2D3732]">
+                  Email Address *
+                </label>
+                {mode === 'signin' && (
+                  <span className="text-[10px] text-[#7A8A82]">Quick-fill:</span>
+                )}
+              </div>
+
+              {mode === 'signin' && (
+                <div className="flex flex-wrap gap-1.5 mb-2.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('icedrick444@gmail.com');
+                      setPassword('Password123!');
+                      setError(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E5EAE7]/70 hover:bg-[#8FA89B]/20 text-[#2D3732] text-[11px] font-medium transition-colors border border-[#2D3732]/10 cursor-pointer"
+                  >
+                    <span>icedrick444@gmail.com</span>
+                    <span className="text-[9px] px-1 py-0.2 bg-[#8FA89B]/20 text-[#3A5245] rounded font-semibold">Dev</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmail('raphanshimyumukiza@gmail.com');
+                      setPassword('Password123!');
+                      setError(null);
+                    }}
+                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E5EAE7]/70 hover:bg-[#8FA89B]/20 text-[#2D3732] text-[11px] font-medium transition-colors border border-[#2D3732]/10 cursor-pointer"
+                  >
+                    <span>raphanshimyumukiza@gmail.com</span>
+                    <span className="text-[9px] px-1 py-0.2 bg-[#8FA89B]/20 text-[#3A5245] rounded font-semibold">Founder</span>
+                  </button>
+                </div>
+              )}
+
               <div className="relative">
                 <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
                 <input
                   type="email"
+                  autoComplete="email"
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="elena@nordic.design"
+                  placeholder={mode === 'signin' ? 'icedrick444@gmail.com' : 'elena@nordic.design'}
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
                 />
               </div>
@@ -626,6 +682,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
                 <input
                   type={showPassword ? 'text' : 'password'}
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}

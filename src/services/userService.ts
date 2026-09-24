@@ -210,6 +210,7 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     followers: [],
     following: [],
     verified: false,
+    email: profileData.email || '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -230,10 +231,15 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
 
   try {
     await setDoc(userDocRef, publicData, { merge: true });
+  } catch (err) {
+    console.warn('Firestore userDoc setDoc notice:', err);
+  }
+
+  try {
     const privateRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
     await setDoc(privateRef, privateData, { merge: true });
   } catch (err) {
-    console.warn('Firestore setDoc notice (profile stored in session):', err);
+    console.warn('Firestore private settings setDoc notice:', err);
   }
 
   // Update local community cache
