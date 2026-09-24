@@ -54,19 +54,5 @@ if (typeof window !== 'undefined') {
   });
 }
 
-// Safe startup check: silent connection verification
-async function testConnection() {
-  try {
-    // Only attempt if not offline
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      return;
-    }
-    await getDocFromServer(doc(db, 'test', 'connection'));
-  } catch {
-    // Graceful offline fallback - no warning emitted to keep console clean
-  }
-}
-// Run asynchronously without blocking
-testConnection().catch(() => {});
-
+// Safe startup initialization
 export default app;

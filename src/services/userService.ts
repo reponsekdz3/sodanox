@@ -12,7 +12,7 @@ import {
   increment,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { User } from '../types';
 import { createNotification } from './notificationService';
 
@@ -75,6 +75,27 @@ export async function getUserProfile(uid: string): Promise<User | null> {
         followersCount: typeof data.followersCount === 'number' ? Math.max(0, data.followersCount) : (data.followers?.length || 0),
         followingCount: typeof data.followingCount === 'number' ? Math.max(0, data.followingCount) : (data.following?.length || 0),
       } as User;
+
+      // If active caller is the owner, securely fetch sensitive PII from private subcollection
+      if (auth.currentUser?.uid === uid) {
+        try {
+          const privateDocRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
+          const privateSnap = await getDoc(privateDocRef);
+          if (privateSnap.exists()) {
+            const privData = privateSnap.data();
+            profile.email = privData.email || profile.email;
+            profile.blockedUsers = privData.blockedUsers || [];
+            profile.notificationPreferences = privData.notificationPreferences || profile.notificationPreferences;
+            profile.mediaPreferences = privData.mediaPreferences || profile.mediaPreferences;
+            profile.privateAccount = privData.privateAccount ?? profile.privateAccount;
+            profile.showOnlineStatus = privData.showOnlineStatus ?? profile.showOnlineStatus;
+            profile.allowReshare = privData.allowReshare ?? profile.allowReshare;
+            profile.themePreference = privData.themePreference || profile.themePreference;
+          }
+        } catch {
+          // Graceful fallback
+        }
+      }
 
       const current = getCachedUsers();
       const idx = current.findIndex((u) => u.id === uid);
@@ -172,15 +193,45 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     blockedUsers: profileData.blockedUsers || [],
   };
 
+  // Public fields written to users/{userId}
+  const publicData = {
+    id: uid,
+    name: fullProfile.name,
+    username: fullProfile.username,
+    avatar: fullProfile.avatar,
+    bannerUrl: fullProfile.bannerUrl,
+    bio: fullProfile.bio,
+    pronouns: fullProfile.pronouns,
+    location: fullProfile.location,
+    website: fullProfile.website,
+    joinedDate: fullProfile.joinedDate,
+    followersCount: 0,
+    followingCount: 0,
+    followers: [],
+    following: [],
+    verified: false,
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  };
+
+  // Private sensitive fields written to users/{userId}/private/settings
+  const privateData = {
+    email: profileData.email || '',
+    blockedUsers: profileData.blockedUsers || [],
+    privateAccount: profileData.privateAccount || false,
+    themePreference: profileData.themePreference || 'nordic',
+    allowMessagesFrom: profileData.allowMessagesFrom || 'everyone',
+    showOnlineStatus: profileData.showOnlineStatus !== false,
+    allowReshare: profileData.allowReshare !== false,
+    notificationPreferences: fullProfile.notificationPreferences,
+    mediaPreferences: fullProfile.mediaPreferences,
+    updatedAt: serverTimestamp(),
+  };
+
   try {
-    await setDoc(
-      userDocRef,
-      {
-        ...fullProfile,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    await setDoc(userDocRef, publicData, { merge: true });
+    const privateRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
+    await setDoc(privateRef, privateData, { merge: true });
   } catch (err) {
     console.warn('Firestore setDoc notice (profile stored in session):', err);
   }
@@ -196,16 +247,45 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
 }
 
 /**
- * Update user profile fields
+ * Update user profile fields with strict privilege separation
  */
 export async function updateUserProfile(uid: string, data: Partial<User>): Promise<void> {
   if (!uid) return;
   const userDocRef = doc(db, USERS_COLLECTION, uid);
+
+  // 1. Separate public fields from private settings and strip immutable keys (role, verified, id, createdAt)
+  const publicUpdates: Record<string, any> = {};
+  if (data.name !== undefined) publicUpdates.name = data.name;
+  if (data.bio !== undefined) publicUpdates.bio = data.bio;
+  if (data.location !== undefined) publicUpdates.location = data.location;
+  if (data.website !== undefined) publicUpdates.website = data.website;
+  if (data.pronouns !== undefined) publicUpdates.pronouns = data.pronouns;
+  if (data.avatar !== undefined) publicUpdates.avatar = data.avatar;
+  if (data.bannerUrl !== undefined) publicUpdates.bannerUrl = data.bannerUrl;
+  if (data.username !== undefined) publicUpdates.username = data.username;
+  publicUpdates.updatedAt = serverTimestamp();
+
+  // 2. Sensitive fields to private subcollection
+  const privateUpdates: Record<string, any> = {};
+  if (data.email !== undefined) privateUpdates.email = data.email;
+  if (data.blockedUsers !== undefined) privateUpdates.blockedUsers = data.blockedUsers;
+  if (data.notificationPreferences !== undefined) privateUpdates.notificationPreferences = data.notificationPreferences;
+  if (data.mediaPreferences !== undefined) privateUpdates.mediaPreferences = data.mediaPreferences;
+  if (data.privateAccount !== undefined) privateUpdates.privateAccount = data.privateAccount;
+  if (data.showOnlineStatus !== undefined) privateUpdates.showOnlineStatus = data.showOnlineStatus;
+  if (data.allowReshare !== undefined) privateUpdates.allowReshare = data.allowReshare;
+  if (data.themePreference !== undefined) privateUpdates.themePreference = data.themePreference;
+  if (data.allowMessagesFrom !== undefined) privateUpdates.allowMessagesFrom = data.allowMessagesFrom;
+  privateUpdates.updatedAt = serverTimestamp();
+
   try {
-    await updateDoc(userDocRef, {
-      ...data,
-      updatedAt: serverTimestamp(),
-    });
+    if (Object.keys(publicUpdates).length > 1) {
+      await updateDoc(userDocRef, publicUpdates);
+    }
+    if (Object.keys(privateUpdates).length > 1) {
+      const privateRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
+      await setDoc(privateRef, privateUpdates, { merge: true });
+    }
   } catch (err) {
     console.warn('Firestore updateUserProfile notice:', err);
   }
@@ -521,21 +601,33 @@ export async function toggleBlockUser(
   currentlyBlocked: boolean
 ): Promise<void> {
   if (!currentUid || !targetUid || currentUid === targetUid) return;
-  const userRef = doc(db, USERS_COLLECTION, currentUid);
+  const privateRef = doc(db, USERS_COLLECTION, currentUid, 'private', 'settings');
 
-  if (currentlyBlocked) {
-    await updateDoc(userRef, {
-      blockedUsers: arrayRemove(targetUid),
-      updatedAt: serverTimestamp(),
-    });
-  } else {
-    // Block: Add to blocked list and unfollow both ways
-    await updateDoc(userRef, {
-      blockedUsers: arrayUnion(targetUid),
-      updatedAt: serverTimestamp(),
-    });
-    // Remove from following
-    await toggleFollowUser(currentUid, targetUid, true).catch(() => {});
-    await toggleFollowUser(targetUid, currentUid, true).catch(() => {});
+  try {
+    if (currentlyBlocked) {
+      await setDoc(
+        privateRef,
+        {
+          blockedUsers: arrayRemove(targetUid),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+    } else {
+      // Block: Add to blocked list in private subcollection and unfollow both ways
+      await setDoc(
+        privateRef,
+        {
+          blockedUsers: arrayUnion(targetUid),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      );
+      // Remove from following
+      await toggleFollowUser(currentUid, targetUid, true).catch(() => {});
+      await toggleFollowUser(targetUid, currentUid, true).catch(() => {});
+    }
+  } catch (err) {
+    console.warn('Error toggling block user:', err);
   }
 }

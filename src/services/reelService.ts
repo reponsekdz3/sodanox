@@ -98,6 +98,7 @@ export async function createReelInFirestore(
   try {
     const reelsRef = collection(db, REELS_COLLECTION);
     await addDoc(reelsRef, {
+      authorId: author.id,
       author: {
         id: author.id,
         name: author.name,

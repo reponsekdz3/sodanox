@@ -255,23 +255,6 @@ export async function syncGoogleProfileWithFirestore(
       console.warn('Firestore Google user update note:', err);
     }
 
-    // Update user_credentials mapping
-    try {
-      const credRef = doc(db, 'user_credentials', cleanEmail);
-      await setDoc(
-        credRef,
-        {
-          uid: targetUid,
-          email: cleanEmail,
-          authProvider: 'google',
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch {
-      // Safe
-    }
-
     return { user: updatedProfile, isNewUser: false };
   }
 
@@ -300,7 +283,7 @@ export async function syncGoogleProfileWithFirestore(
     isFollowing: false,
     isFollower: false,
     isMutual: false,
-    verified: true,
+    verified: false,
     email: cleanEmail,
     privateAccount: false,
     showOnlineStatus: true,
@@ -315,15 +298,6 @@ export async function syncGoogleProfileWithFirestore(
     const userRef = doc(db, 'users', targetUid);
     await setDoc(userRef, {
       ...newProfile,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    const credRef = doc(db, 'user_credentials', cleanEmail);
-    await setDoc(credRef, {
-      uid: targetUid,
-      email: cleanEmail,
-      authProvider: 'google',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });

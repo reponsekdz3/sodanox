@@ -1,4 +1,4 @@
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
+import { doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { User } from '../types';
 
@@ -61,12 +61,16 @@ function saveLocalCredential(cred: UserCredentialRecord) {
 }
 
 /**
- * Register a pure, real account with credentials stored in Firestore and cached locally.
+ * Register account and initialize user profile in Firestore.
+ * NOTE: In accordance with Firestore security rules, client-side writes to
+ * /user_credentials are completely forbidden (allow read, write: if false;).
+ * Credential storage is handled securely by Firebase Auth.
  */
 export async function registerAccount(
   email: string,
   pass: string,
-  profileData: Partial<User>
+  profileData: Partial<User>,
+  explicitUid?: string
 ): Promise<{ uid: string; profile: User }> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail || !cleanEmail.includes('@')) {
@@ -76,25 +80,13 @@ export async function registerAccount(
     throw new Error('Password must be at least 6 characters');
   }
 
-  // 1. Check if email already exists in Firestore user_credentials
-  try {
-    const credRef = doc(db, 'user_credentials', cleanEmail);
-    const credSnap = await getDoc(credRef);
-    if (credSnap.exists()) {
-      throw new Error('An account with this email already exists. Please sign in instead.');
-    }
-  } catch (err: unknown) {
-    const msg = (err as { message?: string })?.message || '';
-    if (msg.includes('already exists')) throw err;
-  }
-
-  // 2. Check local credentials registry as backup
+  // Check local credentials registry as backup
   const localCreds = getLocalCredentials();
   if (localCreds[cleanEmail]) {
     throw new Error('An account with this email already exists. Please sign in instead.');
   }
 
-  // 3. Check if username is taken in users collection
+  // Check if username is taken in users collection
   const rawUsername = profileData.username || cleanEmail.split('@')[0];
   const cleanUsername = rawUsername.toLowerCase().replace(/[^a-z0-9_.]/g, '');
 
@@ -114,8 +106,8 @@ export async function registerAccount(
     if (msg.includes('already taken')) throw err;
   }
 
-  // 4. Generate unique ID & credential hash
-  const uid = `user_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+  // Generate unique ID or use authenticated UID
+  const uid = explicitUid || `user_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
   const salt = generateSalt();
   const passwordHash = await hashPassword(pass, salt);
 
@@ -126,22 +118,10 @@ export async function registerAccount(
     salt,
   };
 
-  // 5. Save credentials in Firestore
-  try {
-    const credRef = doc(db, 'user_credentials', cleanEmail);
-    await setDoc(credRef, {
-      ...credRecord,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  } catch (err) {
-    console.warn('Firestore user_credentials sync note:', err);
-  }
-
-  // Cache credentials locally for instant offline access
+  // Cache credentials locally for offline access (never write to firestore user_credentials from client)
   saveLocalCredential(credRecord);
 
-  // 6. Build clean User Profile
+  // Build clean User Profile
   const now = new Date();
   const formattedDate = `Joined ${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}`;
   const fullProfile: User = {
@@ -171,15 +151,56 @@ export async function registerAccount(
     privateAccount: false,
     showOnlineStatus: true,
     allowReshare: true,
-    themePreference: profileData.themePreference || 'nordic',
+    themePreference: 'nordic',
+    notificationPreferences: {
+      likes: true,
+      comments: true,
+      directChats: true,
+      calls: true,
+      follows: true,
+    },
+    mediaPreferences: {
+      autoPlayReels: true,
+      highQualityUploads: true,
+      soundEffects: true,
+    },
+    blockedUsers: [],
   };
 
-  // 7. Save user profile in Firestore
+  // Save public profile to users/{userId}
   try {
     const userDocRef = doc(db, 'users', uid);
     await setDoc(userDocRef, {
-      ...fullProfile,
+      id: fullProfile.id,
+      name: fullProfile.name,
+      username: fullProfile.username,
+      avatar: fullProfile.avatar,
+      bannerUrl: fullProfile.bannerUrl,
+      bio: fullProfile.bio,
+      pronouns: fullProfile.pronouns,
+      location: fullProfile.location,
+      website: fullProfile.website,
+      joinedDate: fullProfile.joinedDate,
+      followersCount: 0,
+      followingCount: 0,
+      followers: [],
+      following: [],
+      verified: false,
       createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    // Save sensitive fields to private subcollection: users/{userId}/private/settings
+    const privateSettingsRef = doc(db, 'users', uid, 'private', 'settings');
+    await setDoc(privateSettingsRef, {
+      email: cleanEmail,
+      blockedUsers: [],
+      privateAccount: false,
+      showOnlineStatus: true,
+      allowReshare: true,
+      themePreference: 'nordic',
+      notificationPreferences: fullProfile.notificationPreferences,
+      mediaPreferences: fullProfile.mediaPreferences,
       updatedAt: serverTimestamp(),
     });
   } catch (err) {
@@ -190,7 +211,8 @@ export async function registerAccount(
 }
 
 /**
- * Authenticate a real user account using secure password verification.
+ * Authenticate account using local registry or user profile lookup.
+ * Production auth is performed through Firebase Auth.
  */
 export async function authenticateAccount(
   email: string,
@@ -204,48 +226,27 @@ export async function authenticateAccount(
     throw new Error('Please enter your password');
   }
 
-  let credRecord: UserCredentialRecord | null = null;
+  // Check local registry
+  const localCreds = getLocalCredentials();
+  const credRecord = localCreds[cleanEmail];
 
-  // 1. Look up credentials in Firestore
-  try {
-    const credRef = doc(db, 'user_credentials', cleanEmail);
-    const credSnap = await getDoc(credRef);
-    if (credSnap.exists()) {
-      credRecord = credSnap.data() as UserCredentialRecord;
-    }
-  } catch (err) {
-    console.warn('Firestore user_credentials lookup note:', err);
-  }
-
-  // 2. Fallback to local registry if offline or not in Firestore
-  if (!credRecord) {
-    const localCreds = getLocalCredentials();
-    if (localCreds[cleanEmail]) {
-      credRecord = localCreds[cleanEmail];
-    }
-  }
-
-  // 3. If credentials found, verify password hash
   if (credRecord) {
     const computedHash = await hashPassword(pass, credRecord.salt);
     if (computedHash !== credRecord.passwordHash) {
       throw new Error('Incorrect password. Please verify and try again.');
     }
 
-    // Load User Profile from Firestore
     try {
       const userDocRef = doc(db, 'users', credRecord.uid);
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
         const profile = { ...userSnap.data(), id: userSnap.id } as User;
-        saveLocalCredential(credRecord);
         return { uid: credRecord.uid, profile };
       }
     } catch (err) {
       console.warn('Firestore user doc read note:', err);
     }
 
-    // Fallback profile if user doc is being synced
     const fallbackProfile: User = {
       id: credRecord.uid,
       name: cleanEmail.split('@')[0],
@@ -267,36 +268,33 @@ export async function authenticateAccount(
       showOnlineStatus: true,
       allowReshare: true,
       themePreference: 'nordic',
+      notificationPreferences: {
+        likes: true,
+        comments: true,
+        directChats: true,
+        calls: true,
+        follows: true,
+      },
+      mediaPreferences: {
+        autoPlayReels: true,
+        highQualityUploads: true,
+        soundEffects: true,
+      },
+      blockedUsers: [],
     };
+
     return { uid: credRecord.uid, profile: fallbackProfile };
   }
 
-  // 4. Check if a user document exists by email in Firestore users collection
+  // Fallback: Query by email in users collection
   try {
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('email', '==', cleanEmail));
     const snap = await getDocs(q);
     if (!snap.empty) {
-      const userDoc = snap.docs[0];
-      const profile = { ...userDoc.data(), id: userDoc.id } as User;
-
-      // Register credentials for future fast sign-in
-      const salt = generateSalt();
-      const passwordHash = await hashPassword(pass, salt);
-      const newCred: UserCredentialRecord = {
-        uid: userDoc.id,
-        email: cleanEmail,
-        passwordHash,
-        salt,
-      };
-      saveLocalCredential(newCred);
-      setDoc(doc(db, 'user_credentials', cleanEmail), {
-        ...newCred,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      }).catch(() => {});
-
-      return { uid: userDoc.id, profile };
+      const docData = snap.docs[0];
+      const profile = { ...docData.data(), id: docData.id } as User;
+      return { uid: docData.id, profile };
     }
   } catch (err) {
     console.warn('Firestore fallback user query note:', err);
@@ -306,31 +304,25 @@ export async function authenticateAccount(
 }
 
 /**
- * Reset password for a registered account
+ * Reset password for a registered account locally
  */
 export async function resetAccountPassword(email: string, newPass: string): Promise<void> {
   const cleanEmail = email.trim().toLowerCase();
   const salt = generateSalt();
   const passwordHash = await hashPassword(newPass, salt);
 
-  const credRef = doc(db, 'user_credentials', cleanEmail);
-  const snap = await getDoc(credRef);
-  if (!snap.exists()) {
+  const localCreds = getLocalCredentials();
+  const existing = localCreds[cleanEmail];
+  if (!existing) {
     throw new Error(`No account found with email "${cleanEmail}"`);
   }
 
-  const existing = snap.data() as UserCredentialRecord;
   const updated: UserCredentialRecord = {
     ...existing,
     passwordHash,
     salt,
+    updatedAt: Date.now(),
   };
-
-  await updateDoc(credRef, {
-    passwordHash,
-    salt,
-    updatedAt: serverTimestamp(),
-  });
 
   saveLocalCredential(updated);
 }

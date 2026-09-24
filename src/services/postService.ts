@@ -181,6 +181,7 @@ export async function createNewPost(
     const mediaUrls = extraOptions?.mediaUrls || (mediaUrl ? [mediaUrl] : []);
 
     await addDoc(postsRef, {
+      authorId: author.id,
       author: {
         id: author.id,
         name: author.name,

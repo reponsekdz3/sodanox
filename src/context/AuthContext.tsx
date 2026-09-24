@@ -211,18 +211,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setLoading(true);
     const cleanEmail = email.trim().toLowerCase();
     try {
-      // Attempt Firebase Auth registration in background (non-blocking if disabled in project)
+      let createdUid: string | undefined = undefined;
+      // Attempt Firebase Auth registration
       try {
-        await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        const res = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        if (res?.user?.uid) {
+          createdUid = res.user.uid;
+        }
       } catch (fbErr: any) {
         if (fbErr?.code === 'auth/email-already-in-use') {
           throw new Error('This email is already registered. Please sign in instead.');
         }
-        // Proceed with Firestore-backed registration
+        // Proceed with registration
       }
 
-      // Register pure user account and store credentials + profile in Firestore
-      const { uid, profile } = await registerAccount(cleanEmail, pass, profileData);
+      // Register user account and store public profile + private settings in Firestore
+      const { uid, profile } = await registerAccount(cleanEmail, pass, profileData, createdUid);
 
       localStorage.setItem(SESSION_UID_KEY, uid);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));

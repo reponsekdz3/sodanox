@@ -1,0 +1,70 @@
+rules_version = '2';
+
+/**
+ * Aura Social - Hardened Firebase Storage Security Rules
+ *
+ * Enforces least privilege:
+ * - Deny all unauthenticated reads and writes.
+ * - Authenticated users can only upload media to their own assigned UID namespaces.
+ * - Content-type and file size limitations enforced for images, audio, and video assets.
+ */
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Default deny-all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    // User profile avatars and banners: Max 10MB images only
+    match /users/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) &&
+        request.resource.size < 10 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
+    // Post images and attachments: Max 25MB
+    match /posts/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) &&
+        request.resource.size < 25 * 1024 * 1024 &&
+        (request.resource.contentType.matches('image/.*') ||
+         request.resource.contentType.matches('video/.*') ||
+         request.resource.contentType.matches('audio/.*'));
+    }
+
+    // Story media: Max 20MB
+    match /stories/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) &&
+        request.resource.size < 20 * 1024 * 1024 &&
+        (request.resource.contentType.matches('image/.*') ||
+         request.resource.contentType.matches('video/.*'));
+    }
+
+    // Short-form Reels video: Max 100MB video/image
+    match /reels/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) &&
+        request.resource.size < 100 * 1024 * 1024 &&
+        (request.resource.contentType.matches('video/.*') ||
+         request.resource.contentType.matches('image/.*'));
+    }
+
+    // Direct chat files, attachments, and voice notes: Max 25MB
+    match /chat/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) &&
+        request.resource.size < 25 * 1024 * 1024;
+    }
+  }
+}

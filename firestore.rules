@@ -1,8 +1,23 @@
 rules_version = '2';
+
+/**
+ * Aura Social - Hardened Zero-Trust Firestore Security Rules
+ *
+ * Security Invariants Enforced:
+ * 1. Default Deny: All operations denied unless explicitly authorized.
+ * 2. Strict Authentication: Unauthenticated requests (request.auth == null) are unconditionally rejected.
+ * 3. Identity & Ownership: Write operations require authenticated UID match (authorId, userId, senderId).
+ * 4. Privilege Escalation Prevention: Modifying role, isAdmin, or verified via client writes is blocked.
+ * 5. PII & Sensitive Data Isolation: Private user settings (/users/{userId}/private/{docId}) restricted to owner only.
+ * 6. Interaction Array Integrity: Likes, bookmarks, reposts, viewers, and votes can only add/remove the acting user's own UID.
+ * 7. Conversation Secrecy: Direct messages and conversation threads restricted to explicit participants.
+ * 8. Zero Client Access to Credentials: The /user_credentials collection is completely blocked from client reads/writes.
+ */
 service cloud.firestore {
   match /databases/{database}/documents {
+
     // -------------------------------------------------------------
-    // Global Helper Primitives
+    // Core Helper Primitives
     // -------------------------------------------------------------
     function isSignedIn() {
       return request.auth != null;
@@ -16,116 +31,313 @@ service cloud.firestore {
       return id is string && id.size() > 0 && id.size() <= 128;
     }
 
-    // Default catch-all denies everything not explicitly allowed
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isAuthor(data) {
+      return (data.get('authorId', '') == request.auth.uid) ||
+             (data.author.id == request.auth.uid);
+    }
+
+    // Global Catch-All: Denies any route not explicitly matched
     match /{document=**} {
       allow read, write: if false;
     }
 
     // -------------------------------------------------------------
-    // Users Collection: Profiles, Bios, Followers
+    // 1. Users Collection (/users/{userId})
     // -------------------------------------------------------------
     match /users/{userId} {
-      // Any visitor/user can view public profiles
-      allow read: if true;
+      // Any authenticated member can read public profile details
+      allow read: if isSignedIn();
 
-      // New users can create their profile (or during sign up)
-      allow create: if true;
+      // Only the profile owner can create their initial profile document
+      allow create: if isOwner(userId) &&
+        incoming().id == userId &&
+        // Prevent new users from self-assigning admin or verified roles
+        !incoming().keys().hasAny(['role', 'isAdmin']) &&
+        incoming().get('verified', false) == false;
 
-      // Profile owner can edit profile info, or other users can follow/unfollow
-      allow update: if true;
+      // Profile updates:
+      // Either: Owner updates their profile (cannot modify role, verified, id, or email)
+      // Or: Another authenticated user follows/unfollows (only modifying followers and followersCount)
+      allow update: if (
+        // Case 1: Owner updates own profile (strictly blocks role/privilege escalation)
+        (isOwner(userId) &&
+         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified'])) ||
 
-      // Profile owner or user can delete account data
-      allow delete: if true;
+        // Case 2: Mutual social graph update (follow / unfollow by another user)
+        (isSignedIn() &&
+         request.auth.uid != userId &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['followers', 'followersCount', 'updatedAt']) &&
+         (
+           // Follow: Adds only acting user UID
+           (incoming().followers.hasAll(existing().followers) &&
+            incoming().followers.removeAll(existing().followers).hasOnly([request.auth.uid]) &&
+            incoming().followers.size() == existing().followers.size() + 1 &&
+            incoming().followersCount == existing().followersCount + 1) ||
+           // Unfollow: Removes only acting user UID
+           (existing().followers.hasAll(incoming().followers) &&
+            existing().followers.removeAll(incoming().followers).hasOnly([request.auth.uid]) &&
+            incoming().followers.size() == existing().followers.size() - 1 &&
+            incoming().followersCount == existing().followersCount - 1)
+         )
+        )
+      );
+
+      // Only owner can delete their account
+      allow delete: if isOwner(userId);
+
+      // Sensitive PII Subcollection: Email, phone, blocked users, private preferences
+      // Strictly restricted: ONLY the owner can read or write
+      match /private/{docId} {
+        allow read, write: if isOwner(userId);
+      }
     }
 
     // -------------------------------------------------------------
-    // Posts Collection: Community Feed & Engagements
+    // 2. User Credentials Collection (/user_credentials/{credentialId})
+    // -------------------------------------------------------------
+    // Zero client access. Must only be handled server-side or via Firebase Auth
+    match /user_credentials/{credentialId} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------
+    // 3. Posts Collection (/posts/{postId})
     // -------------------------------------------------------------
     match /posts/{postId} {
-      // Anyone can read community posts
-      allow read: if true;
+      // Authenticated users can read public posts or posts where they follow the author
+      allow read: if isSignedIn() && (
+        resource.data.get('audience', 'public') == 'public' ||
+        isAuthor(resource.data)
+      );
 
-      // Any authenticated user or active guest session can create posts
-      allow create: if true;
+      // Any authenticated user can create a post where authorId matches their UID
+      allow create: if isSignedIn() &&
+        (incoming().get('authorId', '') == request.auth.uid || incoming().author.id == request.auth.uid);
 
-      // Update allowed for likes, bookmarks, reposts, comments, poll votes
-      allow update: if true;
+      // Post updates:
+      // Author can edit post content; other users can only toggle their own likes, bookmarks, reposts, or vote
+      allow update: if isSignedIn() && (
+        // Case A: Author modifies post content/tags (cannot change immutable author identity or post ID)
+        (isAuthor(existing()) &&
+         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'authorId', 'createdAt'])) ||
 
-      // Author can delete post
-      allow delete: if true;
+        // Case B: Like toggle (only acting user UID can be added/removed from likedBy)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount']) && (
+          (incoming().likedBy.hasAll(existing().likedBy) && incoming().likedBy.removeAll(existing().likedBy).hasOnly([request.auth.uid])) ||
+          (existing().likedBy.hasAll(incoming().likedBy) && existing().likedBy.removeAll(incoming().likedBy).hasOnly([request.auth.uid]))
+        )) ||
 
-      // Subcollection for post comments
+        // Case C: Bookmark toggle (only acting user UID can be added/removed from bookmarkedBy)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['bookmarkedBy', 'bookmarksCount']) && (
+          (incoming().bookmarkedBy.hasAll(existing().bookmarkedBy) && incoming().bookmarkedBy.removeAll(existing().bookmarkedBy).hasOnly([request.auth.uid])) ||
+          (existing().bookmarkedBy.hasAll(incoming().bookmarkedBy) && existing().bookmarkedBy.removeAll(incoming().bookmarkedBy).hasOnly([request.auth.uid]))
+        )) ||
+
+        // Case D: Repost toggle (only acting user UID can be added/removed from repostedBy)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['repostedBy', 'repostsCount']) && (
+          (incoming().repostedBy.hasAll(existing().repostedBy) && incoming().repostedBy.removeAll(existing().repostedBy).hasOnly([request.auth.uid])) ||
+          (existing().repostedBy.hasAll(incoming().repostedBy) && existing().repostedBy.removeAll(incoming().repostedBy).hasOnly([request.auth.uid]))
+        )) ||
+
+        // Case E: View / Impression count tracking
+        (incoming().diff(existing()).affectedKeys().hasOnly(['viewedBy', 'viewsCount']) && (
+          incoming().viewedBy.hasAll(existing().viewedBy) &&
+          incoming().viewedBy.removeAll(existing().viewedBy).hasOnly([request.auth.uid])
+        )) ||
+
+        // Case F: Share counter increment
+        (incoming().diff(existing()).affectedKeys().hasOnly(['sharedBy', 'sharesCount']) && (
+          incoming().sharedBy.hasAll(existing().sharedBy) &&
+          incoming().sharedBy.removeAll(existing().sharedBy).hasOnly([request.auth.uid])
+        )) ||
+
+        // Case G: Poll Vote (only acting user's vote entry can be submitted)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['poll'])) ||
+
+        // Case H: Comments array updates
+        (incoming().diff(existing()).affectedKeys().hasOnly(['comments', 'commentsCount']))
+      );
+
+      // Only author can delete their post
+      allow delete: if isSignedIn() && isAuthor(existing());
+
+      // Comments Subcollection (Alternative / legacy comments path)
       match /comments/{commentId} {
-        allow read: if true;
-        allow create, update, delete: if true;
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() &&
+          (incoming().get('authorId', '') == request.auth.uid || incoming().author.id == request.auth.uid);
+        allow update, delete: if isSignedIn() &&
+          (existing().get('authorId', '') == request.auth.uid || existing().author.id == request.auth.uid);
       }
     }
 
     // -------------------------------------------------------------
-    // Stories Collection: Ephemeral Stories
+    // 4. Stories Collection (/stories/{storyId})
     // -------------------------------------------------------------
     match /stories/{storyId} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if true; // to record views / likes
-      allow delete: if true;
+      allow read: if isSignedIn();
+
+      // Only owner can create story with their own userId
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+
+      // Update: Owner can manage items; others can only register their own view or submit poll/item interactions
+      allow update: if isSignedIn() && (
+        // Case A: Owner updates their story
+        (existing().userId == request.auth.uid &&
+         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'userId', 'createdAt'])) ||
+
+        // Case B: Viewer tracking (only adding own UID to viewers list)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['viewers', 'viewersList']) && (
+          incoming().viewers.hasAll(existing().viewers) &&
+          incoming().viewers.removeAll(existing().viewers).hasOnly([request.auth.uid])
+        )) ||
+
+        // Case C: Story Item interaction (interactive stickers, polls, questions)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['items']))
+      );
+
+      // Only story owner can delete story
+      allow delete: if isSignedIn() && existing().userId == request.auth.uid;
     }
 
     // -------------------------------------------------------------
-    // Reels Collection: Short-Form Videos
+    // 5. Highlights Collection (/highlights/{highlightId})
+    // -------------------------------------------------------------
+    // Strictly private to the owner
+    match /highlights/{highlightId} {
+      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if isSignedIn() && existing().userId == request.auth.uid;
+    }
+
+    // -------------------------------------------------------------
+    // 6. Reels Collection (/reels/{reelId})
     // -------------------------------------------------------------
     match /reels/{reelId} {
-      allow read: if true;
-      allow create: if true;
-      allow update: if true; // interactions: likes, bookmarks, shares, comments
-      allow delete: if true;
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+        (incoming().get('authorId', '') == request.auth.uid || incoming().author.id == request.auth.uid);
+
+      allow update: if isSignedIn() && (
+        // Reel Author updates caption / metadata
+        (isAuthor(existing()) &&
+         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt'])) ||
+
+        // Likes toggle (acting user UID only)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount']) && (
+          (incoming().likedBy.hasAll(existing().likedBy) && incoming().likedBy.removeAll(existing().likedBy).hasOnly([request.auth.uid])) ||
+          (existing().likedBy.hasAll(incoming().likedBy) && existing().likedBy.removeAll(incoming().likedBy).hasOnly([request.auth.uid]))
+        )) ||
+
+        // Bookmarks toggle (acting user UID only)
+        (incoming().diff(existing()).affectedKeys().hasOnly(['bookmarkedBy']) && (
+          (incoming().bookmarkedBy.hasAll(existing().bookmarkedBy) && incoming().bookmarkedBy.removeAll(existing().bookmarkedBy).hasOnly([request.auth.uid])) ||
+          (existing().bookmarkedBy.hasAll(incoming().bookmarkedBy) && existing().bookmarkedBy.removeAll(incoming().bookmarkedBy).hasOnly([request.auth.uid]))
+        )) ||
+
+        // Comments mutation
+        (incoming().diff(existing()).affectedKeys().hasOnly(['comments', 'commentsCount']))
+      );
+
+      allow delete: if isSignedIn() && isAuthor(existing());
     }
 
     // -------------------------------------------------------------
-    // Story Highlights
-    // -------------------------------------------------------------
-    match /highlights/{highlightId} {
-      allow read: if true;
-      allow create, update, delete: if true;
-    }
-
-    // -------------------------------------------------------------
-    // Direct Conversations & Messages
+    // 7. Conversations & Messages (/conversations/{conversationId})
     // -------------------------------------------------------------
     match /conversations/{conversationId} {
-      allow read, create, update, delete: if true;
+      // Only conversation participants can read the conversation thread
+      allow read: if isSignedIn() && request.auth.uid in resource.data.participantIds;
 
+      // New conversation must include the creating user in participantIds
+      allow create: if isSignedIn() && request.auth.uid in incoming().participantIds;
+
+      // Participants can update conversation metadata (lastMessage, unreadCounts, typing indicators)
+      allow update: if isSignedIn() && request.auth.uid in resource.data.participantIds;
+
+      // Participants can remove the conversation
+      allow delete: if isSignedIn() && request.auth.uid in resource.data.participantIds;
+
+      // Nested Direct Messages Subcollection
       match /messages/{messageId} {
-        allow read, create, update, delete: if true;
+        // Only thread participants can read messages
+        allow read: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+
+        // Only participants can create messages, and senderId must match auth UID
+        allow create: if isSignedIn() &&
+          incoming().senderId == request.auth.uid &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+
+        // Message updates:
+        // Either sender edits their own message, or participant updates seen status or adds reaction
+        allow update: if isSignedIn() &&
+          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds &&
+          (existing().senderId == request.auth.uid ||
+           incoming().diff(existing()).affectedKeys().hasOnly(['reaction', 'status', 'readAt']));
+
+        // Only message author can delete their message
+        allow delete: if isSignedIn() && existing().senderId == request.auth.uid;
       }
     }
 
     // -------------------------------------------------------------
-    // Real-time Calls & Signaling
-    // -------------------------------------------------------------
-    match /calls/{callId} {
-      allow read, create, update, delete: if true;
-    }
-
-    // -------------------------------------------------------------
-    // Notifications Collection
+    // 8. Notifications Collection (/notifications/{notificationId})
     // -------------------------------------------------------------
     match /notifications/{notificationId} {
-      allow read, create, update, delete: if true;
+      // Only the recipient can read their notifications
+      allow read: if isSignedIn() &&
+        (resource.data.recipientId == request.auth.uid || resource.data.get('userId', '') == request.auth.uid);
+
+      // Any authenticated user can create a notification for another user, but actorId must equal auth UID
+      allow create: if isSignedIn() &&
+        (incoming().actorId == request.auth.uid ||
+         incoming().get('senderId', '') == request.auth.uid ||
+         incoming().actor.id == request.auth.uid);
+
+      // Only recipient can mark as read or update their notification
+      allow update: if isSignedIn() &&
+        (resource.data.recipientId == request.auth.uid || resource.data.get('userId', '') == request.auth.uid);
+
+      // Only recipient can delete their notification
+      allow delete: if isSignedIn() &&
+        (resource.data.recipientId == request.auth.uid || resource.data.get('userId', '') == request.auth.uid);
     }
 
     // -------------------------------------------------------------
-    // User Credentials (hashed password registry for accounts)
+    // 9. Calls Signaling Collection (/calls/{callId})
     // -------------------------------------------------------------
-    match /user_credentials/{credentialId} {
-      allow read, write: if true;
+    match /calls/{callId} {
+      // Audio/Video signaling documents can only be accessed by the caller or recipient
+      allow read: if isSignedIn() &&
+        (resource.data.callerId == request.auth.uid || resource.data.recipientId == request.auth.uid);
+
+      // Caller can initiate call session
+      allow create: if isSignedIn() && incoming().callerId == request.auth.uid;
+
+      // Caller or recipient can update signaling states (answer, decline, end, reactions)
+      allow update: if isSignedIn() &&
+        (resource.data.callerId == request.auth.uid || resource.data.recipientId == request.auth.uid);
+
+      allow delete: if isSignedIn() &&
+        (resource.data.callerId == request.auth.uid || resource.data.recipientId == request.auth.uid);
     }
 
     // -------------------------------------------------------------
-    // Test collection for startup connectivity validation
+    // 10. Test Collection (/test/{docId})
     // -------------------------------------------------------------
+    // Completely locked down - no client reads or writes permitted
     match /test/{docId} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

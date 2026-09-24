@@ -33,6 +33,18 @@
       },
       "required": ["id", "name", "username"]
     },
+    "UserPrivateData": {
+      "title": "UserPrivateData",
+      "description": "Private sensitive settings, email, phone, blocked list, and notification preferences",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "blockedUsers": { "type": "array" },
+        "notificationPreferences": { "type": "object" },
+        "mediaPreferences": { "type": "object" }
+      }
+    },
     "Post": {
       "title": "Post",
       "description": "Community posts with real likes, bookmarks, reposts, comments, and shares",
@@ -200,6 +212,10 @@
     "/users/{userId}": {
       "schema": "User",
       "description": "User profile collection"
+    },
+    "/users/{userId}/private/{docId}": {
+      "schema": "UserPrivateData",
+      "description": "Private sensitive settings, email, phone, and blocklist"
     },
     "/posts/{postId}": {
       "schema": "Post",
