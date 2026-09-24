@@ -344,14 +344,24 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             </div>
           )}
 
-          {/* 1-Click Google Sign In & Instant Studio Pass */}
+          {/* Google Sign In */}
           <div className="space-y-3 mb-6">
             <button
               type="button"
-              onClick={() => {
+              onClick={async () => {
                 setError(null);
-                setGoogleModalTab('signin');
-                setShowGoogleModal(true);
+                setIsSubmitting(true);
+                try {
+                  await signInWithGoogle();
+                  auraAudio.playChime();
+                  onSuccess?.();
+                } catch (err: any) {
+                  console.info('Google sign-in popup notice:', err?.message);
+                  setGoogleModalTab('signin');
+                  setShowGoogleModal(true);
+                } finally {
+                  setIsSubmitting(false);
+                }
               }}
               disabled={isSubmitting}
               className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white border border-[#2D3732]/15 hover:bg-[#F1F5F2] text-xs sm:text-sm font-medium text-[#2D3732] shadow-sm transition-all cursor-pointer disabled:opacity-50"
@@ -376,29 +386,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               </svg>
               <span>Continue with Google</span>
             </button>
-
-            <div className="flex items-center justify-between px-1 text-[11px] text-[#7A8A82]">
-              <button
-                type="button"
-                onClick={() => {
-                  setGoogleModalTab('signin');
-                  setShowGoogleModal(true);
-                }}
-                className="hover:text-[#5E7C6E] underline cursor-pointer"
-              >
-                1-Click Google Pass
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setGoogleModalTab('origin-guide');
-                  setShowGoogleModal(true);
-                }}
-                className="hover:text-[#5E7C6E] underline cursor-pointer flex items-center gap-1"
-              >
-                <span>Fix Error 400 (origin_mismatch)</span>
-              </button>
-            </div>
           </div>
 
           <div className="relative flex py-2 items-center mb-6">
@@ -565,27 +552,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 <label className="block text-xs font-medium text-[#2D3732]">
                   Email Address *
                 </label>
-                {mode === 'signin' && (
-                  <span className="text-[10px] text-[#7A8A82]">Quick-fill:</span>
-                )}
               </div>
-
-              {mode === 'signin' && (
-                <div className="flex flex-wrap gap-1.5 mb-2.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEmail('ericmusitafa8@gmail.com');
-                      setPassword('Password123!');
-                      setError(null);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#E5EAE7]/70 hover:bg-[#8FA89B]/20 text-[#2D3732] text-[11px] font-medium transition-colors border border-[#2D3732]/10 cursor-pointer"
-                  >
-                    <span>ericmusitafa8@gmail.com</span>
-                    <span className="text-[9px] px-1 py-0.2 bg-[#8FA89B]/20 text-[#3A5245] rounded font-semibold">User</span>
-                  </button>
-                </div>
-              )}
 
               <div className="relative">
                 <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
@@ -595,7 +562,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder={mode === 'signin' ? 'ericmusitafa8@gmail.com' : 'elena@nordic.design'}
+                  placeholder="name@example.com"
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
                 />
               </div>
@@ -804,8 +771,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
         isOpen={showGoogleModal}
         onClose={() => setShowGoogleModal(false)}
         initialTab={googleModalTab}
-        defaultEmail={email.trim() || 'obamamunyehirwe@gmail.com'}
-        defaultName={name.trim() || 'Munyehirwe'}
+        defaultEmail={email.trim() || ''}
+        defaultName={name.trim() || ''}
         onConfirmGoogleAuth={async (confirmedEmail, confirmedName, confirmedAvatar) => {
           await signInWithGoogle({
             email: confirmedEmail,

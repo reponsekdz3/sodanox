@@ -22,9 +22,19 @@ import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components
 
 const STORIES_COLLECTION = 'stories';
 const HIGHLIGHTS_COLLECTION = 'highlights';
+const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
 /**
- * Real-time subscription to stories from Firestore (user-created only, no mock seeds)
+ * Check if a story item was created within the last 24 hours
+ */
+export function isStoryItemActive(item: StoryItem, fallbackTimestampMs?: number): boolean {
+  const now = Date.now();
+  const created = item.createdAtMs || fallbackTimestampMs || now;
+  return now - created < TWENTY_FOUR_HOURS_MS;
+}
+
+/**
+ * Real-time subscription to stories from Firestore (user-created only, strictly within 24 hours)
  */
 export function subscribeToStories(
   currentUid: string,
@@ -42,6 +52,8 @@ export function subscribeToStories(
     storiesRef,
     (snapshot) => {
       const list: Story[] = [];
+      const now = Date.now();
+
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
 
@@ -51,6 +63,23 @@ export function subscribeToStories(
           docSnap.id.startsWith('demo_') ||
           docSnap.id.startsWith('starter_')
         ) {
+          return;
+        }
+
+        const docCreatedAtMs = d.createdAt?.toMillis
+          ? d.createdAt.toMillis()
+          : d.createdAtMs || now;
+
+        // STRICT 24-HOUR LIFESPAN ENFORCEMENT:
+        // Filter out items older than 24 hours
+        const rawItems: StoryItem[] = d.items || [];
+        const activeItems = rawItems.filter((item) => {
+          const itemTime = item.createdAtMs || docCreatedAtMs;
+          return now - itemTime < TWENTY_FOUR_HOURS_MS;
+        });
+
+        // If no active items remaining from the last 24h, do not show in active stories feed
+        if (activeItems.length === 0) {
           return;
         }
 
@@ -64,7 +93,7 @@ export function subscribeToStories(
           userUsername: d.userUsername,
           userAvatar: isMockOrEmptyAvatar(d.userAvatar) ? MODERN_EMPTY_AVATAR_DATA_URI : d.userAvatar,
           hasUnseen,
-          items: d.items || [],
+          items: activeItems,
           viewers,
           createdAt: d.createdAt,
         });
@@ -94,13 +123,17 @@ export async function createStoryInFirestore(
   newItem: StoryItem
 ): Promise<void> {
   try {
+    const itemWithTimestamp: StoryItem = {
+      ...newItem,
+      createdAtMs: newItem.createdAtMs || Date.now(),
+    };
     const storiesRef = collection(db, STORIES_COLLECTION);
     const snap = await getDocs(storiesRef);
     const existingStoryDoc = snap.docs.find((d) => d.data().userId === currentUser.id);
 
     if (existingStoryDoc) {
       await updateDoc(doc(db, STORIES_COLLECTION, existingStoryDoc.id), {
-        items: arrayUnion(newItem),
+        items: arrayUnion(itemWithTimestamp),
         updatedAt: serverTimestamp(),
       });
     } else {
@@ -109,9 +142,10 @@ export async function createStoryInFirestore(
         userName: currentUser.name,
         userUsername: currentUser.username,
         userAvatar: currentUser.avatar,
-        items: [newItem],
+        items: [itemWithTimestamp],
         viewers: [currentUser.id],
         createdAt: serverTimestamp(),
+        createdAtMs: Date.now(),
       });
     }
   } catch (err) {

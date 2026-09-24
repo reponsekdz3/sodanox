@@ -351,7 +351,42 @@ export default function App() {
 
   const handleAddStory = async (newItem: StoryItem) => {
     if (!currentUser) return;
-    await createStoryInFirestore(currentUser, newItem);
+    const itemWithTimestamp: StoryItem = {
+      ...newItem,
+      createdAtMs: newItem.createdAtMs || Date.now(),
+    };
+
+    // Optimistically update stories state for instant UI reaction
+    setStories((prev) => {
+      const myStoryIndex = prev.findIndex((s) => s.userId === currentUser.id);
+      if (myStoryIndex !== -1) {
+        const copy = [...prev];
+        copy[myStoryIndex] = {
+          ...copy[myStoryIndex],
+          items: [...copy[myStoryIndex].items, itemWithTimestamp],
+        };
+        return copy;
+      } else {
+        const newStory: Story = {
+          id: `story_${currentUser.id}_${Date.now()}`,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userUsername: currentUser.username,
+          userAvatar: currentUser.avatar,
+          hasUnseen: false,
+          items: [itemWithTimestamp],
+          viewers: [currentUser.id],
+          createdAt: { toMillis: () => Date.now() },
+        };
+        return [newStory, ...prev];
+      }
+    });
+
+    try {
+      await createStoryInFirestore(currentUser, itemWithTimestamp);
+    } catch (err) {
+      console.error('Error adding story to Firestore:', err);
+    }
   };
 
   const handleRecordStoryView = async (storyId: string) => {

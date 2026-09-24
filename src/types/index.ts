@@ -83,6 +83,7 @@ export interface StoryItem {
   mediaUrl: string;
   type: 'image' | 'video';
   timestamp: string;
+  createdAtMs?: number;
   caption?: string;
   moodTag?: string;
   filter?: StoryFilter;

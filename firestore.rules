@@ -211,9 +211,9 @@ service cloud.firestore {
     // -------------------------------------------------------------
     // 5. Highlights Collection (/highlights/{highlightId})
     // -------------------------------------------------------------
-    // Strictly private to the owner
     match /highlights/{highlightId} {
-      allow read: if isSignedIn() && resource.data.userId == request.auth.uid;
+      // Authenticated users can read profile story highlights
+      allow read: if isSignedIn();
       allow create: if isSignedIn() && incoming().userId == request.auth.uid;
       allow update, delete: if isSignedIn() && existing().userId == request.auth.uid;
     }
