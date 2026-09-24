@@ -14,7 +14,7 @@ import {
   X,
   Compass,
 } from 'lucide-react';
-import { studioAudio } from '../../utils/audioSynthesizer';
+import { auraAudio } from '../../utils/audioSynthesizer';
 import { User } from '../../types';
 
 interface AuraLogoProps {
@@ -76,26 +76,27 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
   const handleLogoClick = (e: React.MouseEvent) => {
     if (!isInteractive) return;
     e.stopPropagation();
-    studioAudio.playClick(720, 0.05);
+    auraAudio.playClick(720, 0.05);
     setIsDockOpen((prev) => !prev);
   };
 
   const handleSelectAmbient = (mode: 'off' | 'rain' | 'vinyl' | 'binaural' | 'forest') => {
-    studioAudio.playClick(650, 0.04);
+    auraAudio.playClick(650, 0.04);
     setActiveAmbient(mode);
-    studioAudio.setAmbient(mode);
+    auraAudio.setAmbient(mode);
   };
 
-  const handleCopyStudioUrl = () => {
-    studioAudio.playClick(800, 0.04);
+  const handleCopyProfileUrl = () => {
+    auraAudio.playClick(800, 0.04);
     const username = currentUser?.username || 'member';
-    navigator.clipboard?.writeText(`https://aura.ai.studio/@${username}`);
+    const domain = typeof window !== 'undefined' ? window.location.origin : 'https://aura.social';
+    navigator.clipboard?.writeText(`${domain}/@${username}`);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
   const handleToggleFocus = () => {
-    studioAudio.playClick(500, 0.04);
+    auraAudio.playClick(500, 0.04);
     const next = !isFocusMode;
     setIsFocusMode(next);
     if (next) {
@@ -110,7 +111,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
       {/* Clickable Interactive Logo Button */}
       <div
         onClick={handleLogoClick}
-        title={isInteractive ? 'Click to open Aura Studio Command Dock' : 'Aura'}
+        title={isInteractive ? 'Click to open Aura Command Dock' : 'Aura'}
         className={`relative flex items-center justify-center shrink-0 group ${
           isInteractive ? 'cursor-pointer active:scale-95 transition-transform' : ''
         }`}
@@ -189,7 +190,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
         )}
       </div>
 
-      {/* Wordmark with Functional Live Tag */}
+      {/* Wordmark cleanly styled without Studio badge */}
       {showWordmark && (
         <div
           onClick={handleLogoClick}
@@ -205,16 +206,16 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             </span>
             <span className="px-1.5 py-0.5 rounded-full bg-[#8FA89B]/15 text-[#55635C] font-mono text-[9px] font-semibold tracking-wider uppercase border border-[#8FA89B]/30 flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Studio</span>
+              <span>Social</span>
             </span>
           </div>
           <span className={`${currentSize.sub} text-[#7A8A82] font-mono tracking-wider mt-0.5`}>
-            aura.ai.studio
+            mindful network
           </span>
         </div>
       )}
 
-      {/* Advanced Aura Studio Command Deck Popover */}
+      {/* Advanced Aura Command Deck Popover */}
       {isDockOpen && (
         <div
           ref={dockRef}
@@ -227,8 +228,8 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
                 <Radio size={16} className="animate-pulse" />
               </div>
               <div>
-                <h4 className="text-xs font-semibold text-[#2D3732]">Aura Studio OS</h4>
-                <p className="text-[10px] text-[#7A8A82] font-mono">Real-time studio command dock</p>
+                <h4 className="text-xs font-semibold text-[#2D3732]">Aura Command Dock</h4>
+                <p className="text-[10px] text-[#7A8A82] font-mono">Real-time aura controls</p>
               </div>
             </div>
             <button
@@ -240,7 +241,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             </button>
           </div>
 
-          {/* 1. Acoustic Studio Soundscapes */}
+          {/* 1. Acoustic Soundscapes */}
           <div className="space-y-2 mb-4">
             <div className="flex items-center justify-between text-[11px] font-semibold text-[#2D3732]">
               <span className="flex items-center gap-1.5">
@@ -281,7 +282,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             </div>
           </div>
 
-          {/* 2. Studio Focus & Quick Reflection */}
+          {/* 2. Zen Focus & Quick Reflection */}
           <div className="space-y-2 mb-4">
             <div className="flex items-center gap-2">
               <button
@@ -313,23 +314,23 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             </div>
           </div>
 
-          {/* 3. Studio Link & Cloud Engine Status */}
+          {/* 3. Link & Cloud Engine Status */}
           <div className="p-3 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 space-y-2">
             <div className="flex items-center justify-between text-[10px] text-[#7A8A82]">
               <span className="flex items-center gap-1">
                 <ShieldCheck size={12} className="text-emerald-600" />
                 <span>Cloud Firestore Active</span>
               </span>
-              <span className="font-mono text-emerald-700">● 24ms live</span>
+              <span className="font-mono text-emerald-700">● Live sync</span>
             </div>
 
             <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#2D3732]/5">
               <span className="text-[11px] font-mono text-[#55635C] truncate">
-                aura.ai.studio/@{currentUser?.username || 'member'}
+                aura.social/@{currentUser?.username || 'member'}
               </span>
               <button
                 type="button"
-                onClick={handleCopyStudioUrl}
+                onClick={handleCopyProfileUrl}
                 className="p-1 px-2 rounded-lg bg-white border border-[#2D3732]/10 text-[10px] font-medium text-[#2D3732] hover:bg-[#FAFAF9] flex items-center gap-1 shrink-0 cursor-pointer"
               >
                 {copiedLink ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
@@ -341,7 +342,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
           {/* Developer Attribution Footer */}
           <div className="mt-3 pt-2 text-center border-t border-[#2D3732]/5">
             <p className="text-[10px] text-[#7A8A82] font-mono">
-              developed by reponsekdz · aura.ai.studio
+              developed by reponsekdz · Aura Social
             </p>
           </div>
         </div>

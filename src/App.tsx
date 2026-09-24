@@ -50,6 +50,7 @@ import {
   createStoryInFirestore,
   recordStoryView,
   deleteStory,
+  toggleLikeStory,
 } from './services/storyService';
 import {
   subscribeToReels,
@@ -100,6 +101,7 @@ export default function App() {
   const [viewerStories, setViewerStories] = useState<Story[]>([]);
   const [isCreateStoryOpen, setIsCreateStoryOpen] = useState(false);
   const [isCreatePostOpen, setIsCreatePostOpen] = useState(false);
+  const [createPostInitialPrompt, setCreatePostInitialPrompt] = useState<string>('');
   const [isCreateReelOpen, setIsCreateReelOpen] = useState(false);
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -122,7 +124,7 @@ export default function App() {
           'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
         bannerUrl:
           'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
-        bio: 'Exploring architecture, craft, and slow reflections on aura.ai.studio.',
+        bio: 'Exploring architecture, craft, and slow reflections on Aura.',
         pronouns: '',
         location: '',
         website: '',
@@ -287,9 +289,18 @@ export default function App() {
   const handleRecordStoryView = async (storyId: string) => {
     if (!currentUser) return;
     try {
-      await recordStoryView(storyId, currentUser.id);
+      await recordStoryView(storyId, currentUser.id, currentUser);
     } catch (err) {
       console.error('Error recording story view:', err);
+    }
+  };
+
+  const handleLikeStory = async (storyId: string, itemIndex: number) => {
+    if (!currentUser) return;
+    try {
+      await toggleLikeStory(storyId, itemIndex, currentUser.id, currentUser);
+    } catch (err) {
+      console.error('Error toggling story like:', err);
     }
   };
 
@@ -531,6 +542,14 @@ export default function App() {
     }
   };
 
+  const handleIncrementReelShare = async (reelId: string) => {
+    try {
+      await incrementReelShareCount(reelId);
+    } catch (err) {
+      console.error('Error sharing reel:', err);
+    }
+  };
+
   const handleCreateReel = async (data: {
     videoUrl: string;
     posterUrl: string;
@@ -718,7 +737,7 @@ export default function App() {
           <div className="w-12 h-12 rounded-full border-2 border-[#8FA89B] border-t-transparent animate-spin" />
           <div className="text-center">
             <h1 className="font-serif text-2xl font-medium text-[#2D3732] tracking-wide">Aura</h1>
-            <p className="text-xs text-[#7A8A82] mt-1 font-mono">Entering studio workspace...</p>
+            <p className="text-xs text-[#7A8A82] mt-1 font-mono">Entering Aura space...</p>
           </div>
         </div>
       </div>
@@ -808,7 +827,14 @@ export default function App() {
             onEditPost={handleEditPost}
             onToggleFollowUser={handleToggleFollow}
             onOpenUserProfile={handleOpenUserProfile}
-            onOpenCreatePost={() => setIsCreatePostOpen(true)}
+            onOpenCreatePost={() => {
+              setCreatePostInitialPrompt('');
+              setIsCreatePostOpen(true);
+            }}
+            onOpenCreatePostWithPrompt={(prompt) => {
+              setCreatePostInitialPrompt(prompt);
+              setIsCreatePostOpen(true);
+            }}
           />
         )}
 
@@ -819,6 +845,7 @@ export default function App() {
             onLikeReel={handleLikeReel}
             onBookmarkReel={handleBookmarkReel}
             onAddReelComment={handleAddReelComment}
+            onIncrementShare={handleIncrementReelShare}
             onOpenUserProfile={handleOpenUserProfile}
             onToggleFollowUser={handleToggleFollow}
             onOpenCreateReel={() => setIsCreateReelOpen(true)}
@@ -899,6 +926,7 @@ export default function App() {
           onClose={() => setIsStoryViewerOpen(false)}
           onSendStoryReply={handleSendStoryReply}
           onRecordStoryView={handleRecordStoryView}
+          onLikeStory={handleLikeStory}
           onDeleteStory={handleDeleteStory}
           onOpenUserProfile={handleOpenUserProfile}
         />
@@ -915,7 +943,11 @@ export default function App() {
       {isCreatePostOpen && (
         <CreatePostModal
           currentUser={currentUser}
-          onClose={() => setIsCreatePostOpen(false)}
+          initialContent={createPostInitialPrompt}
+          onClose={() => {
+            setIsCreatePostOpen(false);
+            setCreatePostInitialPrompt('');
+          }}
           onCreatePost={handleCreatePost}
         />
       )}

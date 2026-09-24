@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { User, Post, Reel, StoryHighlight } from '../../types';
 import { PostCard } from '../feed/PostCard';
+import { FollowButton } from '../common/FollowButton';
 import { subscribeToUserHighlights } from '../../services/storyService';
 import { getFollowersList, getFollowingList, toggleFollowUser } from '../../services/userService';
 
@@ -113,7 +114,8 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   };
 
   const handleCopyProfileUrl = () => {
-    const url = `https://aura.ai.studio/@${user.username}`;
+    const domain = typeof window !== 'undefined' ? window.location.origin : 'https://aura.social';
+    const url = `${domain}/@${user.username}`;
     navigator.clipboard?.writeText(url);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
@@ -141,7 +143,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
 
   return (
     <div className="w-full max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-      {/* Profile Header with Banner & Studio Aura */}
+      {/* Profile Header with Banner & Aura */}
       <div className="bg-[#F1F5F2] rounded-3xl overflow-hidden border border-[#E6EDE9] shadow-soft">
         {/* Banner Cover Photo */}
         <div className="relative h-36 sm:h-52 w-full bg-[#2D3732] overflow-hidden">
@@ -156,10 +158,10 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
           
-          {/* Studio Domain Pill */}
+          {/* Domain Pill */}
           <div className="absolute top-3 right-3 px-3 py-1 rounded-full bg-black/40 backdrop-blur-md border border-white/15 text-[11px] font-mono text-white/90 flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-[#8FA89B] animate-pulse" />
-            <span>aura.ai.studio/@{user.username}</span>
+            <span>aura.social/@{user.username}</span>
           </div>
         </div>
 
@@ -184,7 +186,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 type="button"
                 onClick={handleCopyProfileUrl}
                 className="p-2.5 rounded-2xl bg-[#FAFAF9] hover:bg-[#E6EDE9] text-[#2D3732] border border-[#E6EDE9] shadow-soft transition-colors cursor-pointer"
-                title="Copy Studio Profile URL"
+                title="Copy Profile URL"
               >
                 {copiedLink ? <Check size={18} className="text-emerald-600" /> : <Share2 size={18} />}
               </button>
@@ -200,36 +202,13 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
                 </button>
               ) : (
                 <>
-                  {/* Distinct Follow / Follow Back / Following button */}
-                  {user.isFollowing ? (
-                    <button
-                      type="button"
-                      onClick={() => onToggleFollow(user.id)}
-                      className="group flex items-center gap-1.5 px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-all shadow-soft bg-[#E6EDE9] text-[#2D3732] hover:bg-red-50 hover:text-red-700 hover:border-red-200 border border-transparent cursor-pointer active:scale-95"
-                    >
-                      <UserCheck size={15} className="group-hover:hidden text-[#5E7C6E]" />
-                      <span className="group-hover:hidden">Following</span>
-                      <span className="hidden group-hover:inline">Unfollow</span>
-                    </button>
-                  ) : user.isFollower ? (
-                    <button
-                      type="button"
-                      onClick={() => onToggleFollow(user.id)}
-                      className="flex items-center gap-1.5 px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-all shadow-soft bg-[#2D3732] text-white hover:bg-[#3d4a43] active:scale-95 cursor-pointer"
-                    >
-                      <UserPlus size={15} className="text-[#8FA89B]" />
-                      <span>Follow Back</span>
-                    </button>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => onToggleFollow(user.id)}
-                      className="flex items-center gap-1.5 px-6 py-2.5 rounded-2xl text-xs sm:text-sm font-medium transition-all shadow-soft bg-[#8FA89B] text-white hover:bg-[#7e9689] active:scale-95 cursor-pointer"
-                    >
-                      <UserPlus size={15} />
-                      <span>Follow</span>
-                    </button>
-                  )}
+                  <FollowButton
+                    isFollowing={!!user.isFollowing}
+                    isFollower={!!user.isFollower}
+                    userId={user.id}
+                    onToggleFollow={onToggleFollow}
+                    size="lg"
+                  />
 
                   <button
                     type="button"
@@ -655,7 +634,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
       {/* Mandatory Developer Footer */}
       <div className="py-6 text-center border-t border-[#E6EDE9]">
         <p className="text-xs text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
-          developed by reponsekdz · aura.ai.studio
+          developed by reponsekdz · Aura Social
         </p>
       </div>
     </div>

@@ -449,7 +449,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         {call.type === 'video' && !call.isCameraOff && (
           <div className="px-6 py-2 flex items-center justify-center gap-2 bg-black/40 border-t border-white/5">
             <span className="text-[11px] text-white/60 mr-2 flex items-center gap-1">
-              <Sparkles size={12} className="text-[#8FA89B]" /> Studio Tone:
+              <Sparkles size={12} className="text-[#8FA89B]" /> Video Tone:
             </span>
             {(['natural', 'warm', 'frost', 'noir'] as VideoFilter[]).map((f) => (
               <button

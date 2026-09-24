@@ -142,14 +142,25 @@ export const Navbar: React.FC<NavbarProps> = ({
         </nav>
 
         {/* Zone 3: Primary Actions */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* Cinema Reels shortcut on mobile */}
+          <button
+            onClick={() => onSelectTab('reels')}
+            className={`md:hidden p-2 rounded-2xl transition-colors cursor-pointer ${
+              currentTab === 'reels' ? 'bg-[#E6EDE9] text-[#2D3732]' : 'text-[#7A8A82] hover:text-[#2D3732]'
+            }`}
+            title="Reels Cinema"
+          >
+            <Play size={18} className={currentTab === 'reels' ? 'fill-[#5E7C6E] text-[#5E7C6E]' : 'fill-[#7A8A82] text-[#7A8A82]'} />
+          </button>
+
           {/* Notification bell on mobile */}
           <button
             onClick={onOpenNotifications}
-            className="md:hidden p-2 rounded-full text-[#7A8A82] hover:text-[#2D3732] relative cursor-pointer"
+            className="md:hidden p-2 rounded-2xl text-[#7A8A82] hover:text-[#2D3732] relative cursor-pointer"
             title="Activity"
           >
-            <Bell size={20} />
+            <Bell size={19} />
             {unreadNotificationsCount > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-[#8FA89B]" />
             )}
@@ -158,7 +169,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Create Post Button */}
           <button
             onClick={onOpenCreatePost}
-            className="flex items-center gap-1.5 px-3.5 sm:px-4 py-2 rounded-2xl bg-[#8FA89B] hover:bg-[#7e9689] text-white text-xs sm:text-sm font-medium transition-all shadow-soft active:scale-95 whitespace-nowrap cursor-pointer"
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-2xl bg-[#8FA89B] hover:bg-[#7e9689] text-white text-xs sm:text-sm font-medium transition-all shadow-soft active:scale-95 whitespace-nowrap cursor-pointer"
           >
             <Plus size={16} />
             <span className="hidden sm:inline">Create</span>
@@ -207,7 +218,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   className="w-full px-4 py-2 text-left text-xs text-[#2D3732] hover:bg-[#F1F5F2] flex items-center gap-2.5 cursor-pointer"
                 >
                   <UserCheck size={15} className="text-[#8FA89B]" />
-                  <span>Your Studio Profile</span>
+                  <span>Your Profile</span>
                 </button>
 
                 <button

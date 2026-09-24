@@ -15,10 +15,14 @@ import {
   CheckCircle2,
   BarChart2,
   MessageCircle,
+  Heart,
+  Share2,
+  Copy,
 } from 'lucide-react';
 import { Story, StoryItem, User, StoryFilter, StorySticker } from '../../types';
 import { voteStoryPoll, answerStoryQuestion, createStoryHighlight } from '../../services/storyService';
 import { getUserProfile } from '../../services/userService';
+import { auraAudio } from '../../utils/audioSynthesizer';
 
 interface StoryViewerModalProps {
   stories: Story[];
@@ -27,6 +31,7 @@ interface StoryViewerModalProps {
   onClose: () => void;
   onSendStoryReply: (userId: string, replyText: string) => void;
   onRecordStoryView?: (storyId: string) => void;
+  onLikeStory?: (storyId: string, itemIndex: number) => void;
   onDeleteStory?: (storyId: string) => void;
   onOpenUserProfile?: (user: User) => void;
 }
@@ -50,6 +55,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   onClose,
   onSendStoryReply,
   onRecordStoryView,
+  onLikeStory,
   onDeleteStory,
   onOpenUserProfile,
 }) => {
@@ -61,6 +67,8 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const [showHeartBurst, setShowHeartBurst] = useState(false);
   const [burstEmoji, setBurstEmoji] = useState('❤️');
   const [replySentNotice, setReplySentNotice] = useState(false);
+  const [shareNotice, setShareNotice] = useState(false);
+  const [localLikes, setLocalLikes] = useState<Record<string, boolean>>({});
 
   // Viewers list modal state (for story owner)
   const [showViewersModal, setShowViewersModal] = useState(false);
@@ -80,6 +88,37 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const currentStory = stories[currentStoryIdx];
   const currentItem = currentStory?.items[currentItemIdx];
   const STORY_DURATION = 6000; // 6 seconds
+
+  const currentItemKey = `${currentStory?.id}_${currentItemIdx}`;
+  const isItemLiked = Boolean(
+    localLikes[currentItemKey] ??
+    currentItem?.likedBy?.includes(currentUser.id)
+  );
+
+  const handleToggleStoryLike = () => {
+    if (!currentStory) return;
+    const nextLiked = !isItemLiked;
+    setLocalLikes((prev) => ({ ...prev, [currentItemKey]: nextLiked }));
+    if (nextLiked) {
+      setBurstEmoji('❤️');
+      setShowHeartBurst(true);
+      auraAudio.playChime();
+      setTimeout(() => setShowHeartBurst(false), 900);
+    }
+    onLikeStory?.(currentStory.id, currentItemIdx);
+  };
+
+  const handleShareStory = () => {
+    try {
+      const shareUrl = `${window.location.origin}/?story=${currentStory?.id}`;
+      navigator.clipboard?.writeText(shareUrl);
+      setShareNotice(true);
+      auraAudio.playClick();
+      setTimeout(() => setShareNotice(false), 2500);
+    } catch {
+      // fallback
+    }
+  };
 
   // Record view
   useEffect(() => {
@@ -151,18 +190,37 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   // Load viewers profiles
   const handleOpenViewers = async () => {
-    if (!currentStory?.viewers || currentStory.viewers.length === 0) return;
+    if (!currentStory) return;
     setIsPaused(true);
     setShowViewersModal(true);
     setLoadingViewers(true);
 
     try {
-      const profiles: User[] = [];
-      for (const uid of currentStory.viewers) {
+      const knownProfiles: User[] = (currentStory.viewersList || []).map((v) => ({
+        id: v.userId,
+        name: v.userName,
+        username: v.userName.toLowerCase().replace(/\s+/g, '_'),
+        avatar: v.userAvatar || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=200&q=80',
+        bio: '',
+        joinedDate: '',
+        followersCount: 0,
+        followingCount: 0,
+        isFollowing: false,
+      }));
+
+      const allViewerUids = Array.from(new Set(currentStory.viewers || []));
+      const remainingUids = allViewerUids.filter((uid) => !knownProfiles.some((p) => p.id === uid));
+
+      const fetchedProfiles: User[] = [];
+      for (const uid of remainingUids) {
         const u = await getUserProfile(uid);
-        if (u) profiles.push(u);
+        if (u) fetchedProfiles.push(u);
       }
-      setViewersProfiles(profiles);
+
+      const merged = [...knownProfiles, ...fetchedProfiles];
+      // Deduplicate by id
+      const unique = Array.from(new Map(merged.map((m) => [m.id, m])).values());
+      setViewersProfiles(unique);
     } catch (err) {
       console.warn('Error fetching viewers profiles:', err);
     } finally {
@@ -581,34 +639,60 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
         {/* Bottom Reaction & Reply bar (or Viewers count if own story) */}
         <div className="absolute bottom-3 left-3 right-3 z-30 space-y-2">
+          {shareNotice && (
+            <div className="bg-[#2D3732] text-white text-xs font-medium py-2 px-3 rounded-2xl text-center shadow-lg border border-white/20 animate-fade-in flex items-center justify-center gap-1.5">
+              <CheckCircle2 size={14} className="text-[#8FA89B]" />
+              <span>Story link copied to clipboard</span>
+            </div>
+          )}
+
           {isMyStory ? (
-            /* Story Owner: View count pill */
+            /* Story Owner: View count pill, likes, share and highlight */
             <div className="flex items-center justify-between bg-black/60 backdrop-blur-md p-2.5 rounded-2xl border border-white/15">
               <button
                 type="button"
                 onClick={handleOpenViewers}
-                className="flex items-center gap-2 text-white/90 hover:text-white text-xs font-medium px-2 py-1 rounded-xl hover:bg-white/10 transition-colors"
+                className="flex items-center gap-2 text-white/90 hover:text-white text-xs font-medium px-2 py-1 rounded-xl hover:bg-white/10 transition-colors cursor-pointer"
               >
                 <Eye size={16} className="text-[#8FA89B]" />
                 <span>
-                  {currentStory.viewers?.length || 1} {currentStory.viewers?.length === 1 ? 'view' : 'views'}
+                  {currentStory.viewersList?.length || currentStory.viewers?.length || 1}{' '}
+                  {(currentStory.viewersList?.length || currentStory.viewers?.length || 1) === 1 ? 'view' : 'views'}
                 </span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => {
-                  setIsPaused(true);
-                  setShowHighlightModal(true);
-                }}
-                className="text-xs text-[#8FA89B] hover:text-[#a5bdaf] font-medium flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10"
-              >
-                <Bookmark size={13} />
-                <span>Save to Highlights</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {/* Total likes count */}
+                <div className="flex items-center gap-1 text-xs text-white/90 px-2.5 py-1 bg-white/10 rounded-xl">
+                  <Heart size={13} className="text-red-400 fill-red-400" />
+                  <span>{currentItem.likesCount || currentItem.likedBy?.length || 0}</span>
+                </div>
+
+                {/* Share story */}
+                <button
+                  type="button"
+                  onClick={handleShareStory}
+                  className="p-1.5 rounded-xl text-white/80 hover:text-white bg-white/10 hover:bg-white/20 transition-colors cursor-pointer"
+                  title="Share story"
+                >
+                  <Share2 size={14} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsPaused(true);
+                    setShowHighlightModal(true);
+                  }}
+                  className="text-xs text-[#8FA89B] hover:text-[#a5bdaf] font-medium flex items-center gap-1.5 px-3 py-1 rounded-xl bg-white/10 cursor-pointer"
+                >
+                  <Bookmark size={13} />
+                  <span>Highlight</span>
+                </button>
+              </div>
             </div>
           ) : (
-            /* Visitor: Emoji reactions + DM Reply input */
+            /* Visitor: Emoji reactions + DM Reply input + Like + Share */
             <>
               <div className="flex items-center justify-around bg-black/40 backdrop-blur-md py-1.5 px-3 rounded-2xl border border-white/10">
                 {EMOJI_REACTIONS.map((emoji) => (
@@ -629,24 +713,48 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   <span>Reply sent to {currentStory.userName}</span>
                 </div>
               ) : (
-                <form onSubmit={handleSendReply} className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    onFocus={() => setIsPaused(true)}
-                    onBlur={() => setIsPaused(false)}
-                    placeholder={`Reply to ${currentStory.userName.split(' ')[0]}...`}
-                    className="flex-1 bg-white/20 backdrop-blur-md text-white placeholder-white/70 text-xs sm:text-sm px-4 py-2.5 rounded-2xl border border-white/20 focus:outline-none focus:border-white"
-                  />
+                <div className="flex items-center gap-2">
+                  <form onSubmit={handleSendReply} className="flex-1 flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      onFocus={() => setIsPaused(true)}
+                      onBlur={() => setIsPaused(false)}
+                      placeholder={`Reply to ${currentStory.userName.split(' ')[0]}...`}
+                      className="flex-1 bg-white/20 backdrop-blur-md text-white placeholder-white/70 text-xs sm:text-sm px-4 py-2.5 rounded-2xl border border-white/20 focus:outline-none focus:border-white"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!replyText.trim()}
+                      className="p-2.5 rounded-2xl bg-[#8FA89B] text-white disabled:opacity-40 hover:bg-[#7e9689] transition-colors shrink-0 cursor-pointer"
+                    >
+                      <Send size={16} />
+                    </button>
+                  </form>
+
+                  {/* Heart Like Button */}
                   <button
-                    type="submit"
-                    disabled={!replyText.trim()}
-                    className="p-2.5 rounded-2xl bg-[#8FA89B] text-white disabled:opacity-40 hover:bg-[#7e9689] transition-colors shrink-0 cursor-pointer"
+                    type="button"
+                    onClick={handleToggleStoryLike}
+                    className={`p-2.5 rounded-2xl backdrop-blur-md transition-all cursor-pointer flex items-center justify-center shrink-0 ${
+                      isItemLiked ? 'bg-red-500 text-white' : 'bg-white/20 text-white hover:bg-white/30'
+                    }`}
+                    title={isItemLiked ? 'Liked' : 'Like story'}
                   >
-                    <Send size={16} />
+                    <Heart size={16} className={isItemLiked ? 'fill-current' : ''} />
                   </button>
-                </form>
+
+                  {/* Share Button */}
+                  <button
+                    type="button"
+                    onClick={handleShareStory}
+                    className="p-2.5 rounded-2xl bg-white/20 backdrop-blur-md text-white hover:bg-white/30 transition-all cursor-pointer flex items-center justify-center shrink-0"
+                    title="Share story"
+                  >
+                    <Share2 size={16} />
+                  </button>
+                </div>
               )}
             </>
           )}
@@ -759,7 +867,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   required
                   value={highlightTitle}
                   onChange={(e) => setHighlightTitle(e.target.value)}
-                  placeholder="E.g., Studio Kiln, Nordic Light, Objects"
+                  placeholder="E.g., Nordic Light, Craft & Design, Quiet Spaces"
                   className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
                 />
               </div>

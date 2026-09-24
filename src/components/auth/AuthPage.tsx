@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { checkUsernameAvailable } from '../../services/userService';
 import { AuraLogo } from '../common/AuraLogo';
-import { studioAudio } from '../../utils/audioSynthesizer';
+import { auraAudio } from '../../utils/audioSynthesizer';
 import {
   Sparkles,
   Lock,
@@ -35,7 +35,7 @@ const PRESET_AVATARS = [
     url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
   },
   {
-    label: 'Studio Maker',
+    label: 'Visual Craftsman',
     url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=400&q=80',
   },
   {
@@ -145,7 +145,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           throw new Error('Please enter your email and password');
         }
         await signIn(email.trim(), password);
-        studioAudio.playChime();
+        auraAudio.playChime();
         onSuccess?.();
       } else {
         if (!name.trim()) throw new Error('Please enter your full name');
@@ -170,7 +170,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           location: location.trim(),
           website: website.trim(),
         });
-        studioAudio.playChime();
+        auraAudio.playChime();
         onSuccess?.();
       }
     } catch (err: unknown) {
@@ -258,7 +258,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             <div>
               <h2 className="text-sm font-medium text-white">Real Creator Identity</h2>
               <p className="text-xs text-white/60 mt-0.5">
-                Every profile is member-created with custom headers, studio bios, and direct messaging.
+                Every profile is member-created with custom headers, creator bios, and direct messaging.
               </p>
             </div>
           </div>
@@ -279,7 +279,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </div>
           <div className="text-center">
             <p className="text-[11px] text-white/60 font-medium tracking-wide">
-              app developed by reponsekdz · aura.ai.studio
+              app developed by reponsekdz · Aura
             </p>
           </div>
         </div>
@@ -332,7 +332,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             </h2>
             <p className="text-xs sm:text-sm text-[#7A8A82] mt-1">
               {mode === 'signin'
-                ? 'Enter your credentials to enter your quiet studio feed.'
+                ? 'Enter your credentials to enter your quiet feed.'
                 : 'Craft your profile, set your handle, and start posting stories and projects.'}
             </p>
           </div>
@@ -353,10 +353,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 setError(null);
                 setIsSubmitting(true);
                 try {
-                  const targetEmail = email.trim() || 'nsengiyumvae878@gmail.com';
-                  const targetName = name.trim() || 'Creator Studio';
+                  const targetEmail = email.trim() || undefined;
+                  const targetName = name.trim() || undefined;
                   await signInWithGoogle(targetEmail, targetName);
-                  studioAudio.playChime();
+                  auraAudio.playChime();
                   onSuccess?.();
                 } catch (err: unknown) {
                   const e = err as { message?: string };
@@ -396,8 +396,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 setError(null);
                 setIsSubmitting(true);
                 try {
-                  await signInWithFastPass('nsengiyumvae878@gmail.com', 'Studio Creator');
-                  studioAudio.playChime();
+                  const fastEmail = email.trim() || 'valenshagabimana05@gmail.com';
+                  const fastName = name.trim() || 'Valens Hagabimana';
+                  await signInWithFastPass(fastEmail, fastName);
+                  auraAudio.playChime();
                   onSuccess?.();
                 } catch (err: unknown) {
                   const e = err as { message?: string };
@@ -410,7 +412,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-2xl bg-[#E6EDE9] hover:bg-[#d8e3dc] text-xs font-semibold text-[#2D3732] transition-all cursor-pointer border border-[#8FA89B]/30 disabled:opacity-50"
             >
               <Zap size={14} className="text-[#5E7C6E]" />
-              <span>Instant 1-Click Studio Pass (Verified Creator)</span>
+              <span>Instant 1-Click Pass (Verified Member)</span>
             </button>
           </div>
 
@@ -456,7 +458,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                       className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md ring-2 ring-[#8FA89B]"
                     />
                     <div className="flex-1">
-                      <div className="text-[11px] text-[#7A8A82] mb-1.5">Or choose a studio persona:</div>
+                      <div className="text-[11px] text-[#7A8A82] mb-1.5">Or choose a persona:</div>
                       <div className="flex items-center gap-2 overflow-x-auto pb-1">
                         {PRESET_AVATARS.map((p, idx) => (
                           <button
@@ -584,7 +586,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="elena@studio.com"
+                  placeholder="elena@nordic.design"
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
                 />
               </div>
@@ -713,7 +715,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               developed by reponsekdz
             </p>
             <p className="text-[11px] text-[#7A8A82]">
-              aura.ai.studio · Mindful Modern Social Platform
+              Aura · Mindful Modern Social Platform
             </p>
           </div>
         </div>

@@ -43,7 +43,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [activeSection, setActiveSection] = useState<SettingsSection>('account');
   const [isResetSent, setIsResetSent] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
-  const [copiedStudioLink, setCopiedStudioLink] = useState(false);
+  const [copiedProfileLink, setCopiedProfileLink] = useState(false);
 
   // Privacy states
   const [isPrivate, setIsPrivate] = useState(currentUser.privateAccount || false);
@@ -85,11 +85,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     }
   };
 
-  const handleCopyStudioUrl = () => {
-    const url = `https://aura.ai.studio/@${currentUser.username}`;
+  const handleCopyProfileUrl = () => {
+    const url = window.location.origin + '/@' + currentUser.username;
     navigator.clipboard?.writeText(url);
-    setCopiedStudioLink(true);
-    setTimeout(() => setCopiedStudioLink(false), 2500);
+    setCopiedProfileLink(true);
+    setTimeout(() => setCopiedProfileLink(false), 2500);
   };
 
   const saveSettingsToFirestore = async (updates: Partial<UserType>) => {
@@ -174,7 +174,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       {
         account: currentUser,
         exportDate: new Date().toISOString(),
-        network: 'aura.ai.studio',
+        network: 'Aura',
         authorAttribution: 'reponsekdz',
       },
       null,
@@ -184,7 +184,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `aura-studio-backup-${currentUser.username}.json`;
+    a.download = `aura-backup-${currentUser.username}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -198,7 +198,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex items-center justify-between md:mb-6">
               <div>
                 <h3 className="text-base font-serif font-semibold text-[#2D3732]">Settings</h3>
-                <p className="text-[11px] text-[#7A8A82]">Account & aura.ai.studio controls</p>
+                <p className="text-[11px] text-[#7A8A82]">Account & preferences controls</p>
               </div>
               <button
                 type="button"
@@ -260,7 +260,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 }`}
               >
                 <Sliders size={15} />
-                <span>Studio & Media</span>
+                <span>Experience & Media</span>
               </button>
 
               <button
@@ -310,7 +310,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 developed by reponsekdz
               </p>
               <p className="text-[9px] text-[#A1B0A8]">
-                aura.ai.studio
+                Aura
               </p>
             </div>
           </div>
@@ -347,7 +347,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <h4 className="text-base font-semibold text-[#2D3732]">Account Details</h4>
                 <p className="text-xs text-[#7A8A82]">
-                  Manage your credentials, authenticated profile, and public aura.ai.studio link
+                  Manage your credentials, authenticated profile, and public profile link
                 </p>
               </div>
 
@@ -379,24 +379,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 </button>
               </div>
 
-              {/* Official studio address */}
+              {/* Official address */}
               <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-xs font-semibold text-[#2D3732] flex items-center gap-1.5">
                     <Sparkles size={14} className="text-[#8FA89B]" />
-                    <span>Your Official Studio Domain</span>
+                    <span>Your Public Profile Link</span>
                   </div>
                   <div className="text-xs font-mono text-[#55635C] truncate mt-0.5">
-                    https://aura.ai.studio/@{currentUser.username}
+                    {window.location.origin}/@{currentUser.username}
                   </div>
                 </div>
                 <button
                   type="button"
-                  onClick={handleCopyStudioUrl}
+                  onClick={handleCopyProfileUrl}
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-[#2D3732]/10 text-xs font-medium text-[#2D3732] hover:bg-[#FAFAF9] shadow-xs cursor-pointer shrink-0"
                 >
-                  {copiedStudioLink ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
-                  <span>{copiedStudioLink ? 'Copied' : 'Copy'}</span>
+                  {copiedProfileLink ? <Check size={14} className="text-emerald-600" /> : <Copy size={14} />}
+                  <span>{copiedProfileLink ? 'Copied' : 'Copy'}</span>
                 </button>
               </div>
 
@@ -451,7 +451,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div className="flex items-center gap-3">
                     <Lock size={18} className="text-[#8FA89B]" />
                     <div>
-                      <div className="text-xs font-semibold text-[#2D3732]">Private Studio Account</div>
+                      <div className="text-xs font-semibold text-[#2D3732]">Private Account</div>
                       <div className="text-[11px] text-[#7A8A82]">
                         Only your accepted followers can read your full reflections and stories
                       </div>
@@ -559,7 +559,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                   <div>
                     <div className="text-xs font-semibold text-[#2D3732]">New Followers & Follow Backs</div>
-                    <div className="text-[11px] text-[#7A8A82]">Alerts when someone follows your studio</div>
+                    <div className="text-[11px] text-[#7A8A82]">Alerts when someone follows your profile</div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input
@@ -611,7 +611,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           {activeSection === 'preferences' && (
             <div className="space-y-6">
               <div>
-                <h4 className="text-base font-semibold text-[#2D3732]">Studio & Media Preferences</h4>
+                <h4 className="text-base font-semibold text-[#2D3732]">App & Media Preferences</h4>
                 <p className="text-xs text-[#7A8A82]">Adjust theme aesthetics and rich content playback</p>
               </div>
 
@@ -743,13 +743,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               <div>
                 <h4 className="text-base font-semibold text-[#2D3732]">Data, Backup & Export</h4>
                 <p className="text-xs text-[#7A8A82]">
-                  Download a complete copy of your studio profile archive or manage cloud storage
+                  Download a complete copy of your profile archive or manage cloud storage
                 </p>
               </div>
 
               <div className="p-4 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center justify-between">
                 <div>
-                  <div className="text-xs font-semibold text-[#2D3732]">Export Studio Archive</div>
+                  <div className="text-xs font-semibold text-[#2D3732]">Export Profile Archive</div>
                   <div className="text-[11px] text-[#7A8A82]">
                     Download an offline JSON snapshot of your profile, handle, bio, and settings
                   </div>
@@ -778,7 +778,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <span>Sign Out of Aura</span>
                 </button>
                 <div className="text-center text-[10px] text-[#7A8A82]">
-                  developed by reponsekdz · aura.ai.studio
+                  developed by reponsekdz · Aura
                 </div>
               </div>
             </div>

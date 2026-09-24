@@ -193,4 +193,5 @@ class AudioSynthesizer {
   }
 }
 
-export const studioAudio = new AudioSynthesizer();
+export const auraAudio = new AudioSynthesizer();
+export const studioAudio = auraAudio;

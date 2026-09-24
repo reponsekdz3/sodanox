@@ -440,7 +440,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           typing...
                         </span>
                       ) : activeConv.isOnline ? (
-                        'Active in studio'
+                        'Active now'
                       ) : (
                         'Offline'
                       )}

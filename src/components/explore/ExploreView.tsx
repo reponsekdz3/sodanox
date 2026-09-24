@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Search, Hash, TrendingUp, Play, Heart, MessageCircle, Flame, Users, CheckCircle2, UserPlus, UserCheck } from 'lucide-react';
 import { Post, Reel, User } from '../../types';
 import { calculateTrendingTopics } from '../../services/trendingService';
+import { FollowButton } from '../common/FollowButton';
 
 interface ExploreViewProps {
   posts: Post[];
@@ -54,7 +55,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               setSearchQuery(e.target.value);
               setSelectedTag(null);
             }}
-            placeholder="Search creators, hashtags, projects on aura.ai.studio..."
+            placeholder="Search creators, hashtags, projects on Aura..."
             className="w-full bg-[#F1F5F2] border border-transparent focus:border-[#8FA89B] focus:bg-[#FAFAF9] rounded-2xl pl-11 pr-4 py-3 text-sm text-[#2D3732] placeholder-[#7A8A82] shadow-soft focus:outline-none transition-all"
           />
           {searchQuery && (
@@ -105,7 +106,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               <span>Suggested Creators to Follow</span>
             </h2>
             <span className="text-[11px] text-[#7A8A82]">
-              Real active studios on Aura
+              Active members on Aura
             </span>
           </div>
 
@@ -145,7 +146,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 </div>
 
                 <p className="text-[11px] text-[#55635C] line-clamp-2 leading-relaxed mb-3">
-                  {user.bio || 'Exploring ideas and craft on aura.ai.studio.'}
+                  {user.bio || 'Exploring ideas and craft on Aura.'}
                 </p>
 
                 <div className="flex items-center justify-between pt-2 border-t border-[#E6EDE9]/60">
@@ -154,23 +155,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   </span>
 
                   {onToggleFollowUser && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleFollowUser(user.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all shrink-0 cursor-pointer active:scale-95 ${
-                        user.isFollowing
-                          ? 'bg-[#E6EDE9] text-[#2D3732] hover:bg-neutral-200'
-                          : user.isFollower
-                          ? 'bg-[#2D3732] text-white hover:bg-[#3d4a43]'
-                          : 'bg-[#8FA89B] text-white hover:bg-[#7e9689]'
-                      }`}
-                    >
-                      {user.isFollowing
-                        ? 'Following'
-                        : user.isFollower
-                        ? 'Follow Back'
-                        : 'Follow'}
-                    </button>
+                    <FollowButton
+                      isFollowing={!!user.isFollowing}
+                      isFollower={!!user.isFollower}
+                      userId={user.id}
+                      onToggleFollow={onToggleFollowUser}
+                      size="sm"
+                    />
                   )}
                 </div>
               </div>
@@ -308,7 +299,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {/* Mandatory Developer Footer */}
       <div className="py-6 text-center border-t border-[#E6EDE9]">
         <p className="text-xs text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
-          app developed by reponsekdz · aura.ai.studio
+          app developed by reponsekdz · Aura Social
         </p>
       </div>
     </div>

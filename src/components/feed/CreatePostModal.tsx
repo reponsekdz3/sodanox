@@ -19,14 +19,16 @@ interface CreatePostModalProps {
   currentUser: User;
   onClose: () => void;
   onCreatePost: (newPost: Partial<Post>) => void;
+  initialContent?: string;
 }
 
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   currentUser,
   onClose,
   onCreatePost,
+  initialContent = '',
 }) => {
-  const [content, setContent] = useState('');
+  const [content, setContent] = useState(initialContent);
   const [mediaUrls, setMediaUrls] = useState<string[]>([]);
   const [location, setLocation] = useState('');
   const [showLocationInput, setShowLocationInput] = useState(false);
@@ -136,7 +138,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F2] bg-[#F1F5F2]/50">
           <h2 className="text-base font-serif font-medium text-[#2D3732]">
-            Create Studio Post
+            Create Post
           </h2>
           <button
             type="button"
@@ -200,7 +202,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           <textarea
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            placeholder="Share a reflection, studio progress, or design insight..."
+            placeholder="Share a reflection, creative progress, or mindful insight..."
             rows={4}
             className="w-full bg-[#F1F5F2]/40 border border-transparent focus:border-[#8FA89B] focus:bg-white rounded-2xl p-4 text-sm text-[#2D3732] placeholder-[#7A8A82] transition-all focus:outline-none resize-none leading-relaxed"
           />
@@ -235,7 +237,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
-                placeholder="Add studio location (e.g. Kyoto, Japan)..."
+                placeholder="Add location (e.g. Kyoto, Japan)..."
                 className="flex-1 bg-transparent text-xs sm:text-sm text-[#2D3732] focus:outline-none"
               />
               <button

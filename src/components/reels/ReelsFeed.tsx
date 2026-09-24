@@ -17,6 +17,7 @@ import {
   Check,
 } from 'lucide-react';
 import { Reel, User } from '../../types';
+import { FollowButton } from '../common/FollowButton';
 
 interface ReelsFeedProps {
   reels: Reel[];
@@ -24,6 +25,7 @@ interface ReelsFeedProps {
   onLikeReel: (reelId: string) => void;
   onBookmarkReel: (reelId: string) => void;
   onAddReelComment: (reelId: string, text: string) => void;
+  onIncrementShare?: (reelId: string) => void;
   onOpenUserProfile: (user: User) => void;
   onToggleFollowUser: (userId: string) => void;
   onOpenCreateReel?: () => void;
@@ -35,6 +37,7 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
   onLikeReel,
   onBookmarkReel,
   onAddReelComment,
+  onIncrementShare,
   onOpenUserProfile,
   onToggleFollowUser,
   onOpenCreateReel,
@@ -93,6 +96,9 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
 
   const handleShare = () => {
     navigator.clipboard?.writeText(window.location.href);
+    if (currentReel) {
+      onIncrementShare?.(currentReel.id);
+    }
     setCopiedShare(true);
     setTimeout(() => setCopiedShare(false), 2000);
   };
@@ -287,16 +293,13 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
             </div>
 
             {currentReel.author.id !== currentUser.id && (
-              <button
-                onClick={() => onToggleFollowUser(currentReel.author.id)}
-                className={`px-3 py-1 rounded-xl text-xs font-medium backdrop-blur-md transition-all ${
-                  currentReel.author.isFollowing
-                    ? 'bg-white/20 text-white hover:bg-white/30'
-                    : 'bg-[#8FA89B] text-white hover:bg-[#7e9689]'
-                }`}
-              >
-                {currentReel.author.isFollowing ? 'Following' : 'Follow'}
-              </button>
+              <FollowButton
+                isFollowing={!!currentReel.author.isFollowing}
+                isFollower={!!currentReel.author.isFollower}
+                userId={currentReel.author.id}
+                onToggleFollow={onToggleFollowUser}
+                size="sm"
+              />
             )}
           </div>
 

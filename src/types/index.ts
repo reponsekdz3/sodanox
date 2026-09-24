@@ -69,6 +69,13 @@ export interface StoryTextOverlay {
   align: 'left' | 'center' | 'right';
 }
 
+export interface StoryViewerInfo {
+  userId: string;
+  userName: string;
+  userAvatar: string;
+  viewedAt: string;
+}
+
 export interface StoryItem {
   id: string;
   mediaUrl: string;
@@ -79,6 +86,8 @@ export interface StoryItem {
   filter?: StoryFilter;
   stickers?: StorySticker[];
   textOverlay?: StoryTextOverlay;
+  likedBy?: string[];
+  likesCount?: number;
 }
 
 export interface Story {
@@ -90,7 +99,10 @@ export interface Story {
   hasUnseen: boolean;
   items: StoryItem[];
   viewers?: string[];
-  createdAt?: string;
+  viewersList?: StoryViewerInfo[];
+  likesCount?: number;
+  likedBy?: string[];
+  createdAt?: any;
 }
 
 export interface StoryHighlight {

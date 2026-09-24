@@ -26,7 +26,7 @@ interface CreateStoryModalProps {
 }
 
 const CANVAS_BACKGROUNDS = [
-  { name: 'Studio Slate', gradient: 'from-[#2D3732] to-[#1C2420]' },
+  { name: 'Quiet Slate', gradient: 'from-[#2D3732] to-[#1C2420]' },
   { name: 'Warm Linen', gradient: 'from-[#EFECE6] to-[#DDD7CD]' },
   { name: 'Nordic Sage', gradient: 'from-[#8FA89B] to-[#5C7567]' },
   { name: 'Terracotta Ash', gradient: 'from-[#C27D60] to-[#8C4E35]' },
@@ -46,10 +46,10 @@ const FILTER_CLASSES: Record<StoryFilter, string> = {
 
 const AMBIENT_SOUNDTRACKS = [
   { title: 'An Ending (Ascent)', artist: 'Brian Eno' },
-  { title: 'Says (Studio Live)', artist: 'Nils Frahm' },
+  { title: 'Says (Live Archive)', artist: 'Nils Frahm' },
   { title: 'Slow Water & Stone', artist: 'Nordic Soundscapes' },
   { title: 'Morning Light In Kyoto', artist: 'Quiet Archive' },
-  { title: 'Felt & Acoustic Wood', artist: 'Studio Ambience' },
+  { title: 'Felt & Acoustic Wood', artist: 'Acoustic Ambience' },
 ];
 
 export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
@@ -65,7 +65,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   // Styling state
   const [activeFilter, setActiveFilter] = useState<StoryFilter>('none');
   const [caption, setCaption] = useState('');
-  const [moodTag, setMoodTag] = useState('Studio Craft');
+  const [moodTag, setMoodTag] = useState('Craft & Reflection');
 
   // Text overlay state
   const [showTextTool, setShowTextTool] = useState(false);
@@ -423,7 +423,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 </div>
                 <h3 className="font-serif text-xl font-light text-white">Create Your Story</h3>
                 <p className="text-xs text-white/70 leading-relaxed">
-                  Upload high-res photography, open your camera, or design a minimalist studio quote slide.
+                  Upload high-res photography, open your camera, or design a minimalist quote slide.
                 </p>
 
                 <div className="flex flex-col gap-2.5 pt-2">
@@ -792,7 +792,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             {/* Music Content */}
             {activeStickerModal === 'music' && (
               <div className="space-y-2">
-                <div className="text-xs text-[#7A8A82] mb-1">Select studio track soundtrack:</div>
+                <div className="text-xs text-[#7A8A82] mb-1">Select soundtrack:</div>
                 {AMBIENT_SOUNDTRACKS.map((t, idx) => (
                   <button
                     key={idx}
@@ -814,7 +814,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             {activeStickerModal === 'location' && (
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-[#2D3732] mb-1">City or Studio Location</label>
+                  <label className="block text-xs font-medium text-[#2D3732] mb-1">City or Location</label>
                   <input
                     type="text"
                     value={locationName}

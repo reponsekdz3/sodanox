@@ -128,10 +128,10 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
         <div className="flex items-center justify-between px-6 py-4 border-b border-[#2D3732]/10 bg-[#F1F5F2]">
           <div>
             <h2 className="text-base font-serif font-semibold text-[#2D3732]">
-              Customize Profile & Studio
+              Edit Profile
             </h2>
             <p className="text-[11px] text-[#7A8A82]">
-              Personalize your aesthetic banner, avatar, and creator bio
+              Personalize your aesthetic banner, avatar, and bio
             </p>
           </div>
           <button
@@ -155,12 +155,12 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-[#2D3732] uppercase tracking-wider">
-                Header Banner & Studio Cover
+                Header Banner & Cover Photo
               </label>
               <button
                 type="button"
                 onClick={() => bannerInputRef.current?.click()}
-                className="text-xs text-[#8FA89B] hover:text-[#7a9486] font-medium flex items-center gap-1"
+                className="text-xs text-[#8FA89B] hover:text-[#7a9486] font-medium flex items-center gap-1 cursor-pointer"
               >
                 <Upload size={13} />
                 <span>Upload Banner</span>
@@ -184,7 +184,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                 <button
                   type="button"
                   onClick={() => bannerInputRef.current?.click()}
-                  className="px-3 py-1.5 rounded-xl bg-white/90 text-xs font-medium text-[#2D3732] shadow-sm flex items-center gap-1.5"
+                  className="px-3 py-1.5 rounded-xl bg-white/90 text-xs font-medium text-[#2D3732] shadow-sm flex items-center gap-1.5 cursor-pointer"
                 >
                   <Camera size={14} />
                   <span>Change Banner</span>
@@ -202,7 +202,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
                   <button
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-white"
+                    className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover/avatar:opacity-100 transition-opacity flex items-center justify-center text-white cursor-pointer"
                   >
                     <Camera size={16} />
                   </button>
@@ -219,13 +219,13 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
 
             {/* Banner Presets */}
             <div className="flex items-center gap-2 pt-1 overflow-x-auto pb-1">
-              <span className="text-[11px] text-[#7A8A82] shrink-0">Studio Presets:</span>
+              <span className="text-[11px] text-[#7A8A82] shrink-0">Curated Presets:</span>
               {PRESET_BANNERS.map((preset, idx) => (
                 <button
                   key={idx}
                   type="button"
                   onClick={() => setBannerUrl(preset)}
-                  className={`w-12 h-7 rounded-lg overflow-hidden border-2 shrink-0 transition-transform ${
+                  className={`w-12 h-7 rounded-lg overflow-hidden border-2 shrink-0 transition-transform cursor-pointer ${
                     bannerUrl === preset ? 'border-[#8FA89B] scale-105 shadow-sm' : 'border-transparent opacity-75 hover:opacity-100'
                   }`}
                 >
@@ -306,7 +306,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-[#2D3732] mb-1">
-                Studio Location
+                Location
               </label>
               <input
                 type="text"
@@ -318,7 +318,7 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
             </div>
             <div>
               <label className="block text-xs font-medium text-[#2D3732] mb-1">
-                Studio Website / Portfolio
+                Website / Portfolio
               </label>
               <input
                 type="url"

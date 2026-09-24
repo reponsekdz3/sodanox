@@ -175,7 +175,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             <span className="text-[14px]">Bookmarks</span>
           </button>
 
-          {/* Your Studio Profile */}
+          {/* Your Profile */}
           <button
             type="button"
             onClick={() => onSelectTab('profile')}

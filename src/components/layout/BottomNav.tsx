@@ -1,5 +1,6 @@
 import React from 'react';
 import { Home, Compass, Film, MessageSquare, User as UserIcon, Plus } from 'lucide-react';
+import { auraAudio } from '../../utils/audioSynthesizer';
 
 interface BottomNavProps {
   currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
@@ -14,14 +15,24 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onSelectTab,
   onOpenCreatePost,
 }) => {
+  const handleTabClick = (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => {
+    auraAudio.playClick(680, 0.03);
+    onSelectTab(tab);
+  };
+
+  const handleCreateClick = () => {
+    auraAudio.playClick(750, 0.04);
+    onOpenCreatePost();
+  };
+
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-[#FAFAF9]/95 backdrop-blur-md border-t border-[#E6EDE9] px-2 py-1 shadow-soft-lg select-none">
-      <div className="grid grid-cols-5 items-center h-14 max-w-lg mx-auto">
-        {/* Feed / Home */}
+    <nav className="md:hidden fixed bottom-2.5 left-3 right-3 z-40 bg-[#FAFAF9]/95 backdrop-blur-xl border border-[#2D3732]/10 rounded-3xl px-2 py-1.5 shadow-xl select-none max-w-md mx-auto">
+      <div className="grid grid-cols-5 items-center h-13">
+        {/* 1. Feed / Home */}
         <button
           type="button"
-          onClick={() => onSelectTab('feed')}
-          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
+          onClick={() => handleTabClick('feed')}
+          className={`min-h-[44px] flex flex-col items-center justify-center transition-all cursor-pointer ${
             currentTab === 'feed'
               ? 'text-[#2D3732] font-semibold scale-105'
               : 'text-[#7A8A82] hover:text-[#2D3732]'
@@ -29,7 +40,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           title="Home Feed"
         >
           <div className="relative p-1">
-            <Home size={20} className={currentTab === 'feed' ? 'stroke-[2.5] text-[#5E7C6E]' : ''} />
+            <Home
+              size={20}
+              className={currentTab === 'feed' ? 'stroke-[2.5] text-[#5E7C6E]' : ''}
+            />
             {currentTab === 'feed' && (
               <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
             )}
@@ -37,11 +51,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px] tracking-tight">Home</span>
         </button>
 
-        {/* Explore */}
+        {/* 2. Explore & Search */}
         <button
           type="button"
-          onClick={() => onSelectTab('explore')}
-          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
+          onClick={() => handleTabClick('explore')}
+          className={`min-h-[44px] flex flex-col items-center justify-center transition-all cursor-pointer ${
             currentTab === 'explore'
               ? 'text-[#2D3732] font-semibold scale-105'
               : 'text-[#7A8A82] hover:text-[#2D3732]'
@@ -49,7 +63,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           title="Explore"
         >
           <div className="relative p-1">
-            <Compass size={20} className={currentTab === 'explore' ? 'stroke-[2.5] text-[#5E7C6E]' : ''} />
+            <Compass
+              size={20}
+              className={currentTab === 'explore' ? 'stroke-[2.5] text-[#5E7C6E]' : ''}
+            />
             {currentTab === 'explore' && (
               <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
             )}
@@ -57,31 +74,23 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px] tracking-tight">Explore</span>
         </button>
 
-        {/* Reels */}
-        <button
-          type="button"
-          onClick={() => onSelectTab('reels')}
-          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
-            currentTab === 'reels'
-              ? 'text-[#2D3732] font-semibold scale-105'
-              : 'text-[#7A8A82] hover:text-[#2D3732]'
-          }`}
-          title="Cinema & Reels"
-        >
-          <div className="relative p-1">
-            <Film size={20} className={currentTab === 'reels' ? 'stroke-[2.5] text-[#5E7C6E]' : ''} />
-            {currentTab === 'reels' && (
-              <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#5E7C6E]" />
-            )}
-          </div>
-          <span className="text-[10px] tracking-tight">Reels</span>
-        </button>
+        {/* 3. Center Elevated Quick Create Button */}
+        <div className="flex items-center justify-center">
+          <button
+            type="button"
+            onClick={handleCreateClick}
+            className="w-11 h-11 rounded-2xl bg-[#8FA89B] hover:bg-[#7e9689] text-white flex items-center justify-center shadow-md active:scale-95 transition-all cursor-pointer"
+            title="Create Post or Reflection"
+          >
+            <Plus size={22} strokeWidth={2.5} />
+          </button>
+        </div>
 
-        {/* Messages */}
+        {/* 4. Messages / Chat */}
         <button
           type="button"
-          onClick={() => onSelectTab('messages')}
-          className={`min-h-[44px] flex flex-col items-center justify-center relative transition-all ${
+          onClick={() => handleTabClick('messages')}
+          className={`min-h-[44px] flex flex-col items-center justify-center relative transition-all cursor-pointer ${
             currentTab === 'messages'
               ? 'text-[#2D3732] font-semibold scale-105'
               : 'text-[#7A8A82] hover:text-[#2D3732]'
@@ -105,11 +114,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px] tracking-tight">Chat</span>
         </button>
 
-        {/* Profile */}
+        {/* 5. Profile */}
         <button
           type="button"
-          onClick={() => onSelectTab('profile')}
-          className={`min-h-[44px] flex flex-col items-center justify-center transition-all ${
+          onClick={() => handleTabClick('profile')}
+          className={`min-h-[44px] flex flex-col items-center justify-center transition-all cursor-pointer ${
             currentTab === 'profile'
               ? 'text-[#2D3732] font-semibold scale-105'
               : 'text-[#7A8A82] hover:text-[#2D3732]'

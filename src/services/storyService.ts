@@ -16,6 +16,7 @@ import {
 import { db } from '../firebase/config';
 import { Story, StoryItem, User, StoryHighlight } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
+import { createNotification } from './notificationService';
 import { isMockArtifact } from './postService';
 
 const STORIES_COLLECTION = 'stories';
@@ -112,17 +113,72 @@ export async function createStoryInFirestore(
 }
 
 /**
- * Record a story view for the current user
+ * Record a story view for the current user with detailed viewer info
  */
-export async function recordStoryView(storyId: string, currentUid: string): Promise<void> {
+export async function recordStoryView(
+  storyId: string,
+  currentUid: string,
+  viewerUser?: User
+): Promise<void> {
   if (!currentUid || !storyId) return;
   try {
     const storyRef = doc(db, STORIES_COLLECTION, storyId);
-    await updateDoc(storyRef, {
+    const updates: Record<string, any> = {
       viewers: arrayUnion(currentUid),
-    });
+    };
+    if (viewerUser) {
+      updates.viewersList = arrayUnion({
+        userId: viewerUser.id,
+        userName: viewerUser.name,
+        userAvatar: viewerUser.avatar || '',
+        viewedAt: 'Just now',
+      });
+    }
+    await updateDoc(storyRef, updates);
   } catch (err) {
     console.warn('Error recording story view:', err);
+  }
+}
+
+/**
+ * Toggle like for a story item in Firestore
+ */
+export async function toggleLikeStory(
+  storyId: string,
+  itemIndex: number,
+  userId: string,
+  user: User
+): Promise<void> {
+  try {
+    const storyRef = doc(db, STORIES_COLLECTION, storyId);
+    const snap = await getDocs(query(collection(db, STORIES_COLLECTION)));
+    const docSnap = snap.docs.find((d) => d.id === storyId);
+    if (!docSnap) return;
+
+    const data = docSnap.data();
+    const items = [...(data.items || [])];
+    if (!items[itemIndex]) return;
+
+    const item = { ...items[itemIndex] };
+    const likedBy: string[] = item.likedBy || [];
+    const hasLiked = likedBy.includes(userId);
+
+    const updatedLikedBy = hasLiked
+      ? likedBy.filter((id) => id !== userId)
+      : [...likedBy, userId];
+
+    item.likedBy = updatedLikedBy;
+    item.likesCount = updatedLikedBy.length;
+    items[itemIndex] = item;
+
+    await updateDoc(storyRef, { items });
+
+    // Notify story author if not self and liked
+    if (!hasLiked && data.userId && data.userId !== userId) {
+      await createNotification(data.userId, user, 'like', 'liked your story', storyId);
+    }
+  } catch (err) {
+    console.warn('Error toggling story like:', err);
   }
 }
 
