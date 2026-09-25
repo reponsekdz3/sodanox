@@ -390,6 +390,7 @@ export function subscribeToMessages(
             text: d.text || '',
             file: d.file || undefined,
             voice: d.voice || undefined,
+            callMeta: d.callMeta || undefined,
             status: d.status || 'delivered',
             reaction: d.reaction,
             replyTo: d.replyTo || undefined,
@@ -454,7 +455,13 @@ export async function sendChatMessage(
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
 
   const lastMessageSnippet =
-    messageData.type === 'voice'
+    messageData.type === 'call'
+      ? (messageData.callMeta?.status === 'missed'
+          ? '📞 Missed call'
+          : messageData.callMeta?.status === 'declined'
+          ? '📞 Call declined'
+          : `${messageData.callMeta?.callType === 'video' ? '📹 Video' : '📞 Audio'} call${messageData.callMeta?.durationSeconds ? ` (${Math.floor(messageData.callMeta.durationSeconds / 60)}m ${messageData.callMeta.durationSeconds % 60}s)` : ''}`)
+      : messageData.type === 'voice'
       ? '🎙️ Voice note'
       : messageData.type === 'file'
       ? `📎 ${messageData.file?.name || 'File'}`
@@ -473,6 +480,7 @@ export async function sendChatMessage(
     status: 'sent',
     file: messageData.file,
     voice: messageData.voice,
+    callMeta: messageData.callMeta,
     replyTo: replyTo
       ? {
           id: replyTo.id,
@@ -537,6 +545,7 @@ export async function sendChatMessage(
 
     if (messageData.file) payload.file = messageData.file;
     if (messageData.voice) payload.voice = messageData.voice;
+    if (messageData.callMeta) payload.callMeta = messageData.callMeta;
     if (fullMessage.replyTo) payload.replyTo = fullMessage.replyTo;
 
     await setDoc(msgDocRef, payload);

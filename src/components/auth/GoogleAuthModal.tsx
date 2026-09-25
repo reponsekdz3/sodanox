@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { auth } from '../../firebase/config';
 import { GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
-import { ModernAvatar } from '../common/ModernAvatar';
+import { ModernAvatar, MODERN_EMPTY_AVATAR_DATA_URI } from '../common/ModernAvatar';
 
 interface GoogleAuthModalProps {
   isOpen: boolean;

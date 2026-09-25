@@ -154,7 +154,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         reel.caption.toLowerCase().includes(effectiveQuery) ||
         reel.author.name.toLowerCase().includes(effectiveQuery) ||
         reel.author.username.toLowerCase().includes(effectiveQuery) ||
-        (reel.audioTrack && reel.audioTrack.toLowerCase().includes(effectiveQuery))
+        (reel.audioTrack && (reel.audioTrack.title.toLowerCase().includes(effectiveQuery) || reel.audioTrack.artist.toLowerCase().includes(effectiveQuery)))
       );
     });
   }, [reels, effectiveQuery]);

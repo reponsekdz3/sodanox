@@ -23,7 +23,7 @@ import {
   Search,
   Trash2,
 } from 'lucide-react';
-import { User, Post, Reel, StoryHighlight } from '../../types';
+import { User, Post, Reel, StoryHighlight, StoryItem } from '../../types';
 import { PostCard } from '../feed/PostCard';
 import { FollowButton } from '../common/FollowButton';
 import { ModernAvatar } from '../common/ModernAvatar';
@@ -40,10 +40,12 @@ interface ProfileViewProps {
   userPosts: Post[];
   userReels: Reel[];
   savedPosts: Post[];
+  userStories?: StoryItem[];
   suggestedUsers?: User[];
   onToggleFollow: (userId: string) => void;
   onOpenEditProfile: () => void;
   onOpenCreatePost?: () => void;
+  onOpenCreateStory?: () => void;
   onStartCall: (participant: User, type: 'audio' | 'video') => void;
   onOpenDirectChat: (participant: User) => void;
   onLikePost: (postId: string) => void;
@@ -67,6 +69,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
   userPosts,
   userReels,
   savedPosts,
+  userStories = [],
   suggestedUsers = [],
   onToggleFollow,
   onOpenEditProfile,
@@ -745,6 +748,7 @@ export const ProfileView: React.FC<ProfileViewProps> = ({
           currentUser={currentUser}
           onClose={() => setIsCreateHighlightOpen(false)}
           onCreated={() => {}}
+          availableStories={userStories}
         />
       )}
 

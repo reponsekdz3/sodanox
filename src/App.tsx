@@ -37,6 +37,7 @@ import {
   acceptCallSession,
   declineCallSession,
   endCallSession,
+  recordCallLogToChat,
   CallSession,
 } from './services/callService';
 
@@ -87,9 +88,11 @@ import {
 } from './services/userService';
 import { sendBrowserNotification } from './services/browserNotificationService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from './components/common/ModernAvatar';
+import { useOnlineStatus } from './hooks/usePWAInstall';
 
 export default function App() {
   const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
+  const isOnline = useOnlineStatus();
 
   // Navigation & View state
   const [currentTab, setCurrentTab] = useState<'feed' | 'reels' | 'messages' | 'explore' | 'profile'>('feed');
@@ -924,6 +927,19 @@ export default function App() {
   const handleDeclineIncomingCall = async (session: CallSession) => {
     setIncomingCall(null);
     await declineCallSession(session.id).catch(() => {});
+    if (currentUser) {
+      const callerUser: User = {
+        id: session.caller.id,
+        name: session.caller.name,
+        username: session.caller.username,
+        avatar: session.caller.avatar,
+        bio: '',
+        joinedDate: '',
+        followersCount: 0,
+        followingCount: 0,
+      };
+      await recordCallLogToChat(callerUser, currentUser, session.type, 'declined', 0).catch(() => {});
+    }
   };
 
   const handleEndCall = () => {
@@ -1133,10 +1149,12 @@ export default function App() {
             userPosts={viewingUserPosts}
             userReels={reels.filter((r) => r.author.id === viewingUser.id)}
             savedPosts={posts.filter((p) => p.isBookmarked)}
+            userStories={stories.filter((s) => s.userId === viewingUser.id).flatMap((s) => s.items)}
             suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id)}
             onToggleFollow={handleToggleFollow}
             onOpenEditProfile={() => setIsEditProfileOpen(true)}
             onOpenCreatePost={() => setIsCreatePostOpen(true)}
+            onOpenCreateStory={() => setIsCreateStoryOpen(true)}
             onStartCall={handleStartCall}
             onOpenDirectChat={handleOpenDirectChat}
             onLikePost={handleLikePost}
@@ -1283,6 +1301,14 @@ export default function App() {
             setActiveCall((prev) => (prev ? { ...prev, status: 'connected' } : null))
           }
         />
+      )}
+
+      {/* PWA Offline Connectivity Indicator */}
+      {!isOnline && (
+        <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-2xl bg-[#2D3732] border border-[#8FA89B]/40 px-3.5 py-2 text-xs font-medium text-white shadow-soft-float animate-bounce">
+          <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
+          <span>Offline Mode — Cached data is being used.</span>
+        </div>
       )}
     </div>
   );

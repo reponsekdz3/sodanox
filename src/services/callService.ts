@@ -7,12 +7,14 @@ import {
   query,
   where,
   serverTimestamp,
+  arrayUnion,
   Unsubscribe,
   getDoc,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { User } from '../types';
 import { createNotification } from './notificationService';
+import { getDeterministicConvId, getOrCreateConversation, sendChatMessage } from './chatService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 export interface CallSession {
@@ -33,6 +35,17 @@ export interface CallSession {
   };
   type: 'audio' | 'video';
   status: 'ringing' | 'connected' | 'ended' | 'declined';
+  offer?: {
+    type: 'offer';
+    sdp: string;
+  };
+  answer?: {
+    type: 'answer';
+    sdp: string;
+  };
+  callerCandidates?: RTCIceCandidateInit[];
+  recipientCandidates?: RTCIceCandidateInit[];
+  durationSeconds?: number;
   lastReaction?: {
     emoji: string;
     senderId: string;
@@ -45,8 +58,20 @@ export interface CallSession {
     timestamp: number;
   };
   createdAt?: any;
+  connectedAt?: any;
   endedAt?: any;
 }
+
+export const WEBRTC_ICE_SERVERS: RTCConfiguration = {
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+  ],
+  iceCandidatePoolSize: 10,
+};
 
 const CALLS_COLLECTION = 'calls';
 
@@ -249,3 +274,126 @@ export async function sendCallQuickMessage(
     console.warn('Error sending in-call message:', err);
   }
 }
+
+/**
+ * Set WebRTC Offer SDP on call document
+ */
+export async function setCallOffer(
+  callId: string,
+  offer: RTCSessionDescriptionInit
+): Promise<void> {
+  try {
+    const callRef = doc(db, CALLS_COLLECTION, callId);
+    await updateDoc(callRef, {
+      offer: {
+        type: offer.type,
+        sdp: offer.sdp,
+      },
+    });
+  } catch (err) {
+    console.warn('Error setting call offer:', err);
+  }
+}
+
+/**
+ * Set WebRTC Answer SDP on call document
+ */
+export async function setCallAnswer(
+  callId: string,
+  answer: RTCSessionDescriptionInit
+): Promise<void> {
+  try {
+    const callRef = doc(db, CALLS_COLLECTION, callId);
+    await updateDoc(callRef, {
+      status: 'connected',
+      connectedAt: serverTimestamp(),
+      answer: {
+        type: answer.type,
+        sdp: answer.sdp,
+      },
+    });
+  } catch (err) {
+    console.warn('Error setting call answer:', err);
+  }
+}
+
+/**
+ * Push an ICE Candidate from Caller
+ */
+export async function addCallerIceCandidate(
+  callId: string,
+  candidate: RTCIceCandidateInit
+): Promise<void> {
+  try {
+    const callRef = doc(db, CALLS_COLLECTION, callId);
+    await updateDoc(callRef, {
+      callerCandidates: arrayUnion(JSON.parse(JSON.stringify(candidate))),
+    });
+  } catch (err) {
+    console.warn('Error adding caller ICE candidate:', err);
+  }
+}
+
+/**
+ * Push an ICE Candidate from Recipient
+ */
+export async function addRecipientIceCandidate(
+  callId: string,
+  candidate: RTCIceCandidateInit
+): Promise<void> {
+  try {
+    const callRef = doc(db, CALLS_COLLECTION, callId);
+    await updateDoc(callRef, {
+      recipientCandidates: arrayUnion(JSON.parse(JSON.stringify(candidate))),
+    });
+  } catch (err) {
+    console.warn('Error adding recipient ICE candidate:', err);
+  }
+}
+
+/**
+ * Record a real Call Log directly in the chat conversation
+ * Creates or updates conversation and inserts an interactive Call card
+ */
+export async function recordCallLogToChat(
+  caller: User,
+  recipient: User,
+  type: 'audio' | 'video',
+  status: 'completed' | 'missed' | 'declined',
+  durationSeconds: number = 0
+): Promise<void> {
+  try {
+    const convId = getDeterministicConvId(caller.id, recipient.id);
+    await getOrCreateConversation(caller, recipient);
+
+    const callTypeText = type === 'video' ? 'Video call' : 'Audio call';
+    let text = callTypeText;
+    if (status === 'missed') {
+      text = `Missed ${callTypeText.toLowerCase()}`;
+    } else if (status === 'declined') {
+      text = `Declined ${callTypeText.toLowerCase()}`;
+    } else if (durationSeconds > 0) {
+      const mins = Math.floor(durationSeconds / 60);
+      const secs = durationSeconds % 60;
+      text = `${callTypeText} (${mins > 0 ? `${mins}m ` : ''}${secs}s)`;
+    }
+
+    await sendChatMessage(
+      convId,
+      {
+        type: 'call',
+        text,
+        callMeta: {
+          callType: type,
+          status,
+          durationSeconds,
+        },
+      },
+      caller,
+      recipient.id
+    );
+  } catch (err) {
+    console.warn('Error recording call log to chat:', err);
+  }
+}
+

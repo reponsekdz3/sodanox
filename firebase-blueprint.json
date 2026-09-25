@@ -198,9 +198,27 @@
         "endedAt": { "type": "string" }
       },
       "required": ["callerId", "recipientId", "type", "status"]
+    },
+    "Highlight": {
+      "title": "Highlight",
+      "description": "Curated story highlights for user profile",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "coverUrl": { "type": "string" },
+        "items": { "type": "array" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["userId", "title", "coverUrl"]
     }
   },
   "firestore": {
+    "/highlights/{highlightId}": {
+      "schema": "Highlight",
+      "description": "User profile story highlights collection"
+    },
     "/calls/{callId}": {
       "schema": "Call",
       "description": "Real-time call sessions"

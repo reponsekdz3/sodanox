@@ -945,6 +945,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             `📎 ${conv.lastMessage.file?.name || 'File attachment'}`
                           ) : conv.lastMessage?.type === 'image' ? (
                             '📷 Photo'
+                          ) : conv.lastMessage?.type === 'call' ? (
+                            <span className="inline-flex items-center gap-1 font-medium text-[#4A6757]">
+                              {conv.lastMessage.callMeta?.callType === 'video' ? (
+                                <Video size={12} className="shrink-0" />
+                              ) : (
+                                <Phone size={12} className="shrink-0" />
+                              )}
+                              <span className="truncate">{conv.lastMessage.text || 'Call log'}</span>
+                            </span>
                           ) : (
                             conv.lastMessage?.text || 'No messages yet'
                           )}
@@ -1325,6 +1334,85 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           {/* Voice Note Message */}
                           {msg.type === 'voice' && msg.voice && (
                             <VoiceNotePlayer voiceMeta={msg.voice} isSelf={isSelf} />
+                          )}
+
+                          {/* Call Log Message Card */}
+                          {msg.type === 'call' && (
+                            <div className="flex items-center justify-between gap-3 min-w-[210px] sm:min-w-[250px] py-1">
+                              <div className="flex items-center gap-2.5">
+                                <div
+                                  className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
+                                    msg.callMeta?.status === 'missed'
+                                      ? 'bg-rose-500/20 text-rose-500'
+                                      : msg.callMeta?.status === 'declined'
+                                      ? 'bg-amber-500/20 text-amber-500'
+                                      : isSelf
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-[#8FA89B]/25 text-[#4A6757]'
+                                  }`}
+                                >
+                                  {msg.callMeta?.callType === 'video' ? (
+                                    <Video size={17} className="stroke-[2.2]" />
+                                  ) : (
+                                    <Phone size={17} className="stroke-[2.2]" />
+                                  )}
+                                </div>
+                                <div className="text-left">
+                                  <p className="text-xs sm:text-sm font-semibold leading-tight">
+                                    {msg.callMeta?.status === 'missed'
+                                      ? isSelf
+                                        ? 'Unanswered Call'
+                                        : 'Missed Call'
+                                      : msg.callMeta?.status === 'declined'
+                                      ? 'Call Declined'
+                                      : msg.callMeta?.callType === 'video'
+                                      ? isSelf
+                                        ? 'Outgoing Video'
+                                        : 'Incoming Video'
+                                      : isSelf
+                                      ? 'Outgoing Audio'
+                                      : 'Incoming Audio'}
+                                  </p>
+                                  <p
+                                    className={`text-[11px] mt-0.5 font-medium ${
+                                      isSelf ? 'text-white/80' : 'text-[#6A7B73]'
+                                    }`}
+                                  >
+                                    {msg.callMeta?.status === 'missed'
+                                      ? 'No answer'
+                                      : msg.callMeta?.status === 'declined'
+                                      ? 'Declined'
+                                      : msg.callMeta?.durationSeconds
+                                      ? `${Math.floor(msg.callMeta.durationSeconds / 60)}m ${
+                                          msg.callMeta.durationSeconds % 60
+                                        }s`
+                                      : 'Call ended'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              {/* Quick Call Back Button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onStartCall(activeConv.participant, msg.callMeta?.callType || 'audio');
+                                }}
+                                className={`px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                                  isSelf
+                                    ? 'bg-white text-[#2F4438] hover:bg-white/90'
+                                    : 'bg-[#4A6757] text-white hover:bg-[#3B5446]'
+                                }`}
+                                title="Call back"
+                              >
+                                {msg.callMeta?.callType === 'video' ? (
+                                  <Video size={12} className="stroke-[2.5]" />
+                                ) : (
+                                  <Phone size={12} className="stroke-[2.5]" />
+                                )}
+                                <span className="hidden sm:inline">Call back</span>
+                              </button>
+                            </div>
                           )}
 
                           {/* Message Reactions Badge */}

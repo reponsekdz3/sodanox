@@ -212,7 +212,13 @@ export interface MessageReplyInfo {
   senderId: string;
   senderName?: string;
   text?: string;
-  type?: 'text' | 'file' | 'voice' | 'image';
+  type?: 'text' | 'file' | 'voice' | 'image' | 'call';
+}
+
+export interface CallMeta {
+  callType: 'audio' | 'video';
+  status: 'completed' | 'missed' | 'declined';
+  durationSeconds?: number;
 }
 
 export interface Message {
@@ -221,10 +227,11 @@ export interface Message {
   senderName?: string;
   senderAvatar?: string;
   timestamp: string;
-  type: 'text' | 'file' | 'voice' | 'image';
+  type: 'text' | 'file' | 'voice' | 'image' | 'call';
   text?: string;
   file?: FileAttachment;
   voice?: VoiceNoteMeta;
+  callMeta?: CallMeta;
   status: 'sent' | 'delivered' | 'read';
   reaction?: string;
   replyTo?: MessageReplyInfo;

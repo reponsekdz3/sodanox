@@ -30,6 +30,13 @@ import {
   endCallSession,
   sendCallReaction,
   sendCallQuickMessage,
+  setCallOffer,
+  setCallAnswer,
+  addCallerIceCandidate,
+  addRecipientIceCandidate,
+  recordCallLogToChat,
+  WEBRTC_ICE_SERVERS,
+  CallSession,
 } from '../../services/callService';
 
 interface ActiveCallModalProps {
@@ -67,6 +74,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const [duration, setDuration] = useState(call.durationSeconds);
   const [isFrontCamera, setIsFrontCamera] = useState(true);
   const [userStream, setUserStream] = useState<MediaStream | null>(null);
+  const [hasRemoteVideo, setHasRemoteVideo] = useState(false);
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [videoFilter, setVideoFilter] = useState<VideoFilter>('natural');
   const [audioLevel, setAudioLevel] = useState(0); // 0 to 100 volume meter
@@ -84,24 +92,88 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     { id: string; emoji: string; x: number }[]
   >([]);
 
+  const pcRef = useRef<RTCPeerConnection | null>(null);
   const localVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement | null>(null);
+  const remoteAudioRef = useRef<HTMLAudioElement | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
+  const processedCandidatesRef = useRef<Set<string>>(new Set());
+  const ringingTimeoutRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animFrameRef = useRef<number | null>(null);
   const chatScrollRef = useRef<HTMLDivElement | null>(null);
 
-  // Listen to remote call signaling changes (if call has signalingId)
+  // Listen to remote call signaling changes (WebRTC Offer/Answer/ICE)
   useEffect(() => {
     if (!call.callSignalingId) return;
 
-    const unsub = subscribeToCallSession(call.callSignalingId, (session) => {
+    const unsub = subscribeToCallSession(call.callSignalingId, async (session) => {
       if (!session) return;
+      const pc = pcRef.current;
+
+      // Caller side: Wait for recipient's answer
+      if (call.direction !== 'incoming' && session.status === 'connected' && session.answer && pc) {
+        if (!pc.currentRemoteDescription) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(session.answer));
+            audioSynth.stopRinging();
+            audioSynth.playConnectedChime();
+            onStatusConnected();
+          } catch (e) {
+            console.warn('Error setting remote answer:', e);
+          }
+        }
+      }
+
+      // Recipient side: Wait for caller's offer
+      if (call.direction === 'incoming' && session.offer && pc) {
+        if (!pc.currentRemoteDescription) {
+          try {
+            await pc.setRemoteDescription(new RTCSessionDescription(session.offer));
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+            if (call.callSignalingId) {
+              await setCallAnswer(call.callSignalingId, answer);
+            }
+            audioSynth.stopRinging();
+            audioSynth.playConnectedChime();
+            onStatusConnected();
+          } catch (e) {
+            console.warn('Error answering offer:', e);
+          }
+        }
+      }
+
+      // Process incoming ICE candidates from peer
+      const incomingCandidates =
+        call.direction === 'incoming'
+          ? session.callerCandidates
+          : session.recipientCandidates;
+
+      if (pc && incomingCandidates && incomingCandidates.length > 0) {
+        for (const cand of incomingCandidates) {
+          const serialized = JSON.stringify(cand);
+          if (!processedCandidatesRef.current.has(serialized)) {
+            processedCandidatesRef.current.add(serialized);
+            try {
+              await pc.addIceCandidate(new RTCIceCandidate(cand));
+            } catch (err) {
+              // candidate buffering is normal
+            }
+          }
+        }
+      }
+
       if (session.status === 'connected' && call.status === 'ringing') {
+        audioSynth.stopRinging();
+        audioSynth.playConnectedChime();
         onStatusConnected();
       }
+
       if (session.status === 'ended' || session.status === 'declined') {
-        handleHangup();
+        handleHangup(session.status);
       }
 
       // Handle remote incoming reactions
@@ -124,27 +196,26 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     });
 
     return () => unsub();
-  }, [call.callSignalingId, call.status, currentUser.id]);
+  }, [call.callSignalingId, call.status, call.direction, currentUser.id, onStatusConnected]);
 
-  // Handle ringtone and transition to connected
+  // Handle ringtone and timeout for unanswered calls (45s)
   useEffect(() => {
     if (call.status === 'ringing') {
       audioSynth.startRinging();
 
-      const timeout = setTimeout(() => {
-        audioSynth.stopRinging();
-        audioSynth.playConnectedChime();
-        onStatusConnected();
-      }, 3000);
+      ringingTimeoutRef.current = setTimeout(() => {
+        handleHangup('missed');
+      }, 45000);
 
       return () => {
         audioSynth.stopRinging();
-        clearTimeout(timeout);
+        if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
       };
     } else {
       audioSynth.stopRinging();
+      if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
     }
-  }, [call.status, onStatusConnected]);
+  }, [call.status]);
 
   // Call duration counter when connected
   useEffect(() => {
@@ -180,6 +251,53 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
         // Attach to local video element
         if (localVideoRef.current) {
           localVideoRef.current.srcObject = stream;
+        }
+
+        // Establish real RTCPeerConnection
+        try {
+          const pc = new RTCPeerConnection(WEBRTC_ICE_SERVERS);
+          pcRef.current = pc;
+
+          // Add local tracks to peer connection
+          stream.getTracks().forEach((track) => {
+            pc.addTrack(track, stream);
+          });
+
+          // Handle remote stream tracks
+          pc.ontrack = (event) => {
+            const rStream = event.streams[0] || new MediaStream([event.track]);
+            remoteStreamRef.current = rStream;
+            if (remoteVideoRef.current) {
+              remoteVideoRef.current.srcObject = rStream;
+            }
+            if (remoteAudioRef.current) {
+              remoteAudioRef.current.srcObject = rStream;
+            }
+            if (event.track.kind === 'video') {
+              setHasRemoteVideo(true);
+            }
+          };
+
+          // Send local ICE candidates to peer through Firestore
+          pc.onicecandidate = (event) => {
+            if (event.candidate && call.callSignalingId) {
+              const candInit = event.candidate.toJSON();
+              if (call.direction === 'incoming') {
+                addRecipientIceCandidate(call.callSignalingId, candInit);
+              } else {
+                addCallerIceCandidate(call.callSignalingId, candInit);
+              }
+            }
+          };
+
+          // If initiator (caller), generate offer
+          if (call.direction !== 'incoming' && call.callSignalingId) {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await setCallOffer(call.callSignalingId, offer);
+          }
+        } catch (webrtcErr) {
+          console.warn('WebRTC peer connection setup note:', webrtcErr);
         }
 
         // Setup real-time audio volume analyzer
@@ -228,6 +346,12 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
       }
       if (userStream) {
         userStream.getTracks().forEach((t) => t.stop());
+      }
+      if (pcRef.current) {
+        try {
+          pcRef.current.close();
+        } catch {}
+        pcRef.current = null;
       }
     };
   }, [call.type, isFrontCamera]);
@@ -344,9 +468,10 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     return `${mins < 10 ? '0' : ''}${mins}:${s < 10 ? '0' : ''}${s}`;
   };
 
-  const handleHangup = () => {
+  const handleHangup = async (overrideStatus?: 'missed' | 'declined' | 'ended') => {
     audioSynth.stopRinging();
     audioSynth.playEndChime();
+    if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
     if (call.callSignalingId) {
       endCallSession(call.callSignalingId).catch(() => {});
     }
@@ -354,9 +479,39 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     if (userStream) {
       userStream.getTracks().forEach((t) => t.stop());
     }
+    if (pcRef.current) {
+      try {
+        pcRef.current.close();
+      } catch {}
+      pcRef.current = null;
+    }
     if (document.fullscreenElement) {
       document.exitFullscreen?.().catch(() => {});
     }
+
+    // Record real call log in conversation messages
+    try {
+      const finalStatus: 'completed' | 'missed' | 'declined' =
+        overrideStatus === 'declined'
+          ? 'declined'
+          : overrideStatus === 'missed' || (call.status === 'ringing' && duration === 0)
+          ? 'missed'
+          : 'completed';
+
+      const callerUser = call.direction === 'incoming' ? call.participant : currentUser;
+      const recipientUser = call.direction === 'incoming' ? currentUser : call.participant;
+
+      await recordCallLogToChat(
+        callerUser,
+        recipientUser,
+        call.type,
+        finalStatus,
+        duration
+      );
+    } catch (e) {
+      console.warn('Call log recording note:', e);
+    }
+
     onEndCall();
   };
 
@@ -449,45 +604,65 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
           {call.type === 'video' ? (
             /* ================= VIDEO CALL VIEW ================= */
             <div className="relative w-full h-full rounded-2xl overflow-hidden bg-neutral-950 flex items-center justify-center shadow-inner">
-              {/* Remote Participant HD Feed */}
-              <div className="relative w-full h-full flex items-center justify-center">
-                <img
-                  src={call.participant.avatar}
-                  alt={call.participant.name}
-                  className="w-full h-full object-cover filter blur-[1px] brightness-75 scale-105"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-black/40" />
+              {/* Real WebRTC Remote Video Feed */}
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className={`w-full h-full object-cover transition-opacity duration-300 ${
+                  hasRemoteVideo && call.status === 'connected' ? 'opacity-100' : 'opacity-0 absolute inset-0 pointer-events-none'
+                }`}
+              />
 
-                {/* Participant Identity Badge Overlay */}
-                <div className="absolute flex flex-col items-center gap-2 z-10">
-                  <div className="relative">
-                    <ModernAvatar
-                      src={call.participant.avatar}
-                      alt={call.participant.name}
-                      size="2xl"
-                      ring
-                      className="shadow-2xl"
-                    />
-                    <div className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-[#8FA89B] text-white ring-2 ring-[#222A25]">
-                      <Video size={14} />
+              {/* Real WebRTC Remote Audio Output */}
+              <audio ref={remoteAudioRef} autoPlay />
+
+              {/* Remote Participant Avatar / Connecting Overlay */}
+              {(!hasRemoteVideo || call.status !== 'connected') && (
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <img
+                    src={call.participant.avatar}
+                    alt={call.participant.name}
+                    className="w-full h-full object-cover filter blur-[2px] brightness-50 scale-105"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-black/50" />
+
+                  {/* Participant Identity Badge Overlay */}
+                  <div className="absolute flex flex-col items-center gap-2 z-10">
+                    <div className="relative">
+                      <div className="absolute -inset-3 rounded-full bg-[#8FA89B]/40 animate-ping" />
+                      <ModernAvatar
+                        src={call.participant.avatar}
+                        alt={call.participant.name}
+                        size="2xl"
+                        ring
+                        className="shadow-2xl relative z-10"
+                      />
+                      <div className="absolute -bottom-1 -right-1 p-1.5 rounded-full bg-[#8FA89B] text-white ring-2 ring-[#222A25] z-20">
+                        <Video size={14} />
+                      </div>
+                    </div>
+                    <div className="text-center">
+                      <h3 className="text-lg sm:text-xl font-serif font-semibold text-white drop-shadow">
+                        {call.participant.name}
+                      </h3>
+                      <p className="text-xs text-white/80 font-mono drop-shadow">
+                        @{call.participant.username}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/60 backdrop-blur-md text-[11px] text-[#A8C0B2] border border-white/10">
+                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                        <span>
+                          {call.status === 'ringing'
+                            ? 'Connecting encrypted WebRTC signaling...'
+                            : 'Connected · Peer-to-peer HD'}
+                        </span>
+                      </span>
                     </div>
                   </div>
-                  <div className="text-center">
-                    <h3 className="text-lg sm:text-xl font-serif font-semibold text-white drop-shadow">
-                      {call.participant.name}
-                    </h3>
-                    <p className="text-xs text-white/80 font-mono drop-shadow">
-                      @{call.participant.username}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-black/50 backdrop-blur-md text-[11px] text-[#A8C0B2] border border-white/10">
-                      <Wifi size={12} />
-                      <span>HD 60fps · 18ms latency</span>
-                    </span>
-                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Local Video Picture-in-Picture (Pip) */}
               <div className="absolute bottom-4 right-4 w-32 h-44 sm:w-40 sm:h-52 rounded-2xl overflow-hidden bg-neutral-900 border-2 border-white/40 shadow-2xl z-20 group">
@@ -524,6 +699,9 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
           ) : (
             /* ================= AUDIO CALL VIEW ================= */
             <div className="flex flex-col items-center justify-center">
+              {/* Real WebRTC Remote Audio Output */}
+              <audio ref={remoteAudioRef} autoPlay />
+
               {/* Dynamic Aura Halo reacting to microphone volume */}
               <div className="relative mb-6">
                 <div
@@ -763,7 +941,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
             {/* End Call Button */}
             <button
               type="button"
-              onClick={handleHangup}
+              onClick={() => handleHangup('ended')}
               className="p-3.5 sm:p-4 rounded-full bg-red-600 hover:bg-red-700 text-white shadow-2xl transition-transform active:scale-95 ring-2 ring-red-500/40 cursor-pointer"
               title="End Call"
             >
