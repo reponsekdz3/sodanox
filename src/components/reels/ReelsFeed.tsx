@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
+  Film,
 } from 'lucide-react';
 import { Reel, User } from '../../types';
 import { FollowButton } from '../common/FollowButton';
@@ -113,8 +114,25 @@ export const ReelsFeed: React.FC<ReelsFeedProps> = ({
 
   if (!currentReel) {
     return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <p className="text-[#7A8A82] text-sm">No reels currently available.</p>
+      <div className="w-full max-w-xl mx-auto py-16 px-4 flex flex-col items-center justify-center min-h-[60vh] text-center">
+        <div className="w-16 h-16 rounded-3xl bg-[#8FA89B]/15 text-[#5E7C6E] flex items-center justify-center mb-4">
+          <Film size={28} />
+        </div>
+        <h3 className="font-serif text-xl font-medium text-[#2D3732] mb-2">
+          No reels yet
+        </h3>
+        <p className="text-xs text-[#7A8A82] max-w-xs mb-6 leading-relaxed">
+          Be the first creator to record or upload a slow-living reel, process video, or craft moment.
+        </p>
+        {onOpenCreateReel && (
+          <button
+            onClick={onOpenCreateReel}
+            className="flex items-center gap-2 px-6 py-3 rounded-2xl bg-[#2D3732] hover:bg-[#1E2522] text-white text-xs font-medium shadow-soft transition-all cursor-pointer"
+          >
+            <Film size={15} />
+            <span>Create First Reel</span>
+          </button>
+        )}
       </div>
     );
   }

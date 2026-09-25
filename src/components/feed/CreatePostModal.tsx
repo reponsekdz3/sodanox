@@ -43,7 +43,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
   // Tags
   const [tagInput, setTagInput] = useState('');
-  const [tags, setTags] = useState<string[]>(['design', 'craft']);
+  const [tags, setTags] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 

@@ -10,12 +10,12 @@ interface CreateHighlightModalProps {
   availableStories?: StoryItem[];
 }
 
-const DEFAULT_COVERS = [
-  'https://images.unsplash.com/photo-1513519245088-0e12902e5a38?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1507679799987-c73779587ccf?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?auto=format&fit=crop&w=400&q=80',
-  'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=400&q=80',
+const MODERN_HIGHLIGHT_COVERS = [
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><defs><linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%238FA89B"/><stop offset="100%" stop-color="%235C7567"/></linearGradient></defs><rect width="200" height="200" fill="url(%23g1)"/><circle cx="100" cy="100" r="32" fill="white" fill-opacity="0.2"/></svg>',
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><defs><linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%232D3732"/><stop offset="100%" stop-color="%2319201C"/></linearGradient></defs><rect width="200" height="200" fill="url(%23g2)"/><circle cx="100" cy="100" r="32" fill="white" fill-opacity="0.2"/></svg>',
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><defs><linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23C27D60"/><stop offset="100%" stop-color="%238C4E35"/></linearGradient></defs><rect width="200" height="200" fill="url(%23g3)"/><circle cx="100" cy="100" r="32" fill="white" fill-opacity="0.2"/></svg>',
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><defs><linearGradient id="g4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23EFECE6"/><stop offset="100%" stop-color="%23DDD7CD"/></linearGradient></defs><rect width="200" height="200" fill="url(%23g4)"/><circle cx="100" cy="100" r="32" fill="%232D3732" fill-opacity="0.15"/></svg>',
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200" viewBox="0 0 200 200"><defs><linearGradient id="g5" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23888DA7"/><stop offset="100%" stop-color="%23575C75"/></linearGradient></defs><rect width="200" height="200" fill="url(%23g5)"/><circle cx="100" cy="100" r="32" fill="white" fill-opacity="0.2"/></svg>',
 ];
 
 export const CreateHighlightModal: React.FC<CreateHighlightModalProps> = ({
@@ -25,9 +25,13 @@ export const CreateHighlightModal: React.FC<CreateHighlightModalProps> = ({
   availableStories = [],
 }) => {
   const [title, setTitle] = useState('');
-  const [selectedCover, setSelectedCover] = useState(DEFAULT_COVERS[0]);
+  const [selectedCover, setSelectedCover] = useState(
+    availableStories[0]?.mediaUrl || MODERN_HIGHLIGHT_COVERS[0]
+  );
   const [customCoverUrl, setCustomCoverUrl] = useState('');
-  const [selectedItems, setSelectedItems] = useState<string[]>([]);
+  const [selectedItems, setSelectedItems] = useState<string[]>(
+    availableStories.length > 0 ? [availableStories[0].id] : []
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
@@ -45,9 +49,16 @@ export const CreateHighlightModal: React.FC<CreateHighlightModalProps> = ({
   };
 
   const handleToggleSelectItem = (id: string) => {
-    setSelectedItems((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
+    setSelectedItems((prev) => {
+      const next = prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id];
+      if (!customCoverUrl && next.length > 0) {
+        const firstSelected = availableStories.find((s) => s.id === next[0]);
+        if (firstSelected?.mediaUrl) {
+          setSelectedCover(firstSelected.mediaUrl);
+        }
+      }
+      return next;
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -142,10 +153,10 @@ export const CreateHighlightModal: React.FC<CreateHighlightModalProps> = ({
           {/* Preset covers palette */}
           <div>
             <label className="block text-xs font-medium text-[#7A8A82] mb-1.5">
-              Or Choose Preset Cover
+              Or Choose Curated Palette Cover
             </label>
             <div className="flex items-center gap-2 overflow-x-auto pb-1">
-              {DEFAULT_COVERS.map((cov, idx) => (
+              {MODERN_HIGHLIGHT_COVERS.map((cov, idx) => (
                 <button
                   key={idx}
                   type="button"
@@ -159,7 +170,7 @@ export const CreateHighlightModal: React.FC<CreateHighlightModalProps> = ({
                       : 'border-transparent hover:scale-105'
                   }`}
                 >
-                  <img src={cov} alt="Preset" className="w-full h-full object-cover" />
+                  <img src={cov} alt="Palette cover" className="w-full h-full object-cover" />
                   {selectedCover === cov && !customCoverUrl && (
                     <div className="absolute inset-0 bg-[#8FA89B]/40 flex items-center justify-center text-white">
                       <Check size={14} />
