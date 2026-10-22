@@ -37,10 +37,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, pass: string) => Promise<void>;
   signUp: (email: string, pass: string, profileData: Partial<User>) => Promise<void>;
-  signInWithGoogle: (
-    fallbackEmailOrOptions?: string | { email?: string; name?: string; avatar?: string },
-    fallbackName?: string
-  ) => Promise<User>;
+  signInWithGoogle: (googleIdToken?: string) => Promise<User>;
   sendPasswordReset: (email: string) => Promise<void>;
   signOutUser: () => Promise<void>;
   signOut: () => Promise<void>;
@@ -147,7 +144,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (fbUser && !isRegisteringRef.current) {
         localStorage.setItem(SESSION_UID_KEY, fbUser.uid);
         setCurrentUser(fbUser);
-        const profile = await getUserProfile(fbUser.uid);
+        let profile = await getUserProfile(fbUser.uid);
+        if (!profile) {
+          try {
+            const synced = await syncGoogleProfileWithFirestore({
+              uid: fbUser.uid,
+              email: fbUser.email || '',
+              name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Google Creator',
+              picture: fbUser.photoURL || undefined,
+              email_verified: fbUser.emailVerified,
+            });
+            profile = synced.user;
+          } catch (e) {
+            console.warn('Profile auto-creation on auth state change note:', e);
+          }
+        }
         if (profile) {
           setUserProfile(profile);
           localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
@@ -180,6 +191,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (fbErr: any) {
+        if (fbErr?.code === 'auth/operation-not-allowed') {
+          throw new Error(
+            'Email/Password sign-in is not enabled in this Firebase project. Please use "Continue with Google" to access your account.'
+          );
+        }
         // Fall through to Firestore credentials provider
         if (fbErr?.code === 'auth/wrong-password' || fbErr?.code === 'auth/invalid-credential') {
           // Check if registered in Firestore credentials
@@ -222,7 +238,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (fbErr?.code === 'auth/email-already-in-use') {
           throw new Error('This email is already registered. Please sign in instead.');
         }
-        // Proceed with registration
+        if (fbErr?.code === 'auth/operation-not-allowed') {
+          throw new Error(
+            'Email/Password sign-up is not enabled in your Firebase project. Please use "Continue with Google" to create your account, or enable "Email/Password" in Firebase Console (Authentication > Sign-in method).'
+          );
+        }
+        throw fbErr;
       }
 
       // Register user account and store public profile + private settings in Firestore
@@ -231,7 +252,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(SESSION_UID_KEY, uid);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
-      setCurrentUser({
+      setCurrentUser(auth.currentUser || {
         uid,
         email: cleanEmail,
         displayName: profile.name,
@@ -244,39 +265,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * Real Google Sign-In with Firestore synchronization:
-   * Supports real Google OAuth popup, Google Identity Services, and verified Google fallback
+   * Real Google Sign-In & Sign-Up with Firebase Auth & Firestore synchronization:
+   * Supports both interactive popup and Google Identity Services credential token
    */
-  const signInWithGoogle = async (
-    fallbackEmailOrOptions?: string | { email?: string; name?: string; avatar?: string },
-    fallbackName?: string
-  ): Promise<User> => {
+  const signInWithGoogle = async (googleIdToken?: string): Promise<User> => {
     setLoading(true);
     try {
-      let googleProfile: GoogleUserProfile | null = null;
-      let manualEmail: string | undefined;
-      let manualName: string | undefined;
-      let manualAvatar: string | undefined;
-
-      if (typeof fallbackEmailOrOptions === 'string' && fallbackEmailOrOptions.trim()) {
-        manualEmail = fallbackEmailOrOptions.trim();
-        manualName = fallbackName;
-      } else if (typeof fallbackEmailOrOptions === 'object' && fallbackEmailOrOptions?.email) {
-        manualEmail = fallbackEmailOrOptions.email.trim();
-        manualName = fallbackEmailOrOptions.name;
-        manualAvatar = fallbackEmailOrOptions.avatar;
-      }
-
-      if (manualEmail) {
-        googleProfile = {
-          email: manualEmail.toLowerCase(),
-          name: manualName?.trim() || manualEmail.split('@')[0],
-          picture: manualAvatar,
-          email_verified: true,
-        };
-      } else {
-        googleProfile = await authenticateWithGoogle();
-      }
+      const googleProfile = await authenticateWithGoogle(googleIdToken);
 
       if (!googleProfile || !googleProfile.email) {
         throw new Error('Google sign-in did not complete.');
@@ -288,13 +283,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(SESSION_UID_KEY, user.id);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(user));
       setUserProfile(user);
-      setCurrentUser({
-        uid: user.id,
-        email: user.email,
-        displayName: user.name,
-        photoURL: user.avatar,
-        emailVerified: true,
-      });
+      if (auth.currentUser) {
+        setCurrentUser(auth.currentUser);
+      } else {
+        setCurrentUser({
+          uid: user.id,
+          email: user.email,
+          displayName: user.name,
+          photoURL: user.avatar,
+          emailVerified: true,
+        });
+      }
 
       return user;
     } finally {
