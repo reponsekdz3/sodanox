@@ -40,6 +40,12 @@ import { FileAttachmentCard } from './FileAttachmentCard';
 import { LinkPreviewCard, extractUrls } from './LinkPreviewCard';
 import { sendBrowserNotification } from '../../services/browserNotificationService';
 import {
+  compressImage,
+  compressAudio,
+  uploadMediaToFirebase,
+  formatBytes,
+} from '../../services/mediaCompressionService';
+import {
   subscribeToMessages,
   subscribeToUserConversations,
   sendChatMessage,
@@ -549,25 +555,64 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     }
   };
 
-  const stageFile = (file: File) => {
+  const stageFile = async (file: File) => {
     if (!file || !activeConvId || !activeConv) return;
+    const isImage = file.type.startsWith('image/');
+    auraAudio.playClick(580, 0.04);
+
+    if (isImage) {
+      try {
+        const compressed = await compressImage(file, {
+          maxDimension: 1200,
+          quality: 0.82,
+          preferWebp: true,
+        });
+        const storagePath = `messages/${activeConvId}/${Date.now()}_${file.name.replace(/\.[^/.]+$/, '.webp')}`;
+        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath);
+
+        setStagedAttachment({
+          file: compressed.file,
+          name: file.name,
+          size: `${formatBytes(compressed.compressedSize)} (saved ${compressed.savingsPercent}%)`,
+          type: 'image/webp',
+          dataUrl: uploadRes.url,
+          isImage: true,
+        });
+        return;
+      } catch (err) {
+        console.warn('Image staging compression note:', err);
+      }
+    }
+
     const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
     const sizeStr = `${sizeInMb} MB`;
-    const isImage = file.type.startsWith('image/');
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const dataUrl = event.target?.result as string;
       if (!dataUrl) return;
-      setStagedAttachment({
-        file,
-        name: file.name,
-        size: sizeStr,
-        type: file.type,
-        dataUrl,
-        isImage,
-      });
-      auraAudio.playClick(580, 0.04);
+
+      try {
+        const storagePath = `messages/${activeConvId}/${Date.now()}_${file.name}`;
+        const uploadRes = await uploadMediaToFirebase(file, storagePath);
+        setStagedAttachment({
+          file,
+          name: file.name,
+          size: sizeStr,
+          type: file.type,
+          dataUrl: uploadRes.url,
+          isImage,
+        });
+      } catch {
+        setStagedAttachment({
+          file,
+          name: file.name,
+          size: sizeStr,
+          type: file.type,
+          dataUrl,
+          isImage,
+        });
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -615,6 +660,22 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const handleSendVoiceNote = async (voiceMeta: VoiceNoteMeta) => {
     if (!activeConvId || !activeConv) return;
     setIsRecordingVoice(false);
+
+    let finalVoice = voiceMeta;
+    if (voiceMeta.audioBlob) {
+      try {
+        const compressed = await compressAudio(voiceMeta.audioBlob);
+        const storagePath = `messages/${activeConvId}/${Date.now()}_voice.wav`;
+        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath);
+        finalVoice = {
+          ...voiceMeta,
+          audioUrl: uploadRes.url,
+        };
+      } catch (err) {
+        console.warn('Voice compression fallback note:', err);
+      }
+    }
+
     const replyPayload: MessageReplyInfo | undefined = replyingTo
       ? {
           id: replyingTo.id,
@@ -639,7 +700,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       senderAvatar: currentUser.avatar,
       timestamp: nowTime,
       type: 'voice',
-      voice: voiceMeta,
+      voice: finalVoice,
       status: 'sent',
       replyTo: replyPayload,
     };

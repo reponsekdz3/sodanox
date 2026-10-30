@@ -1,7 +1,6 @@
 import { doc, getDoc, setDoc, collection, query, where, getDocs, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { User } from '../types';
-import { INITIAL_CREATORS } from './seedService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 export interface UserCredentialRecord {
@@ -293,71 +292,7 @@ export async function authenticateAccount(
     return { uid: credRecord.uid, profile: fallbackProfile };
   }
 
-  // 2. Check if this is a recognized platform creator (e.g. icedrick444@gmail.com)
-  const initialCreator = INITIAL_CREATORS.find(
-    (c) => c.email?.toLowerCase() === cleanEmail
-  );
-  if (initialCreator) {
-    const salt = generateSalt();
-    const passwordHash = await hashPassword(pass, salt);
-    const newCred: UserCredentialRecord = {
-      uid: initialCreator.id,
-      email: cleanEmail,
-      passwordHash,
-      salt,
-      createdAt: new Date().toISOString(),
-    };
-    saveLocalCredential(newCred);
-
-    // Ensure initial creator profile is saved in Firestore users collection
-    try {
-      const userDocRef = doc(db, 'users', initialCreator.id);
-      await setDoc(
-        userDocRef,
-        {
-          id: initialCreator.id,
-          name: initialCreator.name,
-          username: initialCreator.username,
-          avatar: initialCreator.avatar,
-          bannerUrl: initialCreator.bannerUrl,
-          bio: initialCreator.bio,
-          pronouns: initialCreator.pronouns,
-          location: initialCreator.location,
-          website: initialCreator.website,
-          joinedDate: initialCreator.joinedDate,
-          followersCount: initialCreator.followersCount,
-          followingCount: initialCreator.followingCount,
-          followers: initialCreator.followers,
-          following: initialCreator.following,
-          verified: initialCreator.verified,
-          createdAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      const privateSettingsRef = doc(db, 'users', initialCreator.id, 'private', 'settings');
-      await setDoc(
-        privateSettingsRef,
-        {
-          email: cleanEmail,
-          blockedUsers: [],
-          privateAccount: false,
-          showOnlineStatus: true,
-          allowReshare: true,
-          themePreference: 'nordic',
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      console.warn('Initial creator Firestore sync note:', err);
-    }
-
-    return { uid: initialCreator.id, profile: initialCreator };
-  }
-
-  // 3. Fallback: Query by email in users collection
+  // 2. Fallback: Query by email in users collection
   try {
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('email', '==', cleanEmail));
@@ -400,19 +335,6 @@ export async function resetAccountPassword(email: string, newPass: string): Prom
       updatedAt: Date.now(),
     };
     saveLocalCredential(updated);
-    return;
-  }
-
-  // Check initial creators
-  const initial = INITIAL_CREATORS.find((c) => c.email?.toLowerCase() === cleanEmail);
-  if (initial) {
-    saveLocalCredential({
-      uid: initial.id,
-      email: cleanEmail,
-      passwordHash,
-      salt,
-      updatedAt: Date.now(),
-    });
     return;
   }
 

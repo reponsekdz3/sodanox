@@ -12,9 +12,12 @@ import {
   MessageSquareOff,
   Upload,
   Check,
+  Sparkles,
+  Zap,
 } from 'lucide-react';
 import { User, Post, Poll } from '../../types';
 import { ModernAvatar } from '../common/ModernAvatar';
+import { compressImage, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
 
 interface CreatePostModalProps {
   currentUser: User;
@@ -45,22 +48,59 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
 
+  // Compression & Storage states
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [compressionSavings, setCompressionSavings] = useState<{
+    original: number;
+    compressed: number;
+    savingsPercent: number;
+  } | null>(null);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    Array.from(files).forEach((file) => {
-      if (mediaUrls.length >= 4) return;
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setMediaUrls((prev) => [...prev, event.target!.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    setIsCompressing(true);
+    let totalOriginal = 0;
+    let totalCompressed = 0;
+
+    try {
+      const fileList = Array.from(files).slice(0, 4 - mediaUrls.length);
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        totalOriginal += file.size;
+
+        // 1. High-efficiency client-side image compression
+        const compressed = await compressImage(file, {
+          maxDimension: 1600,
+          quality: 0.82,
+          preferWebp: true,
+        });
+        totalCompressed += compressed.compressedSize;
+
+        // 2. Upload to Firebase Storage with automatic fallback
+        const storagePath = `posts/${currentUser.id}/${Date.now()}_${i}.webp`;
+        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath);
+
+        setMediaUrls((prev) => [...prev, uploadRes.url]);
+      }
+
+      if (totalOriginal > 0) {
+        const savingsPercent = Math.max(0, Math.round(((totalOriginal - totalCompressed) / totalOriginal) * 100));
+        setCompressionSavings({
+          original: totalOriginal,
+          compressed: totalCompressed,
+          savingsPercent,
+        });
+      }
+    } catch (err) {
+      console.warn('Media upload note:', err);
+    } finally {
+      setIsCompressing(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const handleRemoveMedia = (index: number) => {
@@ -211,23 +251,45 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
           {/* Media Attachments Preview (Grid up to 4) */}
           {mediaUrls.length > 0 && (
-            <div
-              className={`grid gap-2 rounded-2xl overflow-hidden ${
-                mediaUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-              }`}
-            >
-              {mediaUrls.map((url, idx) => (
-                <div key={idx} className="relative group aspect-video sm:aspect-square bg-neutral-900 rounded-xl overflow-hidden">
-                  <img src={url} alt={`attachment-${idx}`} className="w-full h-full object-cover" />
-                  <button
-                    type="button"
-                    onClick={() => handleRemoveMedia(idx)}
-                    className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 hover:bg-black text-white cursor-pointer shadow-md transition-opacity"
-                  >
-                    <X size={14} />
-                  </button>
+            <div className="space-y-2">
+              <div
+                className={`grid gap-2 rounded-2xl overflow-hidden ${
+                  mediaUrls.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                }`}
+              >
+                {mediaUrls.map((url, idx) => (
+                  <div key={idx} className="relative group aspect-video sm:aspect-square bg-neutral-900 rounded-xl overflow-hidden">
+                    <img src={url} alt={`attachment-${idx}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveMedia(idx)}
+                      className="absolute top-2 right-2 p-1.5 rounded-full bg-black/70 hover:bg-black text-white cursor-pointer shadow-md transition-opacity"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Real Data Reduction Badge */}
+              {compressionSavings && (
+                <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-[11px] text-emerald-800 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <Zap size={13} className="text-emerald-600" />
+                    <span>Firebase Storage Optimized</span>
+                  </div>
+                  <span className="font-mono text-emerald-700">
+                    {formatBytes(compressionSavings.original)} → {formatBytes(compressionSavings.compressed)} (-{compressionSavings.savingsPercent}% saved)
+                  </span>
                 </div>
-              ))}
+              )}
+            </div>
+          )}
+
+          {isCompressing && (
+            <div className="p-3 rounded-xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center gap-2.5 text-xs text-[#2D3732] animate-pulse">
+              <Sparkles size={15} className="text-[#8FA89B] animate-spin" />
+              <span>Compressing & uploading high-res media to Firebase...</span>
             </div>
           )}
 

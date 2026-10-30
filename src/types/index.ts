@@ -205,6 +205,7 @@ export interface VoiceNoteMeta {
   duration: number; // in seconds
   waveform: number[];
   audioUrl?: string;
+  audioBlob?: Blob;
 }
 
 export interface MessageReplyInfo {

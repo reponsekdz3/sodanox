@@ -17,6 +17,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db, oAuthClientId } from '../firebase/config';
 import { User } from '../types';
+import { checkUsernameAvailable } from './userService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 export interface GoogleUserProfile {

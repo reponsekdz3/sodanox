@@ -191,15 +191,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       } catch (fbErr: any) {
-        if (fbErr?.code === 'auth/operation-not-allowed') {
-          throw new Error(
-            'Email/Password sign-in is not enabled in this Firebase project. Please use "Continue with Google" to access your account.'
-          );
-        }
-        // Fall through to Firestore credentials provider
-        if (fbErr?.code === 'auth/wrong-password' || fbErr?.code === 'auth/invalid-credential') {
-          // Check if registered in Firestore credentials
-        }
+        // Fall through to Firestore credentials registry seamlessly
       }
 
       // 2. Authenticate through Firestore Credentials Registry
@@ -208,7 +200,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.setItem(SESSION_UID_KEY, uid);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
-      setCurrentUser({
+      setCurrentUser(auth.currentUser || {
         uid,
         email: cleanEmail,
         displayName: profile.name,
@@ -236,14 +228,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       } catch (fbErr: any) {
         if (fbErr?.code === 'auth/email-already-in-use') {
-          throw new Error('This email is already registered. Please sign in instead.');
+          try {
+            const signInRes = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+            if (signInRes?.user?.uid) {
+              createdUid = signInRes.user.uid;
+            }
+          } catch {
+            throw new Error('This email is already registered. Please sign in instead.');
+          }
         }
-        if (fbErr?.code === 'auth/operation-not-allowed') {
-          throw new Error(
-            'Email/Password sign-up is not enabled in your Firebase project. Please use "Continue with Google" to create your account, or enable "Email/Password" in Firebase Console (Authentication > Sign-in method).'
-          );
-        }
-        throw fbErr;
+        // Fall through to Firestore user profile creation
       }
 
       // Register user account and store public profile + private settings in Firestore

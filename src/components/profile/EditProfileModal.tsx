@@ -3,6 +3,7 @@ import { X, Camera, Upload, Check, Image as ImageIcon, Shield, Sparkles } from '
 import { User } from '../../types';
 import { checkUsernameAvailable } from '../../services/userService';
 import { ModernAvatar, MODERN_EMPTY_AVATAR_DATA_URI } from '../common/ModernAvatar';
+import { compressImage, uploadMediaToFirebase } from '../../services/mediaCompressionService';
 
 interface EditProfileModalProps {
   currentUser: User;
@@ -41,39 +42,49 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const bannerInputRef = useRef<HTMLInputElement | null>(null);
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 3 * 1024 * 1024) {
-        setError('Please choose an avatar under 3MB');
-        return;
-      }
       setError(null);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setAvatarUrl(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file, { maxDimension: 500, quality: 0.82 });
+        const res = await uploadMediaToFirebase(
+          compressed.blob,
+          `users/${currentUser.id}/avatar_${Date.now()}.webp`
+        );
+        setAvatarUrl(res.url);
+      } catch {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setAvatarUrl(event.target.result as string);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 
-  const handleBannerChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBannerChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 4 * 1024 * 1024) {
-        setError('Please choose a header under 4MB');
-        return;
-      }
       setError(null);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setBannerUrl(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
+      try {
+        const compressed = await compressImage(file, { maxDimension: 1400, quality: 0.82 });
+        const res = await uploadMediaToFirebase(
+          compressed.blob,
+          `users/${currentUser.id}/banner_${Date.now()}.webp`
+        );
+        setBannerUrl(res.url);
+      } catch {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setBannerUrl(event.target.result as string);
+          }
+        };
+        reader.readAsDataURL(file);
+      }
     }
   };
 

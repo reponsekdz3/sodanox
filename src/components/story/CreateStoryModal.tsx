@@ -16,8 +16,10 @@ import {
   Sliders,
   Trash2,
   RefreshCw,
+  Zap,
 } from 'lucide-react';
 import { User, StoryItem, StoryFilter, StorySticker, StoryTextOverlay } from '../../types';
+import { compressImage, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
 
 interface CreateStoryModalProps {
   currentUser: User;
@@ -61,6 +63,8 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   const [mediaType, setMediaType] = useState<'image' | 'canvas'>('image');
   const [mediaUrl, setMediaUrl] = useState<string>('');
   const [selectedBgGradient, setSelectedBgGradient] = useState(CANVAS_BACKGROUNDS[0].gradient);
+  const [isProcessingMedia, setIsProcessingMedia] = useState(false);
+  const [mediaSavings, setMediaSavings] = useState<{ original: number; compressed: number; percent: number } | null>(null);
 
   // Styling state
   const [activeFilter, setActiveFilter] = useState<StoryFilter>('none');
@@ -118,7 +122,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     }
   };
 
-  const captureCameraSnapshot = () => {
+  const captureCameraSnapshot = async () => {
     if (!videoRef.current) return;
     const canvas = document.createElement('canvas');
     canvas.width = videoRef.current.videoWidth || 720;
@@ -126,10 +130,31 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     const ctx = canvas.getContext('2d');
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-      setMediaUrl(dataUrl);
-      setMediaType('image');
+      const rawDataUrl = canvas.toDataURL('image/jpeg', 0.88);
       stopCamera();
+      setIsProcessingMedia(true);
+      try {
+        const compressed = await compressImage(rawDataUrl, {
+          maxDimension: 1440,
+          quality: 0.84,
+          preferWebp: true,
+        });
+        const storagePath = `stories/${currentUser.id}/${Date.now()}.webp`;
+        const res = await uploadMediaToFirebase(compressed.blob, storagePath);
+        setMediaUrl(res.url);
+        setMediaType('image');
+        setMediaSavings({
+          original: compressed.originalSize,
+          compressed: compressed.compressedSize,
+          percent: compressed.savingsPercent,
+        });
+      } catch (err) {
+        console.warn('Camera snapshot upload note:', err);
+        setMediaUrl(rawDataUrl);
+        setMediaType('image');
+      } finally {
+        setIsProcessingMedia(false);
+      }
     }
   };
 
@@ -147,36 +172,34 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     };
   }, []);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const maxDim = 1280;
-        let width = img.width;
-        let height = img.height;
-        if (width > height && width > maxDim) {
-          height = Math.round((height * maxDim) / width);
-          width = maxDim;
-        } else if (height > maxDim) {
-          width = Math.round((width * maxDim) / height);
-          height = maxDim;
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
-        setMediaUrl(dataUrl);
-        setMediaType('image');
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    setIsProcessingMedia(true);
+    try {
+      const compressed = await compressImage(file, {
+        maxDimension: 1440,
+        quality: 0.84,
+        preferWebp: true,
+      });
+
+      const storagePath = `stories/${currentUser.id}/${Date.now()}.webp`;
+      const res = await uploadMediaToFirebase(compressed.blob, storagePath);
+
+      setMediaUrl(res.url);
+      setMediaType('image');
+      setMediaSavings({
+        original: compressed.originalSize,
+        compressed: compressed.compressedSize,
+        percent: compressed.savingsPercent,
+      });
+    } catch (err) {
+      console.warn('Story image upload fallback:', err);
+    } finally {
+      setIsProcessingMedia(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
   };
 
   const generateCanvasMedia = (): string => {

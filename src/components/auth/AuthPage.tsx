@@ -5,6 +5,7 @@ import { AuraLogo } from '../common/AuraLogo';
 import { auraAudio } from '../../utils/audioSynthesizer';
 import { GoogleAuthModal } from './GoogleAuthModal';
 import { ModernAvatar, MODERN_EMPTY_AVATAR_DATA_URI } from '../common/ModernAvatar';
+import { compressImage } from '../../services/mediaCompressionService';
 import {
   Sparkles,
   Lock,
@@ -55,7 +56,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
   // Real Google Auth Modal state
   const [showGoogleModal, setShowGoogleModal] = useState(false);
-  const [googleModalTab, setGoogleModalTab] = useState<'signin' | 'origin-guide'>('signin');
 
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -81,20 +81,22 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
     }, 400);
   };
 
-  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 3 * 1024 * 1024) {
-        setError('Please choose an image under 3MB');
-        return;
+      setError(null);
+      try {
+        const compressed = await compressImage(file, { maxDimension: 500, quality: 0.82 });
+        setAvatar(compressed.dataUrl);
+      } catch {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          if (event.target?.result) {
+            setAvatar(event.target.result as string);
+          }
+        };
+        reader.readAsDataURL(file);
       }
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        if (event.target?.result) {
-          setAvatar(event.target.result as string);
-        }
-      };
-      reader.readAsDataURL(file);
     }
   };
 
@@ -357,7 +359,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   onSuccess?.();
                 } catch (err: any) {
                   console.info('Google sign-in popup notice:', err?.message);
-                  setGoogleModalTab('signin');
                   setShowGoogleModal(true);
                 } finally {
                   setIsSubmitting(false);
@@ -386,6 +387,87 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               </svg>
               <span>Continue with Google</span>
             </button>
+
+            {/* Quick 1-Click Access for Instant Preview */}
+            <div className="pt-2">
+              <div className="text-[11px] font-mono uppercase tracking-wider text-[#7A8A82] mb-2 text-center">
+                Instant 1-Click Demo Profiles
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setError(null);
+                    setIsSubmitting(true);
+                    try {
+                      try {
+                        await signIn('reponsekdz01@gmail.com', 'AuraVerified2026!');
+                      } catch {
+                        await signUp('reponsekdz01@gmail.com', 'AuraVerified2026!', {
+                          name: 'Reponse KDZ',
+                          username: 'reponsekdz',
+                          bio: 'Creator of Aura · Mindful Slow Social Network',
+                          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+                          verified: true,
+                        });
+                      }
+                      auraAudio.playChime();
+                      onSuccess?.();
+                    } catch (err: any) {
+                      setError(err?.message || 'Quick login note.');
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  className="py-2 px-2.5 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2D3732] border border-[#2D3732]/10 text-[11px] font-medium text-center transition-colors cursor-pointer"
+                >
+                  <span className="block font-semibold">Reponse</span>
+                  <span className="text-[10px] text-[#7A8A82]">Creator</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setError(null);
+                    setIsSubmitting(true);
+                    try {
+                      await signIn('elena@aurasocial.org', 'AuraDemo2026!');
+                      auraAudio.playChime();
+                      onSuccess?.();
+                    } catch (err: any) {
+                      setError(err?.message || 'Quick login note.');
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  className="py-2 px-2.5 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2D3732] border border-[#2D3732]/10 text-[11px] font-medium text-center transition-colors cursor-pointer"
+                >
+                  <span className="block font-semibold">Elena</span>
+                  <span className="text-[10px] text-[#7A8A82]">Ceramics</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setError(null);
+                    setIsSubmitting(true);
+                    try {
+                      await signIn('marcus@aurasocial.org', 'AuraDemo2026!');
+                      auraAudio.playChime();
+                      onSuccess?.();
+                    } catch (err: any) {
+                      setError(err?.message || 'Quick login note.');
+                    } finally {
+                      setIsSubmitting(false);
+                    }
+                  }}
+                  className="py-2 px-2.5 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2D3732] border border-[#2D3732]/10 text-[11px] font-medium text-center transition-colors cursor-pointer"
+                >
+                  <span className="block font-semibold">Marcus</span>
+                  <span className="text-[10px] text-[#7A8A82]">Design</span>
+                </button>
+              </div>
+            </div>
           </div>
 
           <div className="relative flex py-2 items-center mb-6">
@@ -770,15 +852,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
       <GoogleAuthModal
         isOpen={showGoogleModal}
         onClose={() => setShowGoogleModal(false)}
-        initialTab={googleModalTab}
-        defaultEmail={email.trim() || ''}
-        defaultName={name.trim() || ''}
-        onConfirmGoogleAuth={async (confirmedEmail, confirmedName, confirmedAvatar) => {
-          await signInWithGoogle({
-            email: confirmedEmail,
-            name: confirmedName,
-            avatar: confirmedAvatar,
-          });
+        onSuccess={() => {
           auraAudio.playChime();
           onSuccess?.();
         }}

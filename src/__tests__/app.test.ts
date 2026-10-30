@@ -42,9 +42,27 @@ describe('Data Modeling & Architecture Verification', () => {
       totalVotes: 20,
     };
 
+    const sampleCreator: User = {
+      id: 'test_creator_1',
+      name: 'Elena Rostova',
+      username: 'elenarostova',
+      avatar: 'https://example.com/elena.jpg',
+      bio: 'Architectural photographer',
+      followersCount: 120,
+      followingCount: 45,
+      followers: [],
+      following: [],
+      isFollowing: false,
+      isFollower: false,
+      isMutual: false,
+      verified: true,
+      email: 'elena@example.com',
+      joinedDate: 'Joined September 2026',
+    };
+
     const post: Post = {
       id: 'post_1',
-      author: INITIAL_CREATORS[0],
+      author: sampleCreator,
       content: 'Exploring rammed earth in Kigali',
       timestamp: 'Just now',
       likesCount: 5,
@@ -60,18 +78,36 @@ describe('Data Modeling & Architecture Verification', () => {
       poll,
     };
 
-    expect(post.author.id).toBe(INITIAL_CREATORS[0].id);
+    expect(post.author.id).toBe(sampleCreator.id);
     expect(post.poll?.totalVotes).toBe(20);
     expect(post.poll?.options.length).toBe(2);
   });
 
   it('validates Story and Reel structure with multimedia playback', () => {
+    const sampleCreator: User = {
+      id: 'test_creator_1',
+      name: 'Elena Rostova',
+      username: 'elenarostova',
+      avatar: 'https://example.com/elena.jpg',
+      bio: 'Architectural photographer',
+      followersCount: 120,
+      followingCount: 45,
+      followers: [],
+      following: [],
+      isFollowing: false,
+      isFollower: false,
+      isMutual: false,
+      verified: true,
+      email: 'elena@example.com',
+      joinedDate: 'Joined September 2026',
+    };
+
     const story: Story = {
       id: 'st_1',
-      userId: INITIAL_CREATORS[0].id,
-      userName: INITIAL_CREATORS[0].name,
-      userUsername: INITIAL_CREATORS[0].username,
-      userAvatar: INITIAL_CREATORS[0].avatar,
+      userId: sampleCreator.id,
+      userName: sampleCreator.name,
+      userUsername: sampleCreator.username,
+      userAvatar: sampleCreator.avatar,
       hasUnseen: true,
       items: [
         {
@@ -86,7 +122,7 @@ describe('Data Modeling & Architecture Verification', () => {
 
     const reel: Reel = {
       id: 'reel_1',
-      author: INITIAL_CREATORS[0],
+      author: sampleCreator,
       videoUrl: 'https://example.com/reel.mp4',
       posterUrl: 'https://example.com/poster.jpg',
       tags: ['architecture'],

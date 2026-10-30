@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp, FirebaseOptions, setLogLevel } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 import { getAnalytics, isSupported, Analytics } from 'firebase/analytics';
 import localFirebaseConfig from '../../firebase-applet-config.json';
 
@@ -41,6 +42,7 @@ const isCustomDb = Boolean(
 export const db = isCustomDb
   ? getFirestore(app, resolvedConfig.firestoreDatabaseId)
   : getFirestore(app);
+export const storage = getStorage(app);
 
 // Initialize Firebase Analytics safely for browser environment
 export let analytics: Analytics | null = null;

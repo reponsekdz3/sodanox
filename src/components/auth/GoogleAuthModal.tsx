@@ -26,7 +26,7 @@ export const GoogleAuthModal: React.FC<GoogleAuthModalProps> = ({
   onSuccess,
   initialError,
 }) => {
-  const { signInWithGoogle } = useAuth();
+  const { signInWithGoogle, signIn, signUp } = useAuth();
   const [copied, setCopied] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);

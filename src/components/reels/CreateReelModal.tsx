@@ -20,9 +20,15 @@ import {
   Square,
   Circle,
   Link as LinkIcon,
+  Zap,
 } from 'lucide-react';
 import { User } from '../../types';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import {
+  compressVideo,
+  uploadMediaToFirebase,
+  formatBytes,
+} from '../../services/mediaCompressionService';
 
 interface CreateReelModalProps {
   currentUser: User;
@@ -76,6 +82,13 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
 
   // Video source state
   const [localVideoFile, setLocalVideoFile] = useState<File | null>(null);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [compressionStats, setCompressionStats] = useState<{
+    original: number;
+    compressed: number;
+    percent: number;
+  } | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>('');
   const [posterUrl, setPosterUrl] = useState<string>('');
   const [customVideoUrl, setCustomVideoUrl] = useState('');
@@ -203,6 +216,7 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
 
       recorder.onstop = () => {
         const fullBlob = new Blob(chunks, { type: mimeType });
+        setRecordedBlob(fullBlob);
         const objectUrl = URL.createObjectURL(fullBlob);
         setVideoUrl(objectUrl);
         setAudioTitle('Live Camera Reel');
@@ -398,12 +412,53 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
         }
       }
 
-      if (!finalPoster) {
-        finalPoster = generateModernPosterSvg(caption || 'Aura Reel', currentUser.name);
+      let finalVideoUrl = videoUrl;
+      const targetBlob = localVideoFile || recordedBlob;
+
+      if (targetBlob) {
+        // 1. High efficiency client-side video compression
+        const compressed = await compressVideo(targetBlob, {
+          maxWidth: 720,
+          maxHeight: 1280,
+          bitrate: 1800000,
+        });
+
+        if (compressed.savingsPercent > 0) {
+          setCompressionStats({
+            original: compressed.originalSize,
+            compressed: compressed.compressedSize,
+            percent: compressed.savingsPercent,
+          });
+        }
+
+        // 2. Upload compressed video to Firebase Storage
+        const videoStoragePath = `reels/${currentUser.id}/${Date.now()}_reel.webm`;
+        const videoUploadRes = await uploadMediaToFirebase(
+          compressed.blob,
+          videoStoragePath,
+          (percent) => setUploadProgress(percent)
+        );
+        finalVideoUrl = videoUploadRes.url;
+
+        // 3. Poster optimization
+        if (compressed.posterDataUrl && !posterUrl) {
+          finalPoster = compressed.posterDataUrl;
+        }
+      }
+
+      // Upload poster if base64 data URL
+      if (finalPoster && finalPoster.startsWith('data:')) {
+        try {
+          const posterStoragePath = `reels/${currentUser.id}/${Date.now()}_poster.jpg`;
+          const posterUploadRes = await uploadMediaToFirebase(finalPoster, posterStoragePath);
+          finalPoster = posterUploadRes.url;
+        } catch {
+          // Poster upload fallback
+        }
       }
 
       await onSubmitReel({
-        videoUrl,
+        videoUrl: finalVideoUrl,
         posterUrl: finalPoster,
         caption: caption.trim() || 'A quiet moment shared on Aura.',
         tags: tagsArray,

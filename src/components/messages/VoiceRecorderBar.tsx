@@ -169,6 +169,7 @@ export const VoiceRecorderBar: React.FC<VoiceRecorderBarProps> = ({
               duration,
               waveform,
               audioUrl: base64Audio,
+              audioBlob,
             });
           };
           reader.readAsDataURL(audioBlob);
