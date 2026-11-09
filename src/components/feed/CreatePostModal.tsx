@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   X,
   Image as ImageIcon,
@@ -10,14 +10,23 @@ import {
   Globe,
   Users,
   MessageSquareOff,
-  Upload,
   Check,
   Sparkles,
   Zap,
+  Type,
+  Music,
+  Sliders,
+  Play,
+  Square,
+  Maximize2,
+  Crop,
+  Layers,
 } from 'lucide-react';
-import { User, Post, Poll } from '../../types';
+import { User, Post, Poll, StoryFilter } from '../../types';
 import { ModernAvatar } from '../common/ModernAvatar';
 import { compressImage, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
+import { auraAudio } from '../../utils/audioSynthesizer';
+import { UploadProgressBar } from '../common/UploadProgressBar';
 
 interface CreatePostModalProps {
   currentUser: User;
@@ -25,6 +34,24 @@ interface CreatePostModalProps {
   onCreatePost: (newPost: Partial<Post>) => void;
   initialContent?: string;
 }
+
+const FILTER_CLASSES: Record<StoryFilter, string> = {
+  none: '',
+  vintage: 'sepia-[0.35] contrast-[1.15] brightness-[0.95]',
+  nordic: 'saturate-[0.65] contrast-[0.95] brightness-[1.05]',
+  noir: 'grayscale contrast-[1.25]',
+  golden: 'sepia-[0.3] saturate-[1.4] brightness-[1.05]',
+  sepia: 'sepia-[0.7] contrast-[0.9]',
+  emerald: 'hue-rotate-[25deg] saturate-[1.2]',
+};
+
+const SOUNDTRACK_PRESETS = [
+  { title: 'Morning Light In Kyoto', artist: 'Quiet Archive', mode: 'binaural' as const },
+  { title: 'Nordic Rain On Cedar', artist: 'Field Recordings', mode: 'rain' as const },
+  { title: 'Analog Tape & Vinyl Drift', artist: 'Slow Studio', mode: 'vinyl' as const },
+  { title: 'Forest Reverberation', artist: 'Minimalist Series', mode: 'forest' as const },
+  { title: 'Felt & Acoustic Wood', artist: 'Aura Soundscapes', mode: 'binaural' as const },
+];
 
 export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   currentUser,
@@ -39,8 +66,22 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [audience, setAudience] = useState<'public' | 'followers'>('public');
   const [commentsDisabled, setCommentsDisabled] = useState(false);
 
+  // Creative Studio Features
+  const [fontStyle, setFontStyle] = useState<'sans' | 'serif' | 'mono' | 'nordic'>('serif');
+  const [activeFilter, setActiveFilter] = useState<StoryFilter>('none');
+  const [selectedTrack, setSelectedTrack] = useState<{ title: string; artist: string; mode: 'rain' | 'vinyl' | 'binaural' | 'forest' } | null>(null);
+  const [isPlayingPreview, setIsPlayingPreview] = useState(false);
+
+  // Resolution & Aspect Ratio Controls
+  const [resolution, setResolution] = useState<'4k' | '1080p' | '720p'>('1080p');
+  const [aspectRatio, setAspectRatio] = useState<'original' | '1:1' | '4:5' | '16:9'>('original');
+
+  // Active sub-tool drawer
+  const [activeStudioTool, setActiveStudioTool] = useState<
+    'none' | 'typography' | 'filters' | 'resolution' | 'music' | 'poll'
+  >('none');
+
   // Poll
-  const [showPollBuilder, setShowPollBuilder] = useState(false);
   const [pollQuestion, setPollQuestion] = useState('');
   const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
 
@@ -48,8 +89,12 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [tagInput, setTagInput] = useState('');
   const [tags, setTags] = useState<string[]>([]);
 
-  // Compression & Storage states
+  // Detailed Progress Bar States
   const [isCompressing, setIsCompressing] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState('Compressing & uploading media...');
+  const [bytesTransferred, setBytesTransferred] = useState<number | undefined>(undefined);
+  const [totalBytes, setTotalBytes] = useState<number | undefined>(undefined);
   const [compressionSavings, setCompressionSavings] = useState<{
     original: number;
     compressed: number;
@@ -58,34 +103,67 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    return () => {
+      auraAudio.setAmbient('off');
+    };
+  }, []);
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
     setIsCompressing(true);
+    setUploadPercent(5);
+    setUploadStatusText(`Preparing ${files.length} photo${files.length > 1 ? 's' : ''}...`);
+
     let totalOriginal = 0;
     let totalCompressed = 0;
 
+    // Determine target dimension & quality based on selected resolution
+    const maxDimension = resolution === '4k' ? 2560 : resolution === '1080p' ? 1440 : 800;
+    const quality = resolution === '4k' ? 0.90 : resolution === '1080p' ? 0.82 : 0.74;
+
     try {
       const fileList = Array.from(files).slice(0, 4 - mediaUrls.length);
+
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
         totalOriginal += file.size;
 
-        // 1. High-efficiency client-side image compression
+        const baseProgress = Math.round((i / fileList.length) * 100);
+        setUploadPercent(baseProgress + 10);
+        setUploadStatusText(`Optimizing photo ${i + 1} of ${fileList.length} (${resolution.toUpperCase()})...`);
+
+        // 1. Client-Side Image Compression
         const compressed = await compressImage(file, {
-          maxDimension: 1600,
-          quality: 0.82,
+          maxDimension,
+          quality,
           preferWebp: true,
         });
         totalCompressed += compressed.compressedSize;
 
-        // 2. Upload to Firebase Storage with automatic fallback
+        setUploadPercent(baseProgress + 40);
+        setUploadStatusText(`Storing photo ${i + 1} into Firebase Storage...`);
+
+        // 2. Upload to Firebase Storage with real-time percentage progress
         const storagePath = `posts/${currentUser.id}/${Date.now()}_${i}.webp`;
-        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath);
+        const uploadRes = await uploadMediaToFirebase(
+          compressed.blob,
+          storagePath,
+          (pct, transferred, total) => {
+            const stepPct = Math.round(baseProgress + 40 + (pct * 0.5));
+            setUploadPercent(Math.min(98, stepPct));
+            setBytesTransferred(transferred);
+            setTotalBytes(total);
+          }
+        );
 
         setMediaUrls((prev) => [...prev, uploadRes.url]);
       }
+
+      setUploadPercent(100);
+      setUploadStatusText('Media optimized & stored successfully!');
 
       if (totalOriginal > 0) {
         const savingsPercent = Math.max(0, Math.round(((totalOriginal - totalCompressed) / totalOriginal) * 100));
@@ -98,13 +176,36 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     } catch (err) {
       console.warn('Media upload note:', err);
     } finally {
-      setIsCompressing(false);
+      setTimeout(() => {
+        setIsCompressing(false);
+      }, 400);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleRemoveMedia = (index: number) => {
     setMediaUrls((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleToggleSoundPreview = (preset: typeof SOUNDTRACK_PRESETS[0]) => {
+    if (selectedTrack?.title === preset.title && isPlayingPreview) {
+      auraAudio.setAmbient('off');
+      setIsPlayingPreview(false);
+    } else {
+      setSelectedTrack(preset);
+      auraAudio.setAmbient(preset.mode);
+      setIsPlayingPreview(true);
+    }
+  };
+
+  const handleSelectSoundtrack = (preset: typeof SOUNDTRACK_PRESETS[0]) => {
+    if (selectedTrack?.title === preset.title) {
+      setSelectedTrack(null);
+      auraAudio.setAmbient('off');
+      setIsPlayingPreview(false);
+    } else {
+      setSelectedTrack(preset);
+    }
   };
 
   const handleAddTag = () => {
@@ -141,8 +242,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     e.preventDefault();
     if (!content.trim() && mediaUrls.length === 0) return;
 
+    auraAudio.setAmbient('off');
+
     let pollData: Poll | undefined = undefined;
-    if (showPollBuilder && pollQuestion.trim()) {
+    if (activeStudioTool === 'poll' && pollQuestion.trim()) {
       const validOptions = pollOptions.filter((opt) => opt.trim().length > 0);
       if (validOptions.length >= 2) {
         pollData = {
@@ -168,23 +271,60 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       commentsDisabled,
       tags,
       poll: pollData,
+      fontStyle,
+      filter: activeFilter !== 'none' ? activeFilter : undefined,
+      audioTrack: selectedTrack ? { title: selectedTrack.title, artist: selectedTrack.artist } : undefined,
+      resolution,
+      aspectRatio,
     });
 
     onClose();
   };
 
+  const getContentFontStyle = () => {
+    switch (fontStyle) {
+      case 'serif':
+        return 'font-serif text-base sm:text-lg italic leading-relaxed';
+      case 'mono':
+        return 'font-mono text-xs sm:text-sm tracking-tight leading-relaxed';
+      case 'nordic':
+        return 'font-sans text-xs sm:text-sm tracking-widest uppercase leading-loose';
+      default:
+        return 'font-sans text-sm sm:text-base leading-relaxed';
+    }
+  };
+
+  const getMediaAspectRatioClass = () => {
+    switch (aspectRatio) {
+      case '1:1':
+        return 'aspect-square';
+      case '4:5':
+        return 'aspect-[4/5]';
+      case '16:9':
+        return 'aspect-video';
+      default:
+        return 'aspect-auto max-h-[460px]';
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 bg-[#2D3732]/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
-      <div className="w-full max-w-xl bg-[#FAFAF9] rounded-3xl shadow-2xl overflow-hidden border border-[#F1F5F2] flex flex-col max-h-[92vh]">
+    <div className="fixed inset-0 z-50 bg-[#2D3732]/75 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 select-none animate-fade-in">
+      <div className="w-full max-w-xl bg-[#FAFAF9] rounded-3xl shadow-2xl overflow-hidden border border-[#2D3732]/10 flex flex-col max-h-[92vh]">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[#F1F5F2] bg-[#F1F5F2]/50">
-          <h2 className="text-base font-serif font-medium text-[#2D3732]">
-            Create Post
-          </h2>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-[#2D3732]/10 bg-[#F1F5F2]">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#8FA89B] animate-pulse" />
+            <h2 className="text-base font-serif font-medium text-[#2D3732]">
+              Aura Studio · Create Post
+            </h2>
+          </div>
           <button
             type="button"
-            onClick={onClose}
-            className="p-1.5 rounded-full text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2] transition-colors cursor-pointer"
+            onClick={() => {
+              auraAudio.setAmbient('off');
+              onClose();
+            }}
+            className="p-1.5 rounded-full text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
           >
             <X size={20} />
           </button>
@@ -216,7 +356,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               <button
                 type="button"
                 onClick={() => setAudience('public')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer ${
                   audience === 'public'
                     ? 'bg-white text-[#2D3732] font-semibold shadow-xs'
                     : 'text-[#7A8A82] hover:text-[#2D3732]'
@@ -228,7 +368,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               <button
                 type="button"
                 onClick={() => setAudience('followers')}
-                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-1 rounded-lg transition-all cursor-pointer ${
                   audience === 'followers'
                     ? 'bg-white text-[#2D3732] font-semibold shadow-xs'
                     : 'text-[#7A8A82] hover:text-[#2D3732]'
@@ -240,16 +380,56 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             </div>
           </div>
 
-          {/* Text input */}
-          <textarea
-            value={content}
-            onChange={(e) => setContent(e.target.value)}
-            placeholder="Share a reflection, creative progress, or mindful insight..."
-            rows={4}
-            className="w-full bg-[#F1F5F2]/40 border border-transparent focus:border-[#8FA89B] focus:bg-white rounded-2xl p-4 text-sm text-[#2D3732] placeholder-[#7A8A82] transition-all focus:outline-none resize-none leading-relaxed"
-          />
+          {/* Text input with dynamic font styling */}
+          <div className="relative">
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              placeholder="Reflect, compose, share an insight or creative moment..."
+              rows={4}
+              className={`w-full bg-[#F1F5F2]/45 border border-[#2D3732]/10 focus:border-[#8FA89B] focus:bg-white rounded-2xl p-4 text-[#2D3732] placeholder-[#7A8A82] transition-all focus:outline-none resize-none ${getContentFontStyle()}`}
+            />
+          </div>
 
-          {/* Media Attachments Preview (Grid up to 4) */}
+          {/* Attached Audio Track Indicator */}
+          {selectedTrack && (
+            <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-[#E6EDE9] border border-[#8FA89B]/40 text-xs">
+              <div className="flex items-center gap-2 text-[#2D3732]">
+                <div className="w-6 h-6 rounded-full bg-[#8FA89B] text-white flex items-center justify-center">
+                  <Music size={13} />
+                </div>
+                <div>
+                  <div className="font-semibold">{selectedTrack.title}</div>
+                  <div className="text-[11px] text-[#7A8A82]">{selectedTrack.artist}</div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTrack(null);
+                  auraAudio.setAmbient('off');
+                  setIsPlayingPreview(false);
+                }}
+                className="text-[#7A8A82] hover:text-red-500 text-xs cursor-pointer"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          {/* Line & Percent Progress Bar when compressing/uploading */}
+          {isCompressing && (
+            <UploadProgressBar
+              progress={uploadPercent}
+              statusText={uploadStatusText}
+              bytesTransferred={bytesTransferred}
+              totalBytes={totalBytes}
+              savingsPercent={compressionSavings?.savingsPercent}
+              isComplete={uploadPercent === 100}
+            />
+          )}
+
+          {/* Media Attachments Preview (Grid up to 4 with Filter & Aspect Ratio applied) */}
           {mediaUrls.length > 0 && (
             <div className="space-y-2">
               <div
@@ -258,8 +438,15 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 }`}
               >
                 {mediaUrls.map((url, idx) => (
-                  <div key={idx} className="relative group aspect-video sm:aspect-square bg-neutral-900 rounded-xl overflow-hidden">
-                    <img src={url} alt={`attachment-${idx}`} className="w-full h-full object-cover" />
+                  <div
+                    key={idx}
+                    className={`relative group bg-neutral-900 rounded-xl overflow-hidden ${getMediaAspectRatioClass()}`}
+                  >
+                    <img
+                      src={url}
+                      alt={`attachment-${idx}`}
+                      className={`w-full h-full object-cover transition-all ${FILTER_CLASSES[activeFilter]}`}
+                    />
                     <button
                       type="button"
                       onClick={() => handleRemoveMedia(idx)}
@@ -271,12 +458,12 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                 ))}
               </div>
 
-              {/* Real Data Reduction Badge */}
-              {compressionSavings && (
+              {/* Compression Badge */}
+              {compressionSavings && !isCompressing && (
                 <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-[11px] text-emerald-800 flex items-center justify-between">
                   <div className="flex items-center gap-1.5 font-medium">
                     <Zap size={13} className="text-emerald-600" />
-                    <span>Firebase Storage Optimized</span>
+                    <span>Firebase Storage Optimized · {resolution.toUpperCase()}</span>
                   </div>
                   <span className="font-mono text-emerald-700">
                     {formatBytes(compressionSavings.original)} → {formatBytes(compressionSavings.compressed)} (-{compressionSavings.savingsPercent}% saved)
@@ -286,49 +473,94 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             </div>
           )}
 
-          {isCompressing && (
-            <div className="p-3 rounded-xl bg-[#F1F5F2] border border-[#2D3732]/10 flex items-center gap-2.5 text-xs text-[#2D3732] animate-pulse">
-              <Sparkles size={15} className="text-[#8FA89B] animate-spin" />
-              <span>Compressing & uploading high-res media to Firebase...</span>
-            </div>
-          )}
-
-          {/* Location field */}
-          {showLocationInput && (
-            <div className="flex items-center gap-2 p-3 rounded-xl bg-[#F1F5F2] border border-[#2D3732]/10 animate-fade-in">
-              <MapPin size={16} className="text-[#8FA89B] shrink-0" />
-              <input
-                type="text"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
-                placeholder="Add location (e.g. Kyoto, Japan)..."
-                className="flex-1 bg-transparent text-xs sm:text-sm text-[#2D3732] focus:outline-none"
-              />
+          {/* Studio Toolbar (Typography, Aesthetic Filters, Resolution, Ambient Soundtrack, Poll, Photos) */}
+          <div className="flex items-center justify-between p-2.5 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 overflow-x-auto gap-2">
+            <div className="flex items-center gap-1.5">
+              {/* Typography */}
               <button
                 type="button"
-                onClick={() => {
-                  setLocation('');
-                  setShowLocationInput(false);
-                }}
-                className="text-[#7A8A82] hover:text-[#2D3732]"
+                onClick={() => setActiveStudioTool(activeStudioTool === 'typography' ? 'none' : 'typography')}
+                className={`py-1.5 px-2.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeStudioTool === 'typography' || fontStyle !== 'serif'
+                    ? 'bg-[#2D3732] text-white shadow-xs'
+                    : 'bg-white text-[#2D3732] hover:bg-white/80'
+                }`}
+                title="Typography Style"
               >
-                <X size={16} />
+                <Type size={14} className="text-[#8FA89B]" />
+                <span className="capitalize">{fontStyle}</span>
+              </button>
+
+              {/* Aesthetic Filter */}
+              <button
+                type="button"
+                onClick={() => setActiveStudioTool(activeStudioTool === 'filters' ? 'none' : 'filters')}
+                className={`py-1.5 px-2.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeStudioTool === 'filters' || activeFilter !== 'none'
+                    ? 'bg-[#2D3732] text-white shadow-xs'
+                    : 'bg-white text-[#2D3732] hover:bg-white/80'
+                }`}
+                title="Visual Filters"
+              >
+                <Sliders size={14} className="text-[#8FA89B]" />
+                <span className="capitalize">{activeFilter === 'none' ? 'Filter' : activeFilter}</span>
+              </button>
+
+              {/* Resolution & Ratio */}
+              <button
+                type="button"
+                onClick={() => setActiveStudioTool(activeStudioTool === 'resolution' ? 'none' : 'resolution')}
+                className={`py-1.5 px-2.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeStudioTool === 'resolution' || resolution !== '1080p' || aspectRatio !== 'original'
+                    ? 'bg-[#2D3732] text-white shadow-xs'
+                    : 'bg-white text-[#2D3732] hover:bg-white/80'
+                }`}
+                title="Resolution & Aspect Ratio"
+              >
+                <Maximize2 size={14} className="text-[#8FA89B]" />
+                <span>{resolution.toUpperCase()}</span>
+              </button>
+
+              {/* Soundtrack */}
+              <button
+                type="button"
+                onClick={() => setActiveStudioTool(activeStudioTool === 'music' ? 'none' : 'music')}
+                className={`py-1.5 px-2.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeStudioTool === 'music' || selectedTrack
+                    ? 'bg-[#2D3732] text-white shadow-xs'
+                    : 'bg-white text-[#2D3732] hover:bg-white/80'
+                }`}
+                title="Ambient Soundtrack"
+              >
+                <Music size={14} className="text-[#8FA89B]" />
+                <span>Music</span>
+              </button>
+
+              {/* Poll */}
+              <button
+                type="button"
+                onClick={() => setActiveStudioTool(activeStudioTool === 'poll' ? 'none' : 'poll')}
+                className={`py-1.5 px-2.5 rounded-xl text-xs font-medium flex items-center gap-1.5 transition-colors cursor-pointer ${
+                  activeStudioTool === 'poll' || pollQuestion.trim()
+                    ? 'bg-[#2D3732] text-white shadow-xs'
+                    : 'bg-white text-[#2D3732] hover:bg-white/80'
+                }`}
+                title="Community Poll"
+              >
+                <BarChart2 size={14} className="text-[#8FA89B]" />
+                <span>Poll</span>
               </button>
             </div>
-          )}
 
-          {/* Media & Tool bar */}
-          <div className="flex items-center justify-between p-3 rounded-2xl bg-[#F1F5F2]/80 border border-[#2D3732]/10">
-            <span className="text-xs text-[#7A8A82] font-medium">Attach to post:</span>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5">
               {/* Photo Upload trigger */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                disabled={mediaUrls.length >= 4}
-                className="p-2 rounded-xl bg-white hover:bg-neutral-100 text-[#2D3732] border border-[#2D3732]/10 shadow-xs flex items-center gap-1.5 text-xs font-medium cursor-pointer disabled:opacity-40"
+                disabled={mediaUrls.length >= 4 || isCompressing}
+                className="py-1.5 px-2.5 rounded-xl bg-white hover:bg-neutral-100 text-[#2D3732] border border-[#2D3732]/10 shadow-xs flex items-center gap-1.5 text-xs font-medium cursor-pointer disabled:opacity-40"
               >
-                <ImageIcon size={15} className="text-[#8FA89B]" />
+                <ImageIcon size={14} className="text-[#8FA89B]" />
                 <span>Photos ({mediaUrls.length}/4)</span>
               </button>
               <input
@@ -344,41 +576,208 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowLocationInput(!showLocationInput)}
-                className={`p-2 rounded-xl text-xs font-medium border flex items-center gap-1.5 cursor-pointer ${
+                className={`p-2 rounded-xl text-xs font-medium border flex items-center cursor-pointer ${
                   showLocationInput || location
                     ? 'bg-[#8FA89B] text-white border-[#8FA89B]'
                     : 'bg-white text-[#2D3732] border-[#2D3732]/10 hover:bg-neutral-100'
                 }`}
+                title="Location"
               >
-                <MapPin size={15} />
-                <span>Location</span>
-              </button>
-
-              {/* Poll Toggle */}
-              <button
-                type="button"
-                onClick={() => setShowPollBuilder(!showPollBuilder)}
-                className={`p-2 rounded-xl text-xs font-medium border flex items-center gap-1.5 cursor-pointer ${
-                  showPollBuilder
-                    ? 'bg-[#8FA89B] text-white border-[#8FA89B]'
-                    : 'bg-white text-[#2D3732] border-[#2D3732]/10 hover:bg-neutral-100'
-                }`}
-              >
-                <BarChart2 size={15} />
-                <span>Poll</span>
+                <MapPin size={14} />
               </button>
             </div>
           </div>
 
-          {/* Poll Builder Accordion */}
-          {showPollBuilder && (
+          {/* Studio Tool Drawer 1: Typography Style */}
+          {activeStudioTool === 'typography' && (
+            <div className="p-3.5 bg-[#F1F5F2] rounded-2xl border border-[#2D3732]/10 space-y-2 animate-fade-in">
+              <span className="text-xs font-semibold text-[#2D3732]">Typography Preset</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {(
+                  [
+                    { id: 'serif', name: 'Editorial Serif', desc: 'Classic literary' },
+                    { id: 'sans', name: 'Modern Sans', desc: 'Clean & direct' },
+                    { id: 'mono', name: 'Minimal Mono', desc: 'Technical prose' },
+                    { id: 'nordic', name: 'Nordic Spaced', desc: 'Poetic wide' },
+                  ] as const
+                ).map((font) => (
+                  <button
+                    key={font.id}
+                    type="button"
+                    onClick={() => setFontStyle(font.id)}
+                    className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
+                      fontStyle === font.id
+                        ? 'bg-white border-[#8FA89B] shadow-xs'
+                        : 'bg-white/60 border-transparent hover:bg-white text-[#7A8A82]'
+                    }`}
+                  >
+                    <div className="text-xs font-semibold text-[#2D3732]">{font.name}</div>
+                    <div className="text-[10px] text-[#7A8A82]">{font.desc}</div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Studio Tool Drawer 2: Aesthetic Filters */}
+          {activeStudioTool === 'filters' && (
+            <div className="p-3.5 bg-[#F1F5F2] rounded-2xl border border-[#2D3732]/10 space-y-2 animate-fade-in">
+              <span className="text-xs font-semibold text-[#2D3732]">Visual Aesthetic Tone</span>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                {(['none', 'vintage', 'nordic', 'noir', 'golden', 'sepia', 'emerald'] as StoryFilter[]).map(
+                  (f) => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setActiveFilter(f)}
+                      className={`px-3 py-1.5 rounded-xl text-xs shrink-0 transition-all capitalize cursor-pointer border ${
+                        activeFilter === f
+                          ? 'bg-[#2D3732] text-white border-[#2D3732] shadow-xs'
+                          : 'bg-white text-[#2D3732] border-[#2D3732]/10 hover:border-[#8FA89B]'
+                      }`}
+                    >
+                      {f}
+                    </button>
+                  )
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Studio Tool Drawer 3: Resolution & Aspect Ratio */}
+          {activeStudioTool === 'resolution' && (
+            <div className="p-4 bg-[#F1F5F2] rounded-2xl border border-[#2D3732]/10 space-y-3 animate-fade-in">
+              <div>
+                <span className="block text-xs font-semibold text-[#2D3732] mb-1.5">
+                  Resolution & Output Quality
+                </span>
+                <div className="grid grid-cols-3 gap-2">
+                  {(
+                    [
+                      { id: '4k', name: '4K Ultra Crisp', desc: '2560px max · Archival' },
+                      { id: '1080p', name: '1080p Web', desc: '1440px max · Balanced' },
+                      { id: '720p', name: '720p Mobile', desc: '800px max · Fast Data' },
+                    ] as const
+                  ).map((r) => (
+                    <button
+                      key={r.id}
+                      type="button"
+                      onClick={() => setResolution(r.id)}
+                      className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
+                        resolution === r.id
+                          ? 'bg-white border-[#8FA89B] shadow-xs'
+                          : 'bg-white/60 border-transparent hover:bg-white text-[#7A8A82]'
+                      }`}
+                    >
+                      <div className="text-xs font-semibold text-[#2D3732]">{r.name}</div>
+                      <div className="text-[10px] text-[#7A8A82]">{r.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <span className="block text-xs font-semibold text-[#2D3732] mb-1.5">
+                  Frame Aspect Ratio
+                </span>
+                <div className="grid grid-cols-4 gap-2">
+                  {(
+                    [
+                      { id: 'original', label: 'Original' },
+                      { id: '1:1', label: '1:1 Square' },
+                      { id: '4:5', label: '4:5 Portrait' },
+                      { id: '16:9', label: '16:9 Wide' },
+                    ] as const
+                  ).map((ar) => (
+                    <button
+                      key={ar.id}
+                      type="button"
+                      onClick={() => setAspectRatio(ar.id)}
+                      className={`py-2 px-2 text-center text-xs rounded-xl border transition-all cursor-pointer ${
+                        aspectRatio === ar.id
+                          ? 'bg-white border-[#8FA89B] text-[#2D3732] font-semibold shadow-xs'
+                          : 'bg-white/60 border-transparent hover:bg-white text-[#7A8A82]'
+                      }`}
+                    >
+                      {ar.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Studio Tool Drawer 4: Ambient Soundtracks */}
+          {activeStudioTool === 'music' && (
+            <div className="p-3.5 bg-[#F1F5F2] rounded-2xl border border-[#2D3732]/10 space-y-2 animate-fade-in">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-[#2D3732]">Ambient Soundscapes & Music</span>
+                <span className="text-[11px] text-[#7A8A82]">Select to attach</span>
+              </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                {SOUNDTRACK_PRESETS.map((preset) => {
+                  const isSelected = selectedTrack?.title === preset.title;
+                  const isPlayingThis = isSelected && isPlayingPreview;
+                  return (
+                    <div
+                      key={preset.title}
+                      className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
+                        isSelected
+                          ? 'bg-white border-[#8FA89B] shadow-xs'
+                          : 'bg-white/70 border-transparent hover:bg-white'
+                      }`}
+                    >
+                      <div
+                        onClick={() => handleSelectSoundtrack(preset)}
+                        className="flex-1 cursor-pointer"
+                      >
+                        <div className="text-xs font-medium text-[#2D3732]">{preset.title}</div>
+                        <div className="text-[10px] text-[#7A8A82]">{preset.artist}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {/* Audio preview button */}
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSoundPreview(preset)}
+                          className="p-1.5 rounded-lg bg-[#E6EDE9] text-[#2D3732] hover:bg-[#8FA89B] hover:text-white transition-colors cursor-pointer"
+                          title={isPlayingThis ? 'Stop preview' : 'Listen preview'}
+                        >
+                          {isPlayingThis ? <Square size={13} /> : <Play size={13} className="ml-0.5 fill-current" />}
+                        </button>
+
+                        {/* Select badge */}
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSoundtrack(preset)}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer ${
+                            isSelected
+                              ? 'bg-[#8FA89B] text-white'
+                              : 'bg-white text-[#7A8A82] border border-[#2D3732]/10'
+                          }`}
+                        >
+                          {isSelected ? 'Attached' : 'Select'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Studio Tool Drawer 5: Poll Builder */}
+          {activeStudioTool === 'poll' && (
             <div className="p-4 bg-[#F1F5F2] rounded-2xl space-y-3 border border-[#2D3732]/10 animate-fade-in">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-semibold text-[#2D3732]">Community Poll</span>
                 <button
                   type="button"
-                  onClick={() => setShowPollBuilder(false)}
-                  className="text-xs text-[#7A8A82] hover:text-red-500"
+                  onClick={() => {
+                    setActiveStudioTool('none');
+                    setPollQuestion('');
+                  }}
+                  className="text-xs text-[#7A8A82] hover:text-red-500 cursor-pointer"
                 >
                   Remove Poll
                 </button>
@@ -425,6 +824,30 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                   <span>Add option</span>
                 </button>
               )}
+            </div>
+          )}
+
+          {/* Location field */}
+          {showLocationInput && (
+            <div className="flex items-center gap-2 p-3 rounded-xl bg-[#F1F5F2] border border-[#2D3732]/10 animate-fade-in">
+              <MapPin size={16} className="text-[#8FA89B] shrink-0" />
+              <input
+                type="text"
+                value={location}
+                onChange={(e) => setLocation(e.target.value)}
+                placeholder="Add location (e.g. Kyoto, Japan)..."
+                className="flex-1 bg-transparent text-xs sm:text-sm text-[#2D3732] focus:outline-none"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setLocation('');
+                  setShowLocationInput(false);
+                }}
+                className="text-[#7A8A82] hover:text-[#2D3732] cursor-pointer"
+              >
+                <X size={16} />
+              </button>
             </div>
           )}
 
@@ -498,14 +921,17 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
           <div className="flex items-center justify-end gap-3 pt-3 border-t border-[#F1F5F2]">
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => {
+                auraAudio.setAmbient('off');
+                onClose();
+              }}
               className="px-4 py-2 text-xs sm:text-sm font-medium text-[#7A8A82] hover:text-[#2D3732] cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              disabled={!content.trim() && mediaUrls.length === 0}
+              disabled={(!content.trim() && mediaUrls.length === 0) || isCompressing}
               className="px-6 py-2.5 rounded-2xl bg-[#2D3732] text-white text-xs sm:text-sm font-medium hover:bg-[#3d4a43] disabled:opacity-40 transition-all shadow-md active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
             >
               <span>Publish Post</span>

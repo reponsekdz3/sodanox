@@ -16,8 +16,6 @@ import {
   EyeOff,
   CheckCircle2,
   Upload,
-  Globe,
-  MapPin,
   Feather,
   Compass,
   Layers,
@@ -42,9 +40,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
-  const [bio, setBio] = useState('');
-  const [location, setLocation] = useState('');
-  const [website, setWebsite] = useState('');
   const [avatar, setAvatar] = useState(MODERN_EMPTY_AVATAR_DATA_URI);
   const [agreedToManifesto, setAgreedToManifesto] = useState(true);
 
@@ -147,9 +142,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           name: name.trim(),
           username: username.trim(),
           avatar,
-          bio: bio.trim() || 'Aura creator & observer.',
-          location: location.trim(),
-          website: website.trim(),
         });
         auraAudio.playChime();
         onSuccess?.();
@@ -387,87 +379,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               </svg>
               <span>Continue with Google</span>
             </button>
-
-            {/* Quick 1-Click Access for Instant Preview */}
-            <div className="pt-2">
-              <div className="text-[11px] font-mono uppercase tracking-wider text-[#7A8A82] mb-2 text-center">
-                Instant 1-Click Demo Profiles
-              </div>
-              <div className="grid grid-cols-3 gap-2">
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setError(null);
-                    setIsSubmitting(true);
-                    try {
-                      try {
-                        await signIn('reponsekdz01@gmail.com', 'AuraVerified2026!');
-                      } catch {
-                        await signUp('reponsekdz01@gmail.com', 'AuraVerified2026!', {
-                          name: 'Reponse KDZ',
-                          username: 'reponsekdz',
-                          bio: 'Creator of Aura · Mindful Slow Social Network',
-                          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-                          verified: true,
-                        });
-                      }
-                      auraAudio.playChime();
-                      onSuccess?.();
-                    } catch (err: any) {
-                      setError(err?.message || 'Quick login note.');
-                    } finally {
-                      setIsSubmitting(false);
-                    }
-                  }}
-                  className="py-2 px-2.5 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2D3732] border border-[#2D3732]/10 text-[11px] font-medium text-center transition-colors cursor-pointer"
-                >
-                  <span className="block font-semibold">Reponse</span>
-                  <span className="text-[10px] text-[#7A8A82]">Creator</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setError(null);
-                    setIsSubmitting(true);
-                    try {
-                      await signIn('elena@aurasocial.org', 'AuraDemo2026!');
-                      auraAudio.playChime();
-                      onSuccess?.();
-                    } catch (err: any) {
-                      setError(err?.message || 'Quick login note.');
-                    } finally {
-                      setIsSubmitting(false);
-                    }
-                  }}
-                  className="py-2 px-2.5 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2D3732] border border-[#2D3732]/10 text-[11px] font-medium text-center transition-colors cursor-pointer"
-                >
-                  <span className="block font-semibold">Elena</span>
-                  <span className="text-[10px] text-[#7A8A82]">Ceramics</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setError(null);
-                    setIsSubmitting(true);
-                    try {
-                      await signIn('marcus@aurasocial.org', 'AuraDemo2026!');
-                      auraAudio.playChime();
-                      onSuccess?.();
-                    } catch (err: any) {
-                      setError(err?.message || 'Quick login note.');
-                    } finally {
-                      setIsSubmitting(false);
-                    }
-                  }}
-                  className="py-2 px-2.5 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2D3732] border border-[#2D3732]/10 text-[11px] font-medium text-center transition-colors cursor-pointer"
-                >
-                  <span className="block font-semibold">Marcus</span>
-                  <span className="text-[10px] text-[#7A8A82]">Design</span>
-                </button>
-              </div>
-            </div>
           </div>
 
           <div className="relative flex py-2 items-center mb-6">
@@ -585,44 +496,6 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                         }`}
                       />
                     </div>
-                  </div>
-                </div>
-
-                {/* Bio / Focus */}
-                <div>
-                  <label className="block text-xs font-medium text-[#2D3732] mb-1">
-                    Bio & Focus
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={bio}
-                    onChange={(e) => setBio(e.target.value)}
-                    placeholder="Architectural photographer, exploring Nordic daylight and slow stoneware..."
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B] resize-none"
-                  />
-                </div>
-
-                {/* Location & Website */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="relative">
-                    <MapPin size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
-                    <input
-                      type="text"
-                      value={location}
-                      onChange={(e) => setLocation(e.target.value)}
-                      placeholder="Copenhagen, Denmark"
-                      className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
-                    />
-                  </div>
-                  <div className="relative">
-                    <Globe size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
-                    <input
-                      type="url"
-                      value={website}
-                      onChange={(e) => setWebsite(e.target.value)}
-                      placeholder="https://elenarostova.design"
-                      className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
-                    />
                   </div>
                 </div>
               </>

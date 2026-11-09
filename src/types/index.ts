@@ -172,6 +172,11 @@ export interface Post {
   repostAuthor?: User;
   repostComment?: string;
   quotedPost?: Post;
+  audioTrack?: { title: string; artist: string };
+  filter?: StoryFilter;
+  fontStyle?: 'sans' | 'serif' | 'mono' | 'nordic';
+  resolution?: '4k' | '1080p' | '720p';
+  aspectRatio?: 'original' | '1:1' | '4:5' | '16:9';
   createdAt?: any;
 }
 
@@ -192,6 +197,9 @@ export interface Reel {
   comments: Comment[];
   sharesCount: number;
   isSaved: boolean;
+  likedBy?: string[];
+  savedBy?: string[];
+  createdAt?: any;
 }
 
 export interface FileAttachment {
@@ -222,17 +230,28 @@ export interface CallMeta {
   durationSeconds?: number;
 }
 
+export interface SharedPostMeta {
+  postId: string;
+  authorName: string;
+  authorUsername: string;
+  authorAvatar: string;
+  content: string;
+  mediaUrl?: string;
+  timestamp?: string;
+}
+
 export interface Message {
   id: string;
   senderId: string;
   senderName?: string;
   senderAvatar?: string;
   timestamp: string;
-  type: 'text' | 'file' | 'voice' | 'image' | 'call';
+  type: 'text' | 'file' | 'voice' | 'image' | 'call' | 'post';
   text?: string;
   file?: FileAttachment;
   voice?: VoiceNoteMeta;
   callMeta?: CallMeta;
+  sharedPost?: SharedPostMeta;
   status: 'sent' | 'delivered' | 'read';
   reaction?: string;
   replyTo?: MessageReplyInfo;

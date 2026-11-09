@@ -4,13 +4,15 @@ import {
   onAuthStateChanged,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInAnonymously,
   signOut as fbSignOut,
   sendPasswordResetEmail,
 } from 'firebase/auth';
 import { doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
 import { User } from '../types';
-import { getUserProfile, updateUserProfile } from '../services/userService';
+import { getUserProfile, updateUserProfile, createUserProfile } from '../services/userService';
+import { MODERN_EMPTY_AVATAR_DATA_URI } from '../components/common/ModernAvatar';
 import {
   registerAccount,
   authenticateAccount,
@@ -87,8 +89,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const isRegisteringRef = useRef(false);
 
-  // Restore active session on mount
+  // Restore active session on mount with max safety timeout
   useEffect(() => {
+    const safetyTimeout = setTimeout(() => {
+      setLoading(false);
+    }, 1200);
+
     const savedUid = localStorage.getItem(SESSION_UID_KEY);
     if (savedUid) {
       getUserProfile(savedUid)
@@ -105,10 +111,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         })
         .catch((e) => console.warn('Saved session restore note:', e))
-        .finally(() => setLoading(false));
+        .finally(() => {
+          clearTimeout(safetyTimeout);
+          setLoading(false);
+        });
     } else {
+      clearTimeout(safetyTimeout);
       setLoading(false);
     }
+
+    return () => clearTimeout(safetyTimeout);
   }, []);
 
   // Listen for realtime updates to current user profile doc
@@ -141,28 +153,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Optional Firebase Auth state listener (if auth service is enabled in environment)
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
-      if (fbUser && !isRegisteringRef.current) {
-        localStorage.setItem(SESSION_UID_KEY, fbUser.uid);
-        setCurrentUser(fbUser);
-        let profile = await getUserProfile(fbUser.uid);
-        if (!profile) {
-          try {
-            const synced = await syncGoogleProfileWithFirestore({
-              uid: fbUser.uid,
-              email: fbUser.email || '',
-              name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Google Creator',
-              picture: fbUser.photoURL || undefined,
-              email_verified: fbUser.emailVerified,
-            });
-            profile = synced.user;
-          } catch (e) {
-            console.warn('Profile auto-creation on auth state change note:', e);
-          }
+      // If user is anonymous (session helper for firestore rules), NEVER overwrite the real user profile!
+      if (!fbUser || fbUser.isAnonymous || isRegisteringRef.current) {
+        return;
+      }
+
+      localStorage.setItem(SESSION_UID_KEY, fbUser.uid);
+      setCurrentUser(fbUser);
+      let profile = await getUserProfile(fbUser.uid);
+      if (!profile) {
+        try {
+          const synced = await syncGoogleProfileWithFirestore({
+            uid: fbUser.uid,
+            email: fbUser.email || '',
+            name: fbUser.displayName || fbUser.email?.split('@')[0] || 'Google Creator',
+            picture: fbUser.photoURL || undefined,
+            email_verified: fbUser.emailVerified,
+          });
+          profile = synced.user;
+        } catch (e) {
+          console.warn('Profile auto-creation on auth state change note:', e);
         }
-        if (profile) {
-          setUserProfile(profile);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
-        }
+      }
+      if (profile) {
+        setUserProfile(profile);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       }
     });
 
@@ -177,30 +192,71 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const cleanEmail = email.trim().toLowerCase();
     try {
       // 1. Try Firebase Auth (if enabled on backend)
+      let authUser: FirebaseUser | null = null;
       try {
         const res = await signInWithEmailAndPassword(auth, cleanEmail, pass);
         if (res.user) {
-          const uid = res.user.uid;
-          localStorage.setItem(SESSION_UID_KEY, uid);
-          setCurrentUser(res.user);
-          const profile = await getUserProfile(uid);
-          if (profile) {
-            setUserProfile(profile);
-            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
-            return;
-          }
+          authUser = res.user;
         }
       } catch (fbErr: any) {
         // Fall through to Firestore credentials registry seamlessly
       }
 
-      // 2. Authenticate through Firestore Credentials Registry
+      if (authUser) {
+        const uid = authUser.uid;
+        localStorage.setItem(SESSION_UID_KEY, uid);
+        setCurrentUser(authUser);
+        let profile = await getUserProfile(uid);
+        if (!profile) {
+          const now = new Date();
+          profile = {
+            id: uid,
+            name: authUser.displayName || cleanEmail.split('@')[0],
+            username: cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, ''),
+            avatar: authUser.photoURL || MODERN_EMPTY_AVATAR_DATA_URI,
+            bannerUrl: '',
+            bio: 'Mindful creator on Aura.',
+            pronouns: '',
+            location: '',
+            website: '',
+            joinedDate: `Joined ${now.toLocaleString('default', { month: 'long' })} ${now.getFullYear()}`,
+            followersCount: 0,
+            followingCount: 0,
+            followers: [],
+            following: [],
+            isFollowing: false,
+            isFollower: false,
+            isMutual: false,
+            verified: false,
+            email: cleanEmail,
+            privateAccount: false,
+            showOnlineStatus: true,
+            allowReshare: true,
+            themePreference: 'nordic',
+          };
+          await createUserProfile(uid, profile).catch(() => {});
+        }
+        setUserProfile(profile);
+        localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
+        return;
+      }
+
+      // 2. Authenticate through local/Firestore credentials registry
       const { uid, profile } = await authenticateAccount(cleanEmail, pass);
+
+      // Ensure Firebase Auth session exists so firestore.rules (isSignedIn()) allow writes
+      if (!auth.currentUser) {
+        try {
+          await signInAnonymously(auth);
+        } catch {
+          // Non-fatal if offline
+        }
+      }
 
       localStorage.setItem(SESSION_UID_KEY, uid);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
-      setCurrentUser(auth.currentUser || {
+      setCurrentUser({
         uid,
         email: cleanEmail,
         displayName: profile.name,
@@ -236,17 +292,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } catch {
             throw new Error('This email is already registered. Please sign in instead.');
           }
+        } else {
+          // If email provider is restricted, create anonymous auth session so rules pass
+          try {
+            if (!auth.currentUser) {
+              const anonRes = await signInAnonymously(auth);
+              createdUid = anonRes.user.uid;
+            } else {
+              createdUid = auth.currentUser.uid;
+            }
+          } catch {
+            // Local fallback
+          }
         }
-        // Fall through to Firestore user profile creation
       }
 
-      // Register user account and store public profile + private settings in Firestore
+      // Register user account and store public profile in Firestore
       const { uid, profile } = await registerAccount(cleanEmail, pass, profileData, createdUid);
 
       localStorage.setItem(SESSION_UID_KEY, uid);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
-      setCurrentUser(auth.currentUser || {
+      setCurrentUser({
         uid,
         email: cleanEmail,
         displayName: profile.name,

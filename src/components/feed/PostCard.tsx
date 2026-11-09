@@ -17,16 +17,32 @@ import {
   Users,
   MessageSquareOff,
   Eye,
+  Music,
+  Play,
+  Square,
 } from 'lucide-react';
-import { Post, User } from '../../types';
+import { Post, User, StoryFilter } from '../../types';
 import { SharePostModal } from './SharePostModal';
 import { QuotePostModal } from './QuotePostModal';
 import { PostEngagementModal } from './PostEngagementModal';
 import { recordPostView } from '../../services/postService';
 import { ModernAvatar } from '../common/ModernAvatar';
+import { auraAudio } from '../../utils/audioSynthesizer';
 
-const PostMediaCarousel: React.FC<{ mediaUrls: string[] }> = ({ mediaUrls }) => {
+const FILTER_CLASSES: Record<StoryFilter, string> = {
+  none: '',
+  vintage: 'sepia-[0.35] contrast-[1.15] brightness-[0.95]',
+  nordic: 'saturate-[0.65] contrast-[0.95] brightness-[1.05]',
+  noir: 'grayscale contrast-[1.25]',
+  golden: 'sepia-[0.3] saturate-[1.4] brightness-[1.05]',
+  sepia: 'sepia-[0.7] contrast-[0.9]',
+  emerald: 'hue-rotate-[25deg] saturate-[1.2]',
+};
+
+const PostMediaCarousel: React.FC<{ mediaUrls: string[]; filter?: StoryFilter }> = ({ mediaUrls, filter }) => {
   const [curr, setCurr] = useState(0);
+  const filterClass = filter ? FILTER_CLASSES[filter] || '' : '';
+
   if (!mediaUrls || mediaUrls.length === 0) return null;
   if (mediaUrls.length === 1) {
     return (
@@ -34,7 +50,7 @@ const PostMediaCarousel: React.FC<{ mediaUrls: string[] }> = ({ mediaUrls }) => 
         <img
           src={mediaUrls[0]}
           alt="Post media"
-          className="w-full h-auto max-h-[520px] object-cover"
+          className={`w-full h-auto max-h-[520px] object-cover transition-all ${filterClass}`}
         />
       </div>
     );
@@ -44,7 +60,7 @@ const PostMediaCarousel: React.FC<{ mediaUrls: string[] }> = ({ mediaUrls }) => 
       <img
         src={mediaUrls[curr]}
         alt={`Post media ${curr + 1}`}
-        className="w-full h-auto max-h-[520px] object-cover"
+        className={`w-full h-auto max-h-[520px] object-cover transition-all ${filterClass}`}
       />
       {curr > 0 && (
         <button
@@ -132,6 +148,7 @@ export const PostCard: React.FC<PostCardProps> = ({
   const [isEngagementModalOpen, setIsEngagementModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editContent, setEditContent] = useState(post.content);
+  const [isPlayingPostAudio, setIsPlayingPostAudio] = useState(false);
 
   // Automatically record impressions/views in Firestore
   useEffect(() => {
@@ -146,6 +163,19 @@ export const PostCard: React.FC<PostCardProps> = ({
     setIsLikingAnimation(true);
     onLikePost(post.id);
     setTimeout(() => setIsLikingAnimation(false), 500);
+  };
+
+  const getContentFontClass = () => {
+    switch (post.fontStyle) {
+      case 'serif':
+        return 'font-serif text-[15px] sm:text-base italic';
+      case 'mono':
+        return 'font-mono text-xs sm:text-sm tracking-tight';
+      case 'nordic':
+        return 'font-sans text-xs sm:text-sm tracking-widest uppercase';
+      default:
+        return 'text-sm sm:text-[15px]';
+    }
   };
 
   const handleCommentSubmit = (e: React.FormEvent) => {
@@ -299,9 +329,45 @@ export const PostCard: React.FC<PostCardProps> = ({
           </div>
         </div>
       ) : (
-        <div className="text-sm sm:text-[15px] text-[#2D3732] leading-relaxed mb-4 whitespace-pre-line">
-          {post.content}
-        </div>
+        <>
+          {/* Soundtrack Pill if attached */}
+          {post.audioTrack && (
+            <div className="flex items-center gap-2 mb-3 px-3 py-1.5 rounded-full bg-[#E6EDE9]/80 border border-[#8FA89B]/30 w-fit text-xs text-[#2D3732] shadow-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isPlayingPostAudio) {
+                    auraAudio.setAmbient('off');
+                    setIsPlayingPostAudio(false);
+                  } else {
+                    auraAudio.setAmbient('binaural');
+                    setIsPlayingPostAudio(true);
+                  }
+                }}
+                className="w-5 h-5 rounded-full bg-[#8FA89B] text-white flex items-center justify-center hover:scale-105 transition-transform cursor-pointer"
+                title={isPlayingPostAudio ? 'Pause soundtrack' : 'Play soundtrack'}
+              >
+                {isPlayingPostAudio ? <Square size={10} /> : <Play size={10} className="ml-0.5 fill-current" />}
+              </button>
+              <div className="flex items-center gap-1.5">
+                <Music size={12} className="text-[#8FA89B]" />
+                <span className="font-medium">{post.audioTrack.title}</span>
+                <span className="text-[11px] text-[#7A8A82]">· {post.audioTrack.artist}</span>
+              </div>
+              {isPlayingPostAudio && (
+                <span className="flex items-center gap-0.5 ml-1">
+                  <span className="w-0.5 h-2 bg-[#8FA89B] animate-pulse" />
+                  <span className="w-0.5 h-3.5 bg-[#8FA89B] animate-pulse delay-75" />
+                  <span className="w-0.5 h-1.5 bg-[#8FA89B] animate-pulse delay-150" />
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className={`text-[#2D3732] leading-relaxed mb-4 whitespace-pre-line ${getContentFontClass()}`}>
+            {post.content}
+          </div>
+        </>
       )}
 
       {/* Tags */}
@@ -405,14 +471,16 @@ export const PostCard: React.FC<PostCardProps> = ({
 
       {/* Post Image Media */}
       {post.mediaUrls && post.mediaUrls.length > 0 ? (
-        <PostMediaCarousel mediaUrls={post.mediaUrls} />
+        <PostMediaCarousel mediaUrls={post.mediaUrls} filter={post.filter} />
       ) : post.mediaUrl ? (
         <div className="relative rounded-2xl overflow-hidden mb-4 bg-neutral-100 max-h-[500px]">
           <img
             src={post.mediaUrl}
             alt="Post attachment"
             referrerPolicy="no-referrer"
-            className="w-full h-auto max-h-[500px] object-cover"
+            className={`w-full h-auto max-h-[500px] object-cover transition-all ${
+              post.filter ? FILTER_CLASSES[post.filter] || '' : ''
+            }`}
           />
         </div>
       ) : null}

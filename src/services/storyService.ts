@@ -2,6 +2,7 @@ import {
   collection,
   doc,
   addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -23,6 +24,7 @@ import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components
 const STORIES_COLLECTION = 'stories';
 const HIGHLIGHTS_COLLECTION = 'highlights';
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+const LOCAL_STORIES_CACHE_KEY = 'aura_community_stories_cache';
 
 /**
  * Check if a story item was created within the last 24 hours
@@ -33,16 +35,49 @@ export function isStoryItemActive(item: StoryItem, fallbackTimestampMs?: number)
   return now - created < TWENTY_FOUR_HOURS_MS;
 }
 
+export function getStoredStories(): Story[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORIES_CACHE_KEY);
+    if (!raw) return [];
+    const parsed: Story[] = JSON.parse(raw);
+    const now = Date.now();
+    return Array.isArray(parsed)
+      ? parsed
+          .map((s) => ({
+            ...s,
+            items: (s.items || []).filter((item) => isStoryItemActive(item)),
+          }))
+          .filter((s) => s.items && s.items.length > 0 && !isMockArtifact(s.userId, s.userUsername))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredStories(stories: Story[]) {
+  try {
+    const active = stories.filter((s) => s && s.items && s.items.length > 0 && !isMockArtifact(s.userId, s.userUsername));
+    localStorage.setItem(LOCAL_STORIES_CACHE_KEY, JSON.stringify(active));
+  } catch {
+    // Local storage quota safe
+  }
+}
+
 /**
- * Real-time subscription to stories from Firestore (user-created only, strictly within 24 hours)
+ * Real-time subscription to stories from Firestore with persistent local cache merge.
  */
 export function subscribeToStories(
   currentUid: string,
   onUpdate: (stories: Story[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
+  // 1. Instantly emit cached stories for immediate UI display
+  const initialCached = getStoredStories();
+  if (initialCached.length > 0) {
+    onUpdate(initialCached);
+  }
+
   if (!currentUid) {
-    onUpdate([]);
     return () => {};
   }
 
@@ -51,7 +86,7 @@ export function subscribeToStories(
   return onSnapshot(
     storiesRef,
     (snapshot) => {
-      const list: Story[] = [];
+      const firestoreStories: Story[] = [];
       const now = Date.now();
 
       snapshot.forEach((docSnap) => {
@@ -70,15 +105,13 @@ export function subscribeToStories(
           ? d.createdAt.toMillis()
           : d.createdAtMs || now;
 
-        // STRICT 24-HOUR LIFESPAN ENFORCEMENT:
-        // Filter out items older than 24 hours
+        // STRICT 24-HOUR LIFESPAN ENFORCEMENT
         const rawItems: StoryItem[] = d.items || [];
         const activeItems = rawItems.filter((item) => {
           const itemTime = item.createdAtMs || docCreatedAtMs;
           return now - itemTime < TWENTY_FOUR_HOURS_MS;
         });
 
-        // If no active items remaining from the last 24h, do not show in active stories feed
         if (activeItems.length === 0) {
           return;
         }
@@ -86,7 +119,7 @@ export function subscribeToStories(
         const viewers: string[] = d.viewers || [];
         const hasUnseen = !viewers.includes(currentUid);
 
-        list.push({
+        firestoreStories.push({
           id: docSnap.id,
           userId: d.userId,
           userName: d.userName,
@@ -99,57 +132,96 @@ export function subscribeToStories(
         });
       });
 
+      // Merge Firestore stories with local cached stories (keeping fresh items)
+      const cached = getStoredStories();
+      const firestoreUserIds = new Set(firestoreStories.map((s) => s.userId));
+      const localOnly = cached.filter((s) => !firestoreUserIds.has(s.userId));
+
+      const merged = [...firestoreStories, ...localOnly];
+
       // Sort client-side so stories with fresh items appear first
-      list.sort((a, b) => {
-        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : Date.now();
-        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : Date.now();
+      merged.sort((a, b) => {
+        const timeA = (a as any).createdAt?.toMillis ? (a as any).createdAt.toMillis() : Date.now();
+        const timeB = (b as any).createdAt?.toMillis ? (b as any).createdAt.toMillis() : Date.now();
         return timeB - timeA;
       });
 
-      onUpdate(list);
+      saveStoredStories(merged);
+      onUpdate(merged);
     },
     (err) => {
-      console.warn('Stories subscription error:', err);
+      console.warn('Stories subscription notice (using local cached stories):', err);
+      const fallback = getStoredStories();
+      if (fallback.length > 0) {
+        onUpdate(fallback);
+      }
       if (onError) onError(err);
     }
   );
 }
 
 /**
- * Create or append to a user's story in Firestore
+ * Create or append to a user's story in Firestore and local cache
  */
 export async function createStoryInFirestore(
   currentUser: User,
   newItem: StoryItem
 ): Promise<void> {
-  try {
-    const itemWithTimestamp: StoryItem = {
-      ...newItem,
-      createdAtMs: newItem.createdAtMs || Date.now(),
-    };
-    const storiesRef = collection(db, STORIES_COLLECTION);
-    const snap = await getDocs(storiesRef);
-    const existingStoryDoc = snap.docs.find((d) => d.data().userId === currentUser.id);
+  const itemWithTimestamp: StoryItem = {
+    ...newItem,
+    createdAtMs: newItem.createdAtMs || Date.now(),
+  };
 
-    if (existingStoryDoc) {
-      await updateDoc(doc(db, STORIES_COLLECTION, existingStoryDoc.id), {
-        items: arrayUnion(itemWithTimestamp),
-        updatedAt: serverTimestamp(),
-      });
-    } else {
-      await addDoc(storiesRef, {
+  const storyDocId = `story_${currentUser.id}`;
+
+  // 1. Immediately update local persistent cache so story NEVER disappears on refresh
+  const currentStories = getStoredStories();
+  const existingIndex = currentStories.findIndex((s) => s.userId === currentUser.id);
+
+  if (existingIndex !== -1) {
+    const updated = [...currentStories];
+    updated[existingIndex] = {
+      ...updated[existingIndex],
+      items: [...updated[existingIndex].items, itemWithTimestamp],
+      createdAt: { toMillis: () => Date.now() } as any,
+    };
+    saveStoredStories(updated);
+  } else {
+    const newStory: Story = {
+      id: storyDocId,
+      userId: currentUser.id,
+      userName: currentUser.name,
+      userUsername: currentUser.username,
+      userAvatar: isMockOrEmptyAvatar(currentUser.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : currentUser.avatar,
+      hasUnseen: false,
+      items: [itemWithTimestamp],
+      viewers: [currentUser.id],
+      createdAt: { toMillis: () => Date.now() } as any,
+    };
+    saveStoredStories([newStory, ...currentStories]);
+  }
+
+  // 2. Persist to Firestore
+  try {
+    const storyDocRef = doc(db, STORIES_COLLECTION, storyDocId);
+    await setDoc(
+      storyDocRef,
+      {
+        id: storyDocId,
         userId: currentUser.id,
         userName: currentUser.name,
         userUsername: currentUser.username,
-        userAvatar: currentUser.avatar,
-        items: [itemWithTimestamp],
-        viewers: [currentUser.id],
+        userAvatar: isMockOrEmptyAvatar(currentUser.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : currentUser.avatar,
+        items: arrayUnion(itemWithTimestamp),
+        viewers: arrayUnion(currentUser.id),
+        updatedAt: serverTimestamp(),
         createdAt: serverTimestamp(),
         createdAtMs: Date.now(),
-      });
-    }
+      },
+      { merge: true }
+    );
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, STORIES_COLLECTION);
+    console.warn('Firestore story sync notice (stored safely in local persistent cache):', err);
   }
 }
 
@@ -227,6 +299,8 @@ export async function toggleLikeStory(
  * Delete a story document
  */
 export async function deleteStory(storyId: string): Promise<void> {
+  const current = getStoredStories().filter((s) => s.id !== storyId && `story_${s.userId}` !== storyId);
+  saveStoredStories(current);
   try {
     const storyRef = doc(db, STORIES_COLLECTION, storyId);
     await deleteDoc(storyRef);

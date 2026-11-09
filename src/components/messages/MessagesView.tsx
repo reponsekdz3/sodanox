@@ -71,6 +71,7 @@ interface MessagesViewProps {
   onOpenAuth?: () => void;
   onMobileChatActiveChange?: (isActive: boolean) => void;
   onNavigateTab?: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => void;
+  onViewPost?: (postId: string) => void;
 }
 
 export const MessagesView: React.FC<MessagesViewProps> = ({
@@ -82,6 +83,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   initialTargetUser,
   onMobileChatActiveChange,
   onNavigateTab,
+  onViewPost,
 }) => {
   // -------------------------------------------------------------
   // State: Conversations & Active Chat
@@ -1369,6 +1371,76 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                               {extractUrls(msg.text || '').map((url, idx) => (
                                 <LinkPreviewCard key={idx} url={url} isSelf={isSelf} />
                               ))}
+                            </div>
+                          )}
+
+                          {/* Shared Post Card in Direct Message */}
+                          {msg.type === 'post' && msg.sharedPost && (
+                            <div className="w-full min-w-[240px] max-w-sm rounded-2xl overflow-hidden border border-[#D8E4DC] bg-white shadow-xs text-left mb-1">
+                              {/* Post Header */}
+                              <div className="p-2.5 flex items-center gap-2 border-b border-[#EAEFEA] bg-[#FAFAF9]/90">
+                                <ModernAvatar
+                                  src={msg.sharedPost.authorAvatar}
+                                  alt={msg.sharedPost.authorName}
+                                  size="xs"
+                                  className="shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-[#1E2A23] truncate leading-tight">
+                                    {msg.sharedPost.authorName}
+                                  </p>
+                                  <p className="text-[10px] text-[#7A8A82] truncate">
+                                    @{msg.sharedPost.authorUsername}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-[#EBF1ED] text-[#4A6757] font-semibold">
+                                  Post
+                                </span>
+                              </div>
+
+                              {/* Media Thumbnail if available */}
+                              {msg.sharedPost.mediaUrl && (
+                                <div className="relative max-h-48 overflow-hidden bg-black/5">
+                                  <img
+                                    src={msg.sharedPost.mediaUrl}
+                                    alt="Post media"
+                                    className="w-full h-36 object-cover"
+                                  />
+                                </div>
+                              )}
+
+                              {/* Post snippet */}
+                              <div className="p-2.5">
+                                <p className="text-xs text-[#2D3732] line-clamp-3 leading-relaxed">
+                                  {msg.sharedPost.content}
+                                </p>
+                              </div>
+
+                              {/* Attached text note if any */}
+                              {msg.text && msg.text !== `Shared post from @${msg.sharedPost.authorUsername}` && (
+                                <div className="px-2.5 pb-2 text-xs italic text-[#62736B]">
+                                  "{msg.text}"
+                                </div>
+                              )}
+
+                              {/* View Post Action Button */}
+                              <div className="p-2 pt-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onViewPost) {
+                                      onViewPost(msg.sharedPost!.postId);
+                                    } else {
+                                      window.location.hash = `#/post/${msg.sharedPost!.postId}`;
+                                    }
+                                  }}
+                                  className="w-full py-2 px-3 rounded-xl bg-[#2F4438] hover:bg-[#4A6757] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                >
+                                  <span>View Post</span>
+                                  <ExternalLink size={12} />
+                                </button>
+                              </div>
                             </div>
                           )}
 

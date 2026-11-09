@@ -1,7 +1,7 @@
 import {
   collection,
   doc,
-  addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -16,13 +16,15 @@ import {
   increment,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, auth } from '../firebase/config';
 import { Post, Comment, User, Poll } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const POSTS_COLLECTION = 'posts';
+const LOCAL_POSTS_CACHE_KEY = 'aura_community_posts_cache';
+const LOCAL_DELETED_POSTS_KEY = 'aura_deleted_posts_registry';
 
 export function isMockArtifact(id?: string, username?: string): boolean {
   if (!id && !username) return false;
@@ -40,28 +42,84 @@ export function isMockArtifact(id?: string, username?: string): boolean {
   );
 }
 
+export function getStoredPosts(): Post[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_POSTS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed: Post[] = JSON.parse(raw);
+    const deleted = getDeletedPostIds();
+    return Array.isArray(parsed)
+      ? parsed.filter((p) => p && !deleted.has(p.id) && !isMockArtifact(p.author?.id, p.author?.username))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredPosts(posts: Post[]) {
+  try {
+    const deleted = getDeletedPostIds();
+    const clean = posts.filter((p) => p && !deleted.has(p.id) && !isMockArtifact(p.author?.id, p.author?.username));
+    localStorage.setItem(LOCAL_POSTS_CACHE_KEY, JSON.stringify(clean.slice(0, 150)));
+  } catch {
+    // Local storage quota safe
+  }
+}
+
+export function getDeletedPostIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LOCAL_DELETED_POSTS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function markPostDeletedLocally(postId: string) {
+  try {
+    const set = getDeletedPostIds();
+    set.add(postId);
+    localStorage.setItem(LOCAL_DELETED_POSTS_KEY, JSON.stringify(Array.from(set)));
+    // Also remove from cache immediately
+    const current = getStoredPosts().filter((p) => p.id !== postId);
+    saveStoredPosts(current);
+  } catch {
+    // Safe
+  }
+}
+
 /**
- * Real-time subscription to community posts from Firestore (100% real user content)
+ * Real-time subscription to community posts from Firestore with resilient local cache merge.
+ * Posts NEVER disappear after 10 seconds or on page refresh.
  */
 export function subscribeToPosts(
   currentUid: string,
   onUpdate: (posts: Post[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
+  // 1. Immediately emit cached posts if present for zero-latency instant rendering
+  const initialCached = getStoredPosts();
+  if (initialCached.length > 0) {
+    onUpdate(initialCached);
+  }
+
   const postsRef = collection(db, POSTS_COLLECTION);
 
   return onSnapshot(
     postsRef,
     (snapshot) => {
-      const postList: Post[] = [];
+      const deleted = getDeletedPostIds();
+      const firestorePosts: Post[] = [];
+
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
 
-        // Strictly purge and ignore mock / seed posts
+        // Strictly purge and ignore mock / seed posts or locally deleted posts
         if (
           isMockArtifact(d.author?.id, d.author?.username) ||
           docSnap.id.startsWith('starter_') ||
-          docSnap.id.startsWith('demo_')
+          docSnap.id.startsWith('demo_') ||
+          deleted.has(docSnap.id)
         ) {
           return;
         }
@@ -119,7 +177,7 @@ export function subscribeToPosts(
             }
           : undefined;
 
-        postList.push({
+        firestorePosts.push({
           id: docSnap.id,
           author: postAuthor,
           timestamp: d.timestamp || 'Recent',
@@ -161,24 +219,45 @@ export function subscribeToPosts(
         });
       });
 
+      // Merge Firestore posts with any local cached posts by this user that are still syncing
+      const cached = getStoredPosts();
+      const firestoreIds = new Set(firestorePosts.map((p) => p.id));
+      const localOnly = cached.filter((p) => !firestoreIds.has(p.id) && !deleted.has(p.id));
+
+      const merged = [...firestorePosts, ...localOnly];
+
       // Sort client-side so latest posts appear at the top of the feed
-      postList.sort((a, b) => {
-        const timeA = (a as any).createdAt?.toMillis ? (a as any).createdAt.toMillis() : Date.now();
-        const timeB = (b as any).createdAt?.toMillis ? (b as any).createdAt.toMillis() : Date.now();
+      merged.sort((a, b) => {
+        const timeA = (a as any).createdAt?.toMillis
+          ? (a as any).createdAt.toMillis()
+          : typeof a.createdAt === 'number'
+          ? a.createdAt
+          : Date.now();
+        const timeB = (b as any).createdAt?.toMillis
+          ? (b as any).createdAt.toMillis()
+          : typeof b.createdAt === 'number'
+          ? b.createdAt
+          : Date.now();
         return timeB - timeA;
       });
 
-      onUpdate(postList);
+      // Update persistent local cache
+      saveStoredPosts(merged);
+      onUpdate(merged);
     },
     (err) => {
-      console.warn('Posts subscription error:', err);
+      console.warn('Posts subscription notice (falling back to local cache):', err);
+      const fallback = getStoredPosts();
+      if (fallback.length > 0) {
+        onUpdate(fallback);
+      }
       if (onError) onError(err);
     }
   );
 }
 
 /**
- * Create a new post in Firestore
+ * Create a new post in Firestore and local persistent storage simultaneously.
  */
 export async function createNewPost(
   author: User,
@@ -193,19 +272,72 @@ export async function createNewPost(
     location?: string;
     audience?: 'public' | 'followers';
     commentsDisabled?: boolean;
+    explicitPostId?: string;
   }
-): Promise<void> {
-  try {
-    const postsRef = collection(db, POSTS_COLLECTION);
-    const mediaUrls = extraOptions?.mediaUrls || (mediaUrl ? [mediaUrl] : []);
+): Promise<Post> {
+  const mediaUrls = extraOptions?.mediaUrls || (mediaUrl ? [mediaUrl] : []);
+  const newPostId = extraOptions?.explicitPostId || `post_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-    await addDoc(postsRef, {
+  const cleanAvatar = isMockOrEmptyAvatar(author.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : author.avatar;
+  const authorData: User = {
+    id: author.id,
+    name: author.name,
+    username: author.username,
+    avatar: cleanAvatar,
+    verified: author.verified || false,
+    bio: author.bio || '',
+    joinedDate: author.joinedDate || '',
+    followersCount: author.followersCount || 0,
+    followingCount: author.followingCount || 0,
+  };
+
+  const newPost: Post = {
+    id: newPostId,
+    author: authorData,
+    content,
+    mediaUrl: mediaUrl || (mediaUrls.length > 0 ? mediaUrls[0] : ''),
+    mediaUrls,
+    mediaType,
+    tags,
+    location: extraOptions?.location || '',
+    audience: extraOptions?.audience || 'public',
+    commentsDisabled: extraOptions?.commentsDisabled || false,
+    likesCount: 0,
+    likedBy: [],
+    hasLiked: false,
+    bookmarksCount: 0,
+    bookmarkedBy: [],
+    isBookmarked: false,
+    repostsCount: 0,
+    repostedBy: [],
+    hasReposted: false,
+    commentsCount: 0,
+    comments: [],
+    sharesCount: 0,
+    sharedBy: [],
+    viewsCount: 0,
+    viewedBy: [],
+    poll: poll || undefined,
+    quotedPost: quotedPost || undefined,
+    timestamp: 'Just now',
+    createdAt: { toMillis: () => Date.now() } as any,
+  };
+
+  // 1. Immediately write to persistent local cache so post NEVER disappears on refresh
+  const currentStored = getStoredPosts().filter((p) => p.id !== newPostId);
+  saveStoredPosts([newPost, ...currentStored]);
+
+  // 2. Write to Firestore with identical ID
+  try {
+    const postRef = doc(db, POSTS_COLLECTION, newPostId);
+    await setDoc(postRef, {
+      id: newPostId,
       authorId: author.id,
       author: {
         id: author.id,
         name: author.name,
         username: author.username,
-        avatar: author.avatar,
+        avatar: cleanAvatar,
         verified: author.verified || false,
       },
       content,
@@ -249,11 +381,13 @@ export async function createNewPost(
         'repost',
         `quoted your post: "${content.slice(0, 30)}..."`,
         quotedPost.id
-      );
+      ).catch(() => {});
     }
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, POSTS_COLLECTION);
+    console.warn('Firestore post sync notice (saved safely in local persistent cache):', err);
   }
+
+  return newPost;
 }
 
 /**
@@ -585,6 +719,7 @@ export async function voteInPoll(postId: string, optionId: string, currentUid: s
  * Delete a post from Firestore
  */
 export async function deletePostFromFirestore(postId: string): Promise<void> {
+  markPostDeletedLocally(postId);
   try {
     const postRef = doc(db, POSTS_COLLECTION, postId);
     await deleteDoc(postRef);

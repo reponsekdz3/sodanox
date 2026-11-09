@@ -195,18 +195,10 @@ describe('Audio Synthesizer Engine', () => {
   });
 });
 
-describe('Authentic Seed Registry', () => {
-  it('contains verified community creators with full profile details', () => {
-    expect(INITIAL_CREATORS.length).toBeGreaterThanOrEqual(4);
-    const raphael = INITIAL_CREATORS.find((c) => c.username === 'raphael_nsh');
-    const reponse = INITIAL_CREATORS.find((c) => c.username === 'reponsekdz');
-    const clara = INITIAL_CREATORS.find((c) => c.username === 'claramugabo');
-
-    expect(raphael).toBeDefined();
-    expect(raphael?.location).toContain('Kigali');
-    expect(reponse).toBeDefined();
-    expect(reponse?.verified).toBe(true);
-    expect(clara).toBeDefined();
+describe('Authentic User Architecture', () => {
+  it('strictly ensures zero demo accounts exist and system requires user-created accounts', () => {
+    // Verified that all hardcoded demo/mock accounts are eliminated
+    expect(INITIAL_CREATORS.length).toBe(0);
   });
 });
 

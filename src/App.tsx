@@ -623,7 +623,7 @@ export default function App() {
     };
 
     // Optimistically update posts state so it shows up instantly at feed and profile
-    setPosts((prev) => [optimisticPost, ...prev]);
+    setPosts((prev) => [optimisticPost, ...prev.filter((p) => p.id !== optimisticPostId)]);
 
     try {
       await createNewPost(
@@ -639,6 +639,7 @@ export default function App() {
           location: newPostData.location,
           audience: newPostData.audience,
           commentsDisabled: newPostData.commentsDisabled,
+          explicitPostId: optimisticPostId,
         }
       );
     } catch (err) {
@@ -702,6 +703,29 @@ export default function App() {
     audioArtist: string;
   }) => {
     if (!currentUser) return;
+    const optimisticReelId = `reel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const optimisticReel: Reel = {
+      id: optimisticReelId,
+      author: currentUser,
+      videoUrl: data.videoUrl,
+      posterUrl: data.posterUrl,
+      caption: data.caption,
+      tags: data.tags,
+      audioTrack: {
+        title: data.audioTitle || 'Original Sound',
+        artist: data.audioArtist || currentUser.name,
+      },
+      likesCount: 0,
+      likedBy: [],
+      hasLiked: false,
+      commentsCount: 0,
+      comments: [],
+      sharesCount: 0,
+      isSaved: false,
+    };
+
+    setReels((prev) => [optimisticReel, ...prev.filter((r) => r.id !== optimisticReelId)]);
+
     try {
       await createNewReel(currentUser, data);
     } catch (err) {

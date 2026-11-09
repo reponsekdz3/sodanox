@@ -391,6 +391,7 @@ export function subscribeToMessages(
             file: d.file || undefined,
             voice: d.voice || undefined,
             callMeta: d.callMeta || undefined,
+            sharedPost: d.sharedPost || undefined,
             status: d.status || 'delivered',
             reaction: d.reaction,
             replyTo: d.replyTo || undefined,
@@ -467,6 +468,8 @@ export async function sendChatMessage(
       ? `📎 ${messageData.file?.name || 'File'}`
       : messageData.type === 'image'
       ? '📷 Photo'
+      : messageData.type === 'post'
+      ? `📌 Post from @${messageData.sharedPost?.authorUsername || 'creator'}`
       : messageData.text || '';
 
   const fullMessage: Message = {
@@ -481,6 +484,7 @@ export async function sendChatMessage(
     file: messageData.file,
     voice: messageData.voice,
     callMeta: messageData.callMeta,
+    sharedPost: messageData.sharedPost,
     replyTo: replyTo
       ? {
           id: replyTo.id,
@@ -546,6 +550,7 @@ export async function sendChatMessage(
     if (messageData.file) payload.file = messageData.file;
     if (messageData.voice) payload.voice = messageData.voice;
     if (messageData.callMeta) payload.callMeta = messageData.callMeta;
+    if (messageData.sharedPost) payload.sharedPost = messageData.sharedPost;
     if (fullMessage.replyTo) payload.replyTo = fullMessage.replyTo;
 
     await setDoc(msgDocRef, payload);

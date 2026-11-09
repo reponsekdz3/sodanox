@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Send, Copy, Check, Share2, MessageSquare } from 'lucide-react';
-import { Post, User } from '../../types';
+import { Post, User, SharedPostMeta } from '../../types';
 import { ModernAvatar } from '../common/ModernAvatar';
 
 interface SharePostModalProps {
@@ -8,7 +8,7 @@ interface SharePostModalProps {
   users: User[];
   currentUser: User;
   onClose: () => void;
-  onSendToChat: (recipientId: string, messageText: string) => void;
+  onSendToChat: (recipientId: string, messageText: string, sharedPost?: SharedPostMeta) => void;
   onIncrementShare: () => void;
 }
 
@@ -23,6 +23,7 @@ export const SharePostModal: React.FC<SharePostModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [sentUserIds, setSentUserIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [customNote, setCustomNote] = useState('');
 
   const filteredUsers = users.filter(
     (u) =>
@@ -31,8 +32,12 @@ export const SharePostModal: React.FC<SharePostModalProps> = ({
         u.username.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
+  const getPostDeepLink = () => {
+    return `${window.location.origin}/#/post/${post.id}`;
+  };
+
   const handleCopyLink = () => {
-    const postUrl = `${window.location.origin}#post-${post.id}`;
+    const postUrl = getPostDeepLink();
     navigator.clipboard?.writeText(postUrl);
     setCopied(true);
     onIncrementShare();
@@ -40,12 +45,13 @@ export const SharePostModal: React.FC<SharePostModalProps> = ({
   };
 
   const handleNativeShare = async () => {
+    const postUrl = getPostDeepLink();
     if (navigator.share) {
       try {
         await navigator.share({
           title: `Post by ${post.author.name} on Aura`,
           text: post.content.slice(0, 100),
-          url: `${window.location.origin}#post-${post.id}`,
+          url: postUrl,
         });
         onIncrementShare();
       } catch {
@@ -57,8 +63,17 @@ export const SharePostModal: React.FC<SharePostModalProps> = ({
   };
 
   const handleSendDirect = (targetUser: User) => {
-    const shareMessage = `Shared post from @${post.author.username}:\n"${post.content.slice(0, 120)}..."`;
-    onSendToChat(targetUser.id, shareMessage);
+    const sharedMeta: SharedPostMeta = {
+      postId: post.id,
+      authorName: post.author.name,
+      authorUsername: post.author.username,
+      authorAvatar: post.author.avatar,
+      content: post.content,
+      mediaUrl: post.mediaUrl || (post.mediaUrls && post.mediaUrls[0]),
+      timestamp: post.timestamp,
+    };
+    const messageText = customNote.trim() || `Check out this post by @${post.author.username}`;
+    onSendToChat(targetUser.id, messageText, sharedMeta);
     setSentUserIds((prev) => [...prev, targetUser.id]);
     onIncrementShare();
   };
@@ -130,6 +145,15 @@ export const SharePostModal: React.FC<SharePostModalProps> = ({
               Send in Direct Message
             </h4>
           </div>
+
+          {/* Optional message input */}
+          <input
+            type="text"
+            value={customNote}
+            onChange={(e) => setCustomNote(e.target.value)}
+            placeholder="Add an optional message or note..."
+            className="w-full bg-[#F1F5F2] rounded-2xl px-3.5 py-2 text-xs text-[#2D3732] placeholder-[#7A8A82] mb-2 focus:outline-none focus:bg-white border border-transparent focus:border-[#8FA89B]"
+          />
 
           <input
             type="text"

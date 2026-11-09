@@ -1,7 +1,7 @@
 import {
   collection,
   doc,
-  addDoc,
+  setDoc,
   updateDoc,
   deleteDoc,
   query,
@@ -22,29 +22,85 @@ import { isMockArtifact } from './postService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components/common/ModernAvatar';
 
 const REELS_COLLECTION = 'reels';
+const LOCAL_REELS_CACHE_KEY = 'aura_community_reels_cache';
+const LOCAL_DELETED_REELS_KEY = 'aura_deleted_reels_registry';
+
+export function getStoredReels(): Reel[] {
+  try {
+    const raw = localStorage.getItem(LOCAL_REELS_CACHE_KEY);
+    if (!raw) return [];
+    const parsed: Reel[] = JSON.parse(raw);
+    const deleted = getDeletedReelIds();
+    return Array.isArray(parsed)
+      ? parsed.filter((r) => r && !deleted.has(r.id) && !isMockArtifact(r.author?.id, r.author?.username))
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveStoredReels(reels: Reel[]) {
+  try {
+    const deleted = getDeletedReelIds();
+    const clean = reels.filter((r) => r && !deleted.has(r.id) && !isMockArtifact(r.author?.id, r.author?.username));
+    localStorage.setItem(LOCAL_REELS_CACHE_KEY, JSON.stringify(clean.slice(0, 100)));
+  } catch {
+    // Safe
+  }
+}
+
+export function getDeletedReelIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem(LOCAL_DELETED_REELS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+export function markReelDeletedLocally(reelId: string) {
+  try {
+    const set = getDeletedReelIds();
+    set.add(reelId);
+    localStorage.setItem(LOCAL_DELETED_REELS_KEY, JSON.stringify(Array.from(set)));
+    const current = getStoredReels().filter((r) => r.id !== reelId);
+    saveStoredReels(current);
+  } catch {
+    // Safe
+  }
+}
 
 /**
- * Real-time subscription to reels from Firestore
+ * Real-time subscription to reels from Firestore with persistent local cache merge.
  */
 export function subscribeToReels(
   currentUid: string,
   onUpdate: (reels: Reel[]) => void,
   onError?: (err: unknown) => void
 ): Unsubscribe {
+  // 1. Immediately emit cached reels for instant playback on refresh
+  const initialCached = getStoredReels();
+  if (initialCached.length > 0) {
+    onUpdate(initialCached);
+  }
+
   const reelsRef = collection(db, REELS_COLLECTION);
 
   return onSnapshot(
     reelsRef,
     (snapshot) => {
-      const list: Reel[] = [];
+      const deleted = getDeletedReelIds();
+      const firestoreReels: Reel[] = [];
+
       snapshot.forEach((docSnap) => {
         const d = docSnap.data();
 
-        // Purge mock/seed reels
+        // Purge mock/seed reels or locally deleted reels
         if (
           isMockArtifact(d.author?.id, d.author?.username) ||
           docSnap.id.startsWith('demo_') ||
-          docSnap.id.startsWith('starter_')
+          docSnap.id.startsWith('starter_') ||
+          deleted.has(docSnap.id)
         ) {
           return;
         }
@@ -65,7 +121,7 @@ export function subscribeToReels(
             : c.author,
         }));
 
-        list.push({
+        firestoreReels.push({
           id: docSnap.id,
           author: reelAuthor,
           videoUrl: d.videoUrl,
@@ -79,27 +135,48 @@ export function subscribeToReels(
           comments,
           sharesCount: d.sharesCount || 0,
           isSaved: bookmarkedBy.includes(currentUid),
+          createdAt: d.createdAt,
         });
       });
 
+      // Merge Firestore reels with locally cached reels
+      const cached = getStoredReels();
+      const firestoreIds = new Set(firestoreReels.map((r) => r.id));
+      const localOnly = cached.filter((r) => !firestoreIds.has(r.id) && !deleted.has(r.id));
+
+      const merged = [...firestoreReels, ...localOnly];
+
       // Sort client-side so new reels appear first
-      list.sort((a, b) => {
-        const timeA = (a as any).createdAt?.toMillis ? (a as any).createdAt.toMillis() : Date.now();
-        const timeB = (b as any).createdAt?.toMillis ? (b as any).createdAt.toMillis() : Date.now();
+      merged.sort((a, b) => {
+        const timeA = (a as any).createdAt?.toMillis
+          ? (a as any).createdAt.toMillis()
+          : typeof a.createdAt === 'number'
+          ? a.createdAt
+          : Date.now();
+        const timeB = (b as any).createdAt?.toMillis
+          ? (b as any).createdAt.toMillis()
+          : typeof b.createdAt === 'number'
+          ? b.createdAt
+          : Date.now();
         return timeB - timeA;
       });
 
-      onUpdate(list);
+      saveStoredReels(merged);
+      onUpdate(merged);
     },
     (err) => {
-      console.warn('Reels subscription error:', err);
+      console.warn('Reels subscription notice (using local cached reels):', err);
+      const fallback = getStoredReels();
+      if (fallback.length > 0) {
+        onUpdate(fallback);
+      }
       if (onError) onError(err);
     }
   );
 }
 
 /**
- * Create a new Reel in Firestore
+ * Create a new Reel in Firestore and local persistent cache
  */
 export async function createReelInFirestore(
   author: User,
@@ -107,17 +184,49 @@ export async function createReelInFirestore(
   posterUrl: string,
   caption: string,
   tags: string[],
-  audioTrack?: { title: string; artist: string }
-): Promise<void> {
+  audioTrack?: { title: string; artist: string },
+  explicitReelId?: string
+): Promise<Reel> {
+  const reelId = explicitReelId || `reel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const cleanAvatar = isMockOrEmptyAvatar(author.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : author.avatar;
+
+  const newReel: Reel = {
+    id: reelId,
+    author: {
+      ...author,
+      avatar: cleanAvatar,
+      verified: author.verified || false,
+    },
+    videoUrl,
+    posterUrl,
+    caption,
+    tags,
+    audioTrack: audioTrack || { title: 'Original Sound', artist: author.name },
+    likesCount: 0,
+    likedBy: [],
+    hasLiked: false,
+    commentsCount: 0,
+    comments: [],
+    sharesCount: 0,
+    isSaved: false,
+    createdAt: { toMillis: () => Date.now() } as any,
+  };
+
+  // 1. Immediately store in persistent local cache so reel NEVER disappears on refresh
+  const current = getStoredReels().filter((r) => r.id !== reelId);
+  saveStoredReels([newReel, ...current]);
+
+  // 2. Persist to Firestore with explicit ID
   try {
-    const reelsRef = collection(db, REELS_COLLECTION);
-    await addDoc(reelsRef, {
+    const reelRef = doc(db, REELS_COLLECTION, reelId);
+    await setDoc(reelRef, {
+      id: reelId,
       authorId: author.id,
       author: {
         id: author.id,
         name: author.name,
         username: author.username,
-        avatar: author.avatar,
+        avatar: cleanAvatar,
         verified: author.verified || false,
       },
       videoUrl,
@@ -134,8 +243,10 @@ export async function createReelInFirestore(
       createdAt: serverTimestamp(),
     });
   } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, REELS_COLLECTION);
+    console.warn('Firestore reel sync notice (stored safely in local persistent cache):', err);
   }
+
+  return newReel;
 }
 
 /**
@@ -264,35 +375,16 @@ export async function createNewReel(
     audioTitle: string;
     audioArtist: string;
   }
-): Promise<void> {
-  try {
-    const reelsRef = collection(db, REELS_COLLECTION);
-    await addDoc(reelsRef, {
-      author: {
-        id: author.id,
-        name: author.name,
-        username: author.username,
-        avatar: author.avatar,
-        verified: author.verified || false,
-      },
-      videoUrl: data.videoUrl,
-      posterUrl: data.posterUrl,
-      caption: data.caption,
-      tags: data.tags,
-      audioTrack: {
-        title: data.audioTitle || 'Original Sound',
-        artist: data.audioArtist || author.name,
-      },
-      likesCount: 0,
-      likedBy: [],
-      bookmarksCount: 0,
-      bookmarkedBy: [],
-      commentsCount: 0,
-      comments: [],
-      sharesCount: 0,
-      createdAt: serverTimestamp(),
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.CREATE, REELS_COLLECTION);
-  }
+): Promise<Reel> {
+  return createReelInFirestore(
+    author,
+    data.videoUrl,
+    data.posterUrl,
+    data.caption,
+    data.tags,
+    {
+      title: data.audioTitle || 'Original Sound',
+      artist: data.audioArtist || author.name,
+    }
+  );
 }

@@ -17,9 +17,13 @@ import {
   Trash2,
   RefreshCw,
   Zap,
+  Play,
+  Square,
 } from 'lucide-react';
 import { User, StoryItem, StoryFilter, StorySticker, StoryTextOverlay } from '../../types';
 import { compressImage, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
+import { auraAudio } from '../../utils/audioSynthesizer';
+import { UploadProgressBar } from '../common/UploadProgressBar';
 
 interface CreateStoryModalProps {
   currentUser: User;
@@ -64,6 +68,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   const [mediaUrl, setMediaUrl] = useState<string>('');
   const [selectedBgGradient, setSelectedBgGradient] = useState(CANVAS_BACKGROUNDS[0].gradient);
   const [isProcessingMedia, setIsProcessingMedia] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const [uploadStatusText, setUploadStatusText] = useState('Compressing story...');
+  const [bytesTransferred, setBytesTransferred] = useState<number | undefined>(undefined);
+  const [totalBytes, setTotalBytes] = useState<number | undefined>(undefined);
   const [mediaSavings, setMediaSavings] = useState<{ original: number; compressed: number; percent: number } | null>(null);
 
   // Styling state
@@ -80,6 +88,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
   // Interactive stickers state
   const [stickers, setStickers] = useState<StorySticker[]>([]);
+  const [playingAudioTitle, setPlayingAudioTitle] = useState<string | null>(null);
   const [activeStickerModal, setActiveStickerModal] = useState<
     'none' | 'poll' | 'question' | 'music' | 'location' | 'mention' | 'emoji_slider'
   >('none');
@@ -169,6 +178,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   useEffect(() => {
     return () => {
       stopCamera();
+      auraAudio.setAmbient('off');
     };
   }, []);
 
@@ -177,6 +187,9 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     if (!file) return;
 
     setIsProcessingMedia(true);
+    setUploadPercent(15);
+    setUploadStatusText('Compressing image to high-efficiency WebP...');
+
     try {
       const compressed = await compressImage(file, {
         maxDimension: 1440,
@@ -184,9 +197,22 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         preferWebp: true,
       });
 
-      const storagePath = `stories/${currentUser.id}/${Date.now()}.webp`;
-      const res = await uploadMediaToFirebase(compressed.blob, storagePath);
+      setUploadPercent(50);
+      setUploadStatusText('Uploading to Firebase Storage...');
 
+      const storagePath = `stories/${currentUser.id}/${Date.now()}.webp`;
+      const res = await uploadMediaToFirebase(
+        compressed.blob,
+        storagePath,
+        (pct, trans, tot) => {
+          setUploadPercent(Math.min(99, Math.round(50 + pct * 0.49)));
+          setBytesTransferred(trans);
+          setTotalBytes(tot);
+        }
+      );
+
+      setUploadPercent(100);
+      setUploadStatusText('Story ready!');
       setMediaUrl(res.url);
       setMediaType('image');
       setMediaSavings({
@@ -197,7 +223,9 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     } catch (err) {
       console.warn('Story image upload fallback:', err);
     } finally {
-      setIsProcessingMedia(false);
+      setTimeout(() => {
+        setIsProcessingMedia(false);
+      }, 350);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
@@ -815,21 +843,62 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             {/* Music Content */}
             {activeStickerModal === 'music' && (
               <div className="space-y-2">
-                <div className="text-xs text-[#7A8A82] mb-1">Select soundtrack:</div>
-                {AMBIENT_SOUNDTRACKS.map((t, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => handleAddMusic(t)}
-                    className="w-full p-2.5 rounded-xl hover:bg-[#F1F5F2] border border-transparent hover:border-[#2D3732]/10 text-left flex items-center justify-between text-xs"
-                  >
-                    <div>
-                      <div className="font-medium text-[#2D3732]">{t.title}</div>
-                      <div className="text-[11px] text-[#7A8A82]">{t.artist}</div>
+                <div className="flex items-center justify-between text-xs text-[#7A8A82] mb-1">
+                  <span>Select soundtrack:</span>
+                  <span>Tap play to audition</span>
+                </div>
+                {AMBIENT_SOUNDTRACKS.map((t, idx) => {
+                  const isPlaying = playingAudioTitle === t.title;
+                  return (
+                    <div
+                      key={idx}
+                      className="w-full p-2.5 rounded-xl hover:bg-[#F1F5F2] border border-[#2D3732]/10 text-left flex items-center justify-between text-xs transition-colors"
+                    >
+                      <div
+                        onClick={() => {
+                          auraAudio.setAmbient('off');
+                          setPlayingAudioTitle(null);
+                          handleAddMusic(t);
+                        }}
+                        className="flex-1 cursor-pointer"
+                      >
+                        <div className="font-medium text-[#2D3732]">{t.title}</div>
+                        <div className="text-[11px] text-[#7A8A82]">{t.artist}</div>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (isPlaying) {
+                              auraAudio.setAmbient('off');
+                              setPlayingAudioTitle(null);
+                            } else {
+                              auraAudio.setAmbient(idx % 2 === 0 ? 'binaural' : 'rain');
+                              setPlayingAudioTitle(t.title);
+                            }
+                          }}
+                          className="p-1.5 rounded-lg bg-[#E6EDE9] text-[#2D3732] hover:bg-[#8FA89B] hover:text-white transition-colors cursor-pointer"
+                          title={isPlaying ? 'Pause' : 'Audition'}
+                        >
+                          {isPlaying ? <Square size={12} /> : <Play size={12} className="ml-0.5 fill-current" />}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            auraAudio.setAmbient('off');
+                            setPlayingAudioTitle(null);
+                            handleAddMusic(t);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-[#2D3732] text-white text-[11px] font-medium cursor-pointer"
+                        >
+                          Add
+                        </button>
+                      </div>
                     </div>
-                    <Music size={14} className="text-[#8FA89B]" />
-                  </button>
-                ))}
+                  );
+                })}
               </div>
             )}
 
