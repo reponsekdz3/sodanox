@@ -43,16 +43,16 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
         <div className="flex items-center justify-between w-full mb-6 text-xs text-white/60">
           <AuraLogo size="sm" showWordmark={true} variant="white" />
           <div className="flex items-center gap-1 bg-white/10 px-2.5 py-1 rounded-full text-[10px]">
-            <ShieldCheck size={12} className="text-[#8FA89B]" />
+            <ShieldCheck size={12} className="text-[#34D399]" />
             <span>Encrypted</span>
           </div>
         </div>
 
         {/* Animated Caller Avatar Ring */}
         <div className="relative my-2">
-          <div className="absolute -inset-4 rounded-full bg-[#8FA89B]/30 animate-ping" />
-          <div className="absolute -inset-2 rounded-full bg-[#8FA89B]/40 animate-pulse" />
-          <div className="relative w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-[#8FA89B] to-[#5C7567] shadow-2xl flex items-center justify-center">
+          <div className="absolute -inset-4 rounded-full bg-[#10B981]/30 animate-ping" />
+          <div className="absolute -inset-2 rounded-full bg-[#059669]/40 animate-pulse" />
+          <div className="relative w-28 h-28 rounded-full p-1 bg-gradient-to-tr from-[#059669] to-[#064E3B] shadow-2xl flex items-center justify-center">
             <ModernAvatar
               src={incomingCall.caller.avatar}
               alt={incomingCall.caller.name}

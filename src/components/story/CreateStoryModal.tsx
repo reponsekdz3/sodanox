@@ -187,32 +187,36 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     if (!file) return;
 
     setIsProcessingMedia(true);
-    setUploadPercent(15);
-    setUploadStatusText('Compressing image to high-efficiency WebP...');
+    setUploadPercent(10);
+    setUploadStatusText('Starting high-efficiency WebP compression...');
 
     try {
       const compressed = await compressImage(file, {
         maxDimension: 1440,
-        quality: 0.84,
+        quality: 0.86,
         preferWebp: true,
+        onProgress: (pct, status) => {
+          setUploadPercent(Math.min(50, Math.round(pct * 0.5)));
+          setUploadStatusText(status);
+        },
       });
 
-      setUploadPercent(50);
-      setUploadStatusText('Uploading to Firebase Storage...');
+      setUploadPercent(55);
+      setUploadStatusText('Saving story to cloud storage...');
 
       const storagePath = `stories/${currentUser.id}/${Date.now()}.webp`;
       const res = await uploadMediaToFirebase(
         compressed.blob,
         storagePath,
         (pct, trans, tot) => {
-          setUploadPercent(Math.min(99, Math.round(50 + pct * 0.49)));
+          setUploadPercent(Math.min(99, Math.round(55 + pct * 0.44)));
           setBytesTransferred(trans);
           setTotalBytes(tot);
         }
       );
 
       setUploadPercent(100);
-      setUploadStatusText('Story ready!');
+      setUploadStatusText('Story ready to share!');
       setMediaUrl(res.url);
       setMediaType('image');
       setMediaSavings({

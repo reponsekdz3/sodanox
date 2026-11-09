@@ -175,8 +175,8 @@ export interface Post {
   audioTrack?: { title: string; artist: string };
   filter?: StoryFilter;
   fontStyle?: 'sans' | 'serif' | 'mono' | 'nordic';
-  resolution?: '4k' | '1080p' | '720p';
-  aspectRatio?: 'original' | '1:1' | '4:5' | '16:9';
+  resolution?: '4k' | '1080p' | '720p' | 'original';
+  aspectRatio?: 'original' | '1:1' | '4:5' | '16:9' | '9:16';
   createdAt?: any;
 }
 
@@ -221,7 +221,7 @@ export interface MessageReplyInfo {
   senderId: string;
   senderName?: string;
   text?: string;
-  type?: 'text' | 'file' | 'voice' | 'image' | 'call';
+  type?: 'text' | 'file' | 'voice' | 'image' | 'call' | 'post';
 }
 
 export interface CallMeta {

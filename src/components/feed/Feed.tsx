@@ -92,7 +92,7 @@ export const Feed: React.FC<FeedProps> = ({
   return (
     <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 py-4">
       {/* Stories Bar at Top */}
-      <div className="mb-6 rounded-3xl overflow-hidden bg-[#FAFAF9] border border-[#F1F5F2] shadow-soft">
+      <div className="mb-6 rounded-3xl overflow-hidden bg-white border border-[#D1E2D9] shadow-soft">
         <StoryBar
           stories={stories}
           currentUser={currentUser}
@@ -109,22 +109,22 @@ export const Feed: React.FC<FeedProps> = ({
           <BrowserNotificationBanner />
 
           {/* Create Post Prompt Card */}
-          <div className="bg-[#F1F5F2] rounded-3xl p-4 sm:p-5 mb-6 shadow-soft flex items-center gap-3 border border-[#E6EDE9]">
+          <div className="bg-white rounded-3xl p-4 sm:p-5 mb-6 shadow-soft flex items-center gap-3 border border-[#D1E2D9]">
             <img
               src={currentUser.avatar}
               alt={currentUser.name}
-              className="w-10 h-10 rounded-full object-cover shrink-0 cursor-pointer"
+              className="w-10 h-10 rounded-full object-cover shrink-0 cursor-pointer ring-2 ring-[#059669]/30"
               onClick={() => onOpenUserProfile(currentUser)}
             />
             <button
               onClick={onOpenCreatePost}
-              className="flex-1 text-left bg-[#FAFAF9] hover:bg-[#FAFAF9]/90 border border-[#E6EDE9] rounded-2xl px-4 py-2.5 text-xs sm:text-sm text-[#7A8A82] hover:text-[#2D3732] transition-colors shadow-soft"
+              className="flex-1 text-left bg-[#F8FAF9] hover:bg-[#EDF3F0] border border-[#D1E2D9] rounded-2xl px-4 py-2.5 text-xs sm:text-sm text-[#4B6358] hover:text-[#022C22] transition-colors shadow-xs"
             >
               Share what you are creating or thinking today...
             </button>
             <button
               onClick={onOpenCreatePost}
-              className="hidden sm:inline-flex items-center px-4 py-2.5 rounded-2xl bg-[#8FA89B] hover:bg-[#7e9689] text-white text-xs font-medium transition-all shadow-soft active:scale-[0.98]"
+              className="hidden sm:inline-flex items-center px-4 py-2.5 rounded-2xl bg-[#064E3B] hover:bg-[#059669] text-white text-xs font-semibold transition-all shadow-soft active:scale-[0.98] cursor-pointer"
             >
               Post
             </button>
@@ -133,7 +133,7 @@ export const Feed: React.FC<FeedProps> = ({
           {/* Filter Bar */}
           <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1 scrollbar-none">
             {selectedTag && (
-              <div className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#8FA89B] text-white text-xs font-semibold shadow-soft shrink-0">
+              <div className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl bg-[#064E3B] text-white text-xs font-semibold shadow-soft shrink-0">
                 <Hash size={13} />
                 <span>{selectedTag}</span>
                 <button
@@ -157,10 +157,10 @@ export const Feed: React.FC<FeedProps> = ({
                   setSelectedTag(null);
                   setActiveFilter(tab.id as typeof activeFilter);
                 }}
-                className={`px-4 py-2 rounded-2xl text-xs font-medium whitespace-nowrap transition-all ${
+                className={`px-4 py-2 rounded-2xl text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${
                   !selectedTag && activeFilter === tab.id
-                    ? 'bg-[#2D3732] text-white shadow-soft'
-                    : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9]'
+                    ? 'bg-[#064E3B] text-white shadow-soft font-semibold'
+                    : 'bg-[#EDF3F0] text-[#4B6358] hover:text-[#022C22] hover:bg-[#D1E2D9]'
                 }`}
               >
                 {tab.label}
@@ -170,14 +170,14 @@ export const Feed: React.FC<FeedProps> = ({
 
           {/* Posts list */}
           {filteredPosts.length === 0 ? (
-            <div className="bg-[#F1F5F2] rounded-3xl p-10 sm:p-12 text-center border border-[#E6EDE9]">
-              <div className="w-12 h-12 rounded-2xl bg-[#8FA89B]/20 text-[#5E7C6E] flex items-center justify-center mx-auto mb-4">
+            <div className="bg-white rounded-3xl p-10 sm:p-12 text-center border border-[#D1E2D9]">
+              <div className="w-12 h-12 rounded-2xl bg-[#059669]/15 text-[#064E3B] flex items-center justify-center mx-auto mb-4">
                 <Sparkles size={24} />
               </div>
-              <h3 className="font-serif text-lg text-[#2D3732] mb-1 font-normal">
+              <h3 className="font-serif text-lg text-[#022C22] mb-1 font-semibold">
                 {posts.length === 0 ? 'Your feed is fresh and quiet' : 'No posts found in this stream'}
               </h3>
-              <p className="text-xs text-[#7A8A82] max-w-sm mx-auto mb-5 leading-relaxed">
+              <p className="text-xs text-[#4B6358] max-w-sm mx-auto mb-5 leading-relaxed">
                 {posts.length === 0
                   ? 'Be the first creator to share a mindful thought, image, poll, or voice reflection.'
                   : 'Try selecting another category or clear your search filter.'}
@@ -186,9 +186,9 @@ export const Feed: React.FC<FeedProps> = ({
                 {posts.length === 0 ? (
                   <button
                     onClick={onOpenCreatePost}
-                    className="px-5 py-2.5 rounded-2xl bg-[#2D3732] hover:bg-[#1E2522] text-white text-xs font-medium shadow-soft transition-all cursor-pointer"
+                    className="px-5 py-2.5 rounded-2xl bg-[#064E3B] hover:bg-[#059669] text-white text-xs font-semibold shadow-soft transition-all cursor-pointer"
                   >
-                    Create First Reflection
+                    Create First Post
                   </button>
                 ) : (
                   <button
@@ -197,7 +197,7 @@ export const Feed: React.FC<FeedProps> = ({
                       setSelectedTag(null);
                       setSearchQuery('');
                     }}
-                    className="px-4 py-2 rounded-2xl bg-[#8FA89B] text-white text-xs font-medium cursor-pointer"
+                    className="px-4 py-2 rounded-2xl bg-[#059669] text-white text-xs font-medium cursor-pointer"
                   >
                     View All Posts
                   </button>

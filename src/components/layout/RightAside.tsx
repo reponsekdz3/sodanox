@@ -105,20 +105,20 @@ export const RightAside: React.FC<RightAsideProps> = ({
       <div className="relative">
         <Search
           size={16}
-          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]"
+          className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B6358]"
         />
         <input
           type="text"
           value={searchQuery}
           onChange={(e) => onSearchQueryChange(e.target.value)}
           placeholder="Search creators, thoughts, craft..."
-          className="w-full bg-[#F1F5F2] hover:bg-[#EAEFEA] focus:bg-white text-[#2D3732] placeholder-[#7A8A82] text-xs sm:text-sm pl-10 pr-9 py-2.5 rounded-2xl border border-transparent focus:border-[#8FA89B] transition-all focus:outline-none shadow-xs"
+          className="w-full bg-white hover:bg-[#EDF3F0] focus:bg-white text-[#022C22] placeholder-[#4B6358] text-xs sm:text-sm pl-10 pr-9 py-2.5 rounded-2xl border border-[#D1E2D9] focus:border-[#059669] transition-all focus:outline-none shadow-xs"
         />
         {searchQuery && (
           <button
             type="button"
             onClick={() => onSearchQueryChange('')}
-            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#7A8A82] hover:text-[#2D3732] p-1 cursor-pointer"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-[#4B6358] hover:text-[#022C22] p-1 cursor-pointer"
           >
             <X size={14} />
           </button>
@@ -126,27 +126,27 @@ export const RightAside: React.FC<RightAsideProps> = ({
       </div>
 
       {/* 2. Mindful Ambient Soundscape Synthesizer */}
-      <div className="bg-[#F1F5F2] rounded-3xl p-4 border border-[#E6EDE9] shadow-soft">
+      <div className="bg-white rounded-3xl p-4 border border-[#D1E2D9] shadow-soft">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
-            <Radio size={15} className="text-[#8FA89B] animate-pulse" />
-            <h3 className="text-xs font-semibold text-[#2D3732] uppercase tracking-wider">
-              Aura Soundscape
+            <Radio size={15} className="text-[#059669] animate-pulse" />
+            <h3 className="text-xs font-semibold text-[#022C22] uppercase tracking-wider">
+              AuraChats Soundscape
             </h3>
           </div>
           {ambientMode !== 'off' ? (
             <div className="flex items-center gap-1">
               {/* Equalizer animation */}
-              <span className="w-1 h-3 bg-[#8FA89B] rounded-full animate-bounce [animation-delay:-0.3s]" />
-              <span className="w-1 h-4 bg-[#8FA89B] rounded-full animate-bounce [animation-delay:-0.15s]" />
-              <span className="w-1 h-2.5 bg-[#8FA89B] rounded-full animate-bounce" />
+              <span className="w-1 h-3 bg-[#059669] rounded-full animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-1 h-4 bg-[#059669] rounded-full animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-1 h-2.5 bg-[#059669] rounded-full animate-bounce" />
             </div>
           ) : (
-            <VolumeX size={14} className="text-[#7A8A82]" />
+            <VolumeX size={14} className="text-[#4B6358]" />
           )}
         </div>
 
-        <p className="text-[11px] text-[#7A8A82] mb-3 leading-relaxed">
+        <p className="text-[11px] text-[#4B6358] mb-3 leading-relaxed">
           Native acoustic frequencies designed to accompany slow reading and deep focus.
         </p>
 
@@ -164,8 +164,8 @@ export const RightAside: React.FC<RightAsideProps> = ({
               onClick={() => handleToggleAmbient(mode.id as AmbientSoundMode)}
               className={`py-2 px-2.5 rounded-xl text-[11px] font-medium transition-all text-left flex items-center justify-between cursor-pointer ${
                 ambientMode === mode.id
-                  ? 'bg-[#8FA89B] text-white shadow-xs font-semibold'
-                  : 'bg-white/80 hover:bg-white text-[#2D3732] border border-[#2D3732]/5'
+                  ? 'bg-[#064E3B] text-white shadow-xs font-semibold'
+                  : 'bg-[#EDF3F0] hover:bg-[#D1E2D9] text-[#022C22] border border-[#D1E2D9]'
               }`}
             >
               <span>{mode.label}</span>
@@ -178,7 +178,7 @@ export const RightAside: React.FC<RightAsideProps> = ({
           <button
             type="button"
             onClick={() => handleToggleAmbient('off')}
-            className="w-full mt-2.5 py-1.5 text-center text-[10px] text-[#7A8A82] hover:text-[#2D3732] transition-colors font-medium cursor-pointer"
+            className="w-full mt-2.5 py-1.5 text-center text-[10px] text-[#4B6358] hover:text-[#022C22] transition-colors font-medium cursor-pointer"
           >
             Turn off soundscape
           </button>
@@ -186,20 +186,20 @@ export const RightAside: React.FC<RightAsideProps> = ({
       </div>
 
       {/* 3. Daily Slow Reflection Interactive Card */}
-      <div className="bg-gradient-to-br from-[#8FA89B]/15 via-[#F1F5F2] to-[#E6EDE9] rounded-3xl p-4 sm:p-5 border border-[#8FA89B]/25 shadow-soft relative overflow-hidden">
+      <div className="bg-gradient-to-br from-[#064E3B]/10 via-white to-[#EDF3F0] rounded-3xl p-4 sm:p-5 border border-[#D1E2D9] shadow-soft relative overflow-hidden">
         <div className="flex items-center gap-2 mb-2">
-          <Sparkles size={14} className="text-[#8FA89B]" />
-          <span className="text-[10px] uppercase font-mono tracking-widest text-[#5E7C6E] font-bold">
+          <Sparkles size={14} className="text-[#059669]" />
+          <span className="text-[10px] uppercase font-mono tracking-widest text-[#064E3B] font-bold">
             Daily Slow Reflection
           </span>
         </div>
-        <p className="font-serif italic text-xs sm:text-sm text-[#2D3732] leading-relaxed mb-3">
+        <p className="font-serif italic text-xs sm:text-sm text-[#022C22] leading-relaxed mb-3">
           "{MINDFUL_PROMPTS[dailyPromptIndex]}"
         </p>
         <button
           type="button"
           onClick={handlePromptShare}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2D3732] hover:bg-[#1E2522] text-white text-xs font-medium transition-all shadow-xs active:scale-95 cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#064E3B] hover:bg-[#059669] text-white text-xs font-semibold transition-all shadow-xs active:scale-95 cursor-pointer"
         >
           <PenTool size={12} />
           <span>Reflect & Post</span>
@@ -207,15 +207,16 @@ export const RightAside: React.FC<RightAsideProps> = ({
       </div>
 
       {/* 4. Active Creators Live Ticker */}
-      <div className="bg-[#F1F5F2] rounded-3xl p-4 border border-[#E6EDE9] shadow-soft">
+      {/* 4. Active Creators Live Ticker */}
+      <div className="bg-white rounded-3xl p-4 border border-[#D1E2D9] shadow-soft">
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-1.5">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            <h3 className="text-xs font-semibold text-[#2D3732] uppercase tracking-wider">
+            <h3 className="text-xs font-semibold text-[#022C22] uppercase tracking-wider">
               Community Status
             </h3>
           </div>
-          <span className="text-[10px] text-[#7A8A82] font-mono">Live</span>
+          <span className="text-[10px] text-[#4B6358] font-mono">Live</span>
         </div>
 
         <div className="flex items-center gap-2.5 overflow-x-auto pb-1 scrollbar-none">
@@ -252,20 +253,20 @@ export const RightAside: React.FC<RightAsideProps> = ({
       </div>
 
       {/* 5. Suggested Creators with Rich Interactivity */}
-      <div className="bg-[#F1F5F2] rounded-3xl p-4 sm:p-5 border border-[#E6EDE9] shadow-soft">
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-[#D1E2D9] shadow-soft">
         <div className="flex items-center justify-between mb-3.5">
-          <h3 className="text-xs font-semibold text-[#2D3732] uppercase tracking-wider flex items-center gap-1.5">
-            <Users size={14} className="text-[#8FA89B]" />
+          <h3 className="text-xs font-semibold text-[#022C22] uppercase tracking-wider flex items-center gap-1.5">
+            <Users size={14} className="text-[#059669]" />
             <span>Suggested Creators</span>
           </h3>
-          <span className="text-[10px] text-[#7A8A82] font-mono">
+          <span className="text-[10px] text-[#4B6358] font-mono">
             {suggestedUsers.length} available
           </span>
         </div>
 
         <div className="space-y-3">
           {displayedSuggested.length === 0 ? (
-            <p className="text-xs text-[#7A8A82] italic py-2 text-center">
+            <p className="text-xs text-[#4B6358] italic py-2 text-center">
               No new creators to suggest. As new members join, they will appear here.
             </p>
           ) : (
@@ -279,18 +280,18 @@ export const RightAside: React.FC<RightAsideProps> = ({
                     src={user.avatar}
                     alt={user.name}
                     size="sm"
-                    className="shrink-0 group-hover:ring-1 group-hover:ring-[#8FA89B]"
+                    className="shrink-0 group-hover:ring-1 group-hover:ring-[#059669]"
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1">
-                      <span className="text-xs font-medium text-[#2D3732] truncate group-hover:underline">
+                      <span className="text-xs font-semibold text-[#022C22] truncate group-hover:underline">
                         {user.name}
                       </span>
                       {user.verified && (
-                        <CheckCircle2 size={12} className="text-[#8FA89B] shrink-0" />
+                        <CheckCircle2 size={12} className="text-[#059669] shrink-0" />
                       )}
                     </div>
-                    <span className="text-[11px] text-[#7A8A82] block truncate font-mono">
+                    <span className="text-[11px] text-[#4B6358] block truncate font-mono">
                       @{user.username}
                     </span>
                   </div>
@@ -301,7 +302,7 @@ export const RightAside: React.FC<RightAsideProps> = ({
                     <button
                       type="button"
                       onClick={() => onSendDirectMessage(user)}
-                      className="p-1.5 rounded-xl bg-white hover:bg-[#E6EDE9] text-[#7A8A82] hover:text-[#2D3732] transition-colors border border-[#2D3732]/10 cursor-pointer"
+                      className="p-1.5 rounded-xl bg-white hover:bg-[#EDF3F0] text-[#4B6358] hover:text-[#022C22] transition-colors border border-[#D1E2D9] cursor-pointer"
                       title={`Message ${user.name}`}
                     >
                       <MessageCircle size={14} />
@@ -321,18 +322,18 @@ export const RightAside: React.FC<RightAsideProps> = ({
         </div>
       </div>
 
-      {/* 6. Trending Topics on Aura */}
-      <div className="bg-[#F1F5F2] rounded-3xl p-4 sm:p-5 border border-[#E6EDE9] shadow-soft">
+      {/* 6. Trending Topics on AuraChats */}
+      <div className="bg-white rounded-3xl p-4 sm:p-5 border border-[#D1E2D9] shadow-soft">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-xs font-semibold text-[#2D3732] uppercase tracking-wider flex items-center gap-1.5">
-            <TrendingUp size={14} className="text-[#8FA89B]" />
-            <span>Trending on Aura</span>
+          <h3 className="text-xs font-semibold text-[#022C22] uppercase tracking-wider flex items-center gap-1.5">
+            <TrendingUp size={14} className="text-[#059669]" />
+            <span>Trending on AuraChats</span>
           </h3>
           {selectedTag && (
             <button
               type="button"
               onClick={() => onSelectTag(null)}
-              className="text-[10px] text-[#8FA89B] hover:underline font-medium"
+              className="text-[10px] text-[#059669] hover:underline font-semibold"
             >
               Clear filter
             </button>
@@ -346,22 +347,22 @@ export const RightAside: React.FC<RightAsideProps> = ({
               onClick={() => onSelectTag(selectedTag === item.tag ? null : item.tag)}
               className={`flex items-center justify-between text-xs py-2 px-2.5 rounded-xl transition-all cursor-pointer group ${
                 selectedTag === item.tag
-                  ? 'bg-[#8FA89B] text-white shadow-xs font-medium'
-                  : 'hover:bg-[#E6EDE9] text-[#2D3732]'
+                  ? 'bg-[#064E3B] text-white shadow-xs font-semibold'
+                  : 'hover:bg-[#EDF3F0] text-[#022C22]'
               }`}
             >
               <div className="min-w-0 flex items-center gap-1.5">
                 {item.isHot && (
                   <Flame
                     size={13}
-                    className={selectedTag === item.tag ? 'text-amber-200' : 'text-amber-500'}
+                    className={selectedTag === item.tag ? 'text-amber-300' : 'text-amber-500'}
                   />
                 )}
                 <div className="truncate">
-                  <span className="font-medium">#{item.tag}</span>
+                  <span className="font-semibold">#{item.tag}</span>
                   <span
                     className={`block text-[10px] ${
-                      selectedTag === item.tag ? 'text-white/80' : 'text-[#7A8A82]'
+                      selectedTag === item.tag ? 'text-white/80' : 'text-[#4B6358]'
                     }`}
                   >
                     {item.category}
@@ -370,7 +371,7 @@ export const RightAside: React.FC<RightAsideProps> = ({
               </div>
               <span
                 className={`text-[11px] tabular-nums shrink-0 font-mono ${
-                  selectedTag === item.tag ? 'text-white/90' : 'text-[#7A8A82]'
+                  selectedTag === item.tag ? 'text-white/90' : 'text-[#4B6358]'
                 }`}
               >
                 {item.formattedCount}
@@ -381,51 +382,51 @@ export const RightAside: React.FC<RightAsideProps> = ({
       </div>
 
       {/* 7. Current User Quick Summary Card */}
-      <div className="bg-[#F1F5F2] rounded-3xl p-4 border border-[#E6EDE9] shadow-soft">
+      <div className="bg-white rounded-3xl p-4 border border-[#D1E2D9] shadow-soft">
         <div className="flex items-center gap-3 mb-3">
           <img
             src={currentUser.avatar}
             alt={currentUser.name}
-            className="w-11 h-11 rounded-full object-cover ring-2 ring-[#8FA89B]/40 cursor-pointer"
+            className="w-11 h-11 rounded-full object-cover ring-2 ring-[#059669]/40 cursor-pointer"
             onClick={() => onOpenUserProfile(currentUser)}
           />
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1">
               <span
                 onClick={() => onOpenUserProfile(currentUser)}
-                className="text-xs font-semibold text-[#2D3732] truncate cursor-pointer hover:underline"
+                className="text-xs font-semibold text-[#022C22] truncate cursor-pointer hover:underline"
               >
                 {currentUser.name}
               </span>
               {currentUser.verified && (
-                <CheckCircle2 size={12} className="text-[#8FA89B] shrink-0" />
+                <CheckCircle2 size={12} className="text-[#059669] shrink-0" />
               )}
             </div>
-            <p className="text-[11px] text-[#7A8A82] truncate font-mono">
+            <p className="text-[11px] text-[#4B6358] truncate font-mono">
               @{currentUser.username}
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-center py-2 px-3 bg-white/70 rounded-2xl border border-[#E6EDE9]/60 mb-2.5 text-xs">
+        <div className="grid grid-cols-2 gap-2 text-center py-2 px-3 bg-[#EDF3F0] rounded-2xl border border-[#D1E2D9] mb-2.5 text-xs">
           <div>
-            <span className="block font-semibold text-[#2D3732] tabular-nums">
+            <span className="block font-semibold text-[#022C22] tabular-nums">
               {currentUser.followersCount.toLocaleString()}
             </span>
-            <span className="text-[10px] text-[#7A8A82]">Followers</span>
+            <span className="text-[10px] text-[#4B6358]">Followers</span>
           </div>
           <div>
-            <span className="block font-semibold text-[#2D3732] tabular-nums">
+            <span className="block font-semibold text-[#022C22] tabular-nums">
               {currentUser.followingCount.toLocaleString()}
             </span>
-            <span className="text-[10px] text-[#7A8A82]">Following</span>
+            <span className="text-[10px] text-[#4B6358]">Following</span>
           </div>
         </div>
 
         <button
           type="button"
           onClick={() => onOpenUserProfile(currentUser)}
-          className="w-full py-1.5 rounded-xl bg-[#E6EDE9] hover:bg-[#8FA89B] hover:text-white text-[#2D3732] transition-colors text-xs font-medium text-center cursor-pointer"
+          className="w-full py-1.5 rounded-xl bg-[#EDF3F0] hover:bg-[#064E3B] hover:text-white text-[#022C22] transition-colors text-xs font-semibold text-center cursor-pointer"
         >
           View Your Profile
         </button>
@@ -433,8 +434,8 @@ export const RightAside: React.FC<RightAsideProps> = ({
 
       {/* 8. Mandatory Developer Attribution */}
       <div className="py-2 text-center">
-        <p className="text-[11px] text-[#7A8A82] font-medium tracking-wide hover:text-[#2D3732] transition-colors">
-          app developed by reponsekdz · Aura Social
+        <p className="text-[11px] text-[#4B6358] font-medium tracking-wide hover:text-[#022C22] transition-colors">
+          app developed by reponsekdz · AuraChats
         </p>
       </div>
     </aside>

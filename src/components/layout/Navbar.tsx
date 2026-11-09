@@ -79,7 +79,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-[#FAFAF9]/95 backdrop-blur-xl border-b border-[#E6EDE9]/80 shadow-xs transition-all">
+    <header className="sticky top-0 z-40 w-full bg-[#F8FAF9]/95 backdrop-blur-xl border-b border-[#D1E2D9] shadow-xs transition-all">
       <div className="max-w-7xl mx-auto px-2.5 sm:px-6 h-16 flex items-center justify-between gap-1.5 sm:gap-4">
         {/* Zone 1: Authentic Real Brand Logo & Live Status */}
         <div className="flex items-center gap-2 sm:gap-3 shrink-0">
@@ -93,7 +93,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Discreet Live Sync Indicator */}
           <div
-            className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#E6EDE9]/60 border border-[#8FA89B]/20 text-[10px] font-mono text-[#5E7C6E] tracking-tight"
+            className="hidden xl:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#EDF3F0] border border-[#059669]/20 text-[10px] font-mono text-[#064E3B] tracking-tight"
             title="Real-time synchronized across community"
           >
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
@@ -108,11 +108,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             onSubmit={handleSearchSubmit}
             className={`w-full relative flex items-center transition-all duration-200 ${
               searchFocused
-                ? 'ring-2 ring-[#8FA89B]/50 shadow-sm'
+                ? 'ring-2 ring-[#059669]/50 shadow-sm'
                 : 'hover:bg-white/80'
-            } bg-[#F1F5F2]/80 rounded-2xl border border-[#2D3732]/10`}
+            } bg-[#EDF3F0] rounded-2xl border border-[#D1E2D9]`}
           >
-            <Search size={15} className="absolute left-3 text-[#7A8A82]" />
+            <Search size={15} className="absolute left-3 text-[#4B6358]" />
             <input
               type="text"
               value={navSearchQuery}
@@ -120,13 +120,13 @@ export const Navbar: React.FC<NavbarProps> = ({
               onFocus={() => setSearchFocused(true)}
               onBlur={() => setSearchFocused(false)}
               placeholder="Search reflections, creators..."
-              className="w-full pl-9 pr-3 py-2 bg-transparent text-xs text-[#2D3732] placeholder-[#7A8A82]/70 focus:outline-none"
+              className="w-full pl-9 pr-3 py-2 bg-transparent text-xs text-[#022C22] placeholder-[#4B6358]/70 focus:outline-none"
             />
             {navSearchQuery && (
               <button
                 type="button"
                 onClick={() => setNavSearchQuery('')}
-                className="pr-3 text-[10px] text-[#7A8A82] hover:text-[#2D3732]"
+                className="pr-3 text-[10px] text-[#4B6358] hover:text-[#022C22]"
               >
                 Clear
               </button>
@@ -142,11 +142,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleTabClick('feed')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
               currentTab === 'feed'
-                ? 'bg-[#E6EDE9] text-[#2D3732] font-semibold shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/60'
+                ? 'bg-[#EDF3F0] text-[#022C22] font-semibold shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-white/60'
             }`}
           >
-            <Home size={16} className={currentTab === 'feed' ? 'text-[#5E7C6E]' : 'text-[#7A8A82]'} />
+            <Home size={16} className={currentTab === 'feed' ? 'text-[#059669]' : 'text-[#4B6358]'} />
             <span>Feed</span>
           </button>
 
@@ -156,17 +156,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleTabClick('reels')}
             className={`group flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
               currentTab === 'reels'
-                ? 'bg-[#E6EDE9] text-[#2D3732] font-semibold shadow-xs ring-1 ring-[#8FA89B]/30'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/60'
+                ? 'bg-[#EDF3F0] text-[#022C22] font-semibold shadow-xs ring-1 ring-[#059669]/30'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-white/60'
             }`}
           >
             {currentTab === 'reels' ? (
-              <HeroFilmSolid className="w-5 h-5 text-[#2D3732] shrink-0" />
+              <HeroFilmSolid className="w-5 h-5 text-[#059669] shrink-0" />
             ) : (
-              <HeroFilmOutline className="w-5 h-5 text-[#7A8A82] group-hover:text-[#2D3732] shrink-0" />
+              <HeroFilmOutline className="w-5 h-5 text-[#4B6358] group-hover:text-[#022C22] shrink-0" />
             )}
             <span>Reels</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#8FA89B]/15 text-[#5E7C6E] font-mono">
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-[#059669]/15 text-[#064E3B] font-mono">
               HD
             </span>
           </button>
@@ -177,14 +177,14 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleTabClick('messages')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
               currentTab === 'messages'
-                ? 'bg-[#E6EDE9] text-[#2D3732] font-semibold shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/60'
+                ? 'bg-[#EDF3F0] text-[#022C22] font-semibold shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-white/60'
             }`}
           >
-            <MessageSquare size={16} className={currentTab === 'messages' ? 'text-[#5E7C6E]' : 'text-[#7A8A82]'} />
+            <MessageSquare size={16} className={currentTab === 'messages' ? 'text-[#059669]' : 'text-[#4B6358]'} />
             <span>Messages</span>
             {unreadMessagesCount > 0 && (
-              <span className="px-1.5 py-0.2 bg-[#5E7C6E] text-white text-[10px] font-semibold rounded-full tabular-nums shadow-xs">
+              <span className="px-1.5 py-0.2 bg-[#059669] text-white text-[10px] font-semibold rounded-full tabular-nums shadow-xs">
                 {unreadMessagesCount}
               </span>
             )}
@@ -196,11 +196,11 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleTabClick('explore')}
             className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-medium transition-all cursor-pointer ${
               currentTab === 'explore'
-                ? 'bg-[#E6EDE9] text-[#2D3732] font-semibold shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/60'
+                ? 'bg-[#EDF3F0] text-[#022C22] font-semibold shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-white/60'
             }`}
           >
-            <Compass size={16} className={currentTab === 'explore' ? 'text-[#5E7C6E]' : 'text-[#7A8A82]'} />
+            <Compass size={16} className={currentTab === 'explore' ? 'text-[#059669]' : 'text-[#4B6358]'} />
             <span>Explore</span>
           </button>
 
@@ -211,7 +211,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               auraAudio.playClick(500, 0.04);
               onOpenNotifications();
             }}
-            className="relative flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-medium text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/60 transition-all cursor-pointer"
+            className="relative flex items-center gap-2 px-3.5 py-2 rounded-2xl text-xs sm:text-sm font-medium text-[#4B6358] hover:text-[#022C22] hover:bg-white/60 transition-all cursor-pointer"
             title="Notifications & Community Activity"
           >
             <div className="relative">
@@ -232,15 +232,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             onClick={() => handleTabClick('reels')}
             className={`md:hidden p-2 rounded-2xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
               currentTab === 'reels'
-                ? 'bg-[#E6EDE9] border-[#8FA89B]/50 ring-2 ring-[#5E7C6E]/20 text-[#2D3732] shadow-xs'
-                : 'border-[#2D3732]/10 bg-white/80 hover:bg-[#E6EDE9]/60 text-[#3C4A42]'
+                ? 'bg-[#EDF3F0] border-[#059669]/50 ring-2 ring-[#059669]/20 text-[#022C22] shadow-xs'
+                : 'border-[#D1E2D9] bg-white/80 hover:bg-[#EDF3F0] text-[#022C22]'
             }`}
             title="Cinema & Reels"
           >
             {currentTab === 'reels' ? (
-              <HeroFilmSolid className="w-5 h-5 text-[#2D3732]" />
+              <HeroFilmSolid className="w-5 h-5 text-[#059669]" />
             ) : (
-              <HeroFilmOutline className="w-5 h-5 text-[#3C4A42]" />
+              <HeroFilmOutline className="w-5 h-5 text-[#4B6358]" />
             )}
           </button>
 
@@ -251,7 +251,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               auraAudio.playClick(500, 0.04);
               onOpenNotifications();
             }}
-            className="md:hidden p-2 rounded-2xl text-[#7A8A82] hover:text-[#2D3732] hover:bg-white/70 relative cursor-pointer transition-colors"
+            className="md:hidden p-2 rounded-2xl text-[#4B6358] hover:text-[#022C22] hover:bg-white/70 relative cursor-pointer transition-colors"
             title="Activity"
           >
             <Bell size={19} />
@@ -270,7 +270,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               auraAudio.playClick(540, 0.05);
               onOpenCreatePost();
             }}
-            className="group relative flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl bg-gradient-to-r from-[#2F4438] via-[#4A6757] to-[#719181] text-white text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg hover:brightness-110 active:scale-95 whitespace-nowrap cursor-pointer ring-1 ring-white/30 border border-white/20"
+            className="group relative flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-2xl bg-gradient-to-r from-[#064E3B] via-[#059669] to-[#10B981] text-white text-xs sm:text-sm font-semibold transition-all shadow-md hover:shadow-lg hover:brightness-105 active:scale-95 whitespace-nowrap cursor-pointer ring-1 ring-white/30 border border-white/20"
             title="Create Reflection or Post"
           >
             <HeroPlusSolid className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2] transition-transform duration-200 group-hover:rotate-90 shrink-0" />

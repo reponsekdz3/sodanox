@@ -21,7 +21,7 @@ import {
   Play,
   Square,
 } from 'lucide-react';
-import { Post, User, StoryFilter } from '../../types';
+import { Post, User, StoryFilter, SharedPostMeta } from '../../types';
 import { SharePostModal } from './SharePostModal';
 import { QuotePostModal } from './QuotePostModal';
 import { PostEngagementModal } from './PostEngagementModal';
@@ -108,7 +108,7 @@ interface PostCardProps {
   onBookmarkPost: (postId: string) => void;
   onRepostPost: (postId: string, quoteComment?: string) => void;
   onIncrementShare?: (postId: string) => void;
-  onSendToChat?: (recipientId: string, messageText: string) => void;
+  onSendToChat?: (recipientId: string, messageText: string, sharedPost?: SharedPostMeta) => void;
   onAddComment: (postId: string, text: string, replyToCommentId?: string) => void;
   onLikeComment: (postId: string, commentId: string) => void;
   onDeleteComment?: (postId: string, commentId: string, replyId?: string) => void;
@@ -846,8 +846,8 @@ export const PostCard: React.FC<PostCardProps> = ({
           users={suggestedUsers}
           currentUser={currentUser}
           onClose={() => setIsShareModalOpen(false)}
-          onSendToChat={(recipientId, text) => {
-            onSendToChat?.(recipientId, text);
+          onSendToChat={(recipientId, text, sharedMeta) => {
+            onSendToChat?.(recipientId, text, sharedMeta);
           }}
           onIncrementShare={() => onIncrementShare?.(post.id)}
         />

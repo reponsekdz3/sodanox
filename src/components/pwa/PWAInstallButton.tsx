@@ -27,11 +27,11 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         <button
           type="button"
           onClick={handleClick}
-          className={`w-full px-4 py-2.5 text-left text-xs font-medium text-[#2D3732] hover:bg-[#F1F5F2] flex items-center justify-between cursor-pointer ${className}`}
+          className={`w-full px-4 py-2.5 text-left text-xs font-semibold text-[#022C22] hover:bg-[#EDF3F0] flex items-center justify-between cursor-pointer ${className}`}
         >
           <div className="flex items-center gap-2.5">
-            <Laptop size={15} className="text-[#5E7C6E]" />
-            <span>{isInstalled ? 'Aura Desktop App' : 'Install Aura on PC (PWA)'}</span>
+            <Laptop size={15} className="text-[#059669]" />
+            <span>{isInstalled ? 'AuraChats Desktop App' : 'Install AuraChats on PC (PWA)'}</span>
           </div>
           {isInstallable && (
             <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded-full font-bold">
@@ -50,7 +50,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
         <button
           onClick={handleClick}
           className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-semibold hover:bg-emerald-100 transition-colors border border-emerald-200 cursor-pointer ${className}`}
-          title="Aura is installed on this PC"
+          title="AuraChats is installed on this PC"
         >
           <Check size={13} className="text-emerald-600 stroke-[3]" />
           <span className="hidden sm:inline">Desktop App Active</span>
@@ -65,22 +65,22 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       <>
         <div
           onClick={handleClick}
-          className={`p-3 rounded-2xl bg-gradient-to-br from-[#EBF1ED] to-[#DEE7E1] border border-[#8FA89B]/40 hover:border-[#4A6757] transition-all cursor-pointer group shadow-2xs ${className}`}
+          className={`p-3 rounded-2xl bg-gradient-to-br from-[#EDF3F0] to-[#E2EAE5] border border-[#D1E2D9] hover:border-[#059669] transition-all cursor-pointer group shadow-2xs ${className}`}
         >
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#2F4438] text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
+            <div className="w-8 h-8 rounded-xl bg-[#064E3B] text-white flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform shadow-xs">
               <Laptop size={15} />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center justify-between">
-                <p className="text-xs font-bold text-[#1E2A23] truncate">
-                  {isInstalled ? 'Desktop App' : 'Install Aura on PC'}
+                <p className="text-xs font-bold text-[#022C22] truncate">
+                  {isInstalled ? 'Desktop App' : 'Install AuraChats on PC'}
                 </p>
                 {isInstallable && (
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 )}
               </div>
-              <p className="text-[10px] text-[#62736B] truncate">
+              <p className="text-[10px] text-[#4B6358] truncate">
                 {isInstalled ? 'Standalone window ready' : 'Standalone window & popups'}
               </p>
             </div>
@@ -96,10 +96,10 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
       <>
         <button
           onClick={handleClick}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EBF1ED] hover:bg-[#DEE7E1] text-[#2F4438] text-xs font-semibold transition-all border border-[#8FA89B]/40 shadow-2xs cursor-pointer ${className}`}
-          title="Install Aura on your computer"
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#EDF3F0] hover:bg-[#D1E2D9] text-[#064E3B] text-xs font-semibold transition-all border border-[#D1E2D9] shadow-2xs cursor-pointer ${className}`}
+          title="Install AuraChats on your computer"
         >
-          <Laptop size={14} className="text-[#2F4438]" />
+          <Laptop size={14} className="text-[#064E3B]" />
           <span className="hidden sm:inline">Install on PC</span>
           {isInstallable && (
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping ml-0.5" />
@@ -115,7 +115,7 @@ export const PWAInstallButton: React.FC<PWAInstallButtonProps> = ({
     <>
       <button
         onClick={handleClick}
-        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-[#4A6757] hover:bg-[#EBF1ED] transition-colors cursor-pointer ${className}`}
+        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-[#064E3B] hover:bg-[#EDF3F0] transition-colors cursor-pointer ${className}`}
       >
         <Download size={13} />
         <span>Install App</span>

@@ -73,8 +73,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [isPlayingPreview, setIsPlayingPreview] = useState(false);
 
   // Resolution & Aspect Ratio Controls
-  const [resolution, setResolution] = useState<'4k' | '1080p' | '720p'>('1080p');
-  const [aspectRatio, setAspectRatio] = useState<'original' | '1:1' | '4:5' | '16:9'>('original');
+  const [resolution, setResolution] = useState<'4k' | '1080p' | '720p' | 'original'>('1080p');
+  const [aspectRatio, setAspectRatio] = useState<'original' | '1:1' | '4:5' | '16:9' | '9:16'>('original');
 
   // Active sub-tool drawer
   const [activeStudioTool, setActiveStudioTool] = useState<
@@ -121,8 +121,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     let totalCompressed = 0;
 
     // Determine target dimension & quality based on selected resolution
-    const maxDimension = resolution === '4k' ? 2560 : resolution === '1080p' ? 1440 : 800;
-    const quality = resolution === '4k' ? 0.90 : resolution === '1080p' ? 0.82 : 0.74;
+    const maxDimension = resolution === '4k' ? 3840 : resolution === '1080p' ? 1920 : resolution === '720p' ? 1280 : 6000;
+    const quality = resolution === '4k' ? 0.92 : resolution === '1080p' ? 0.85 : resolution === '720p' ? 0.78 : 0.95;
 
     try {
       const fileList = Array.from(files).slice(0, 4 - mediaUrls.length);
@@ -132,14 +132,20 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
         totalOriginal += file.size;
 
         const baseProgress = Math.round((i / fileList.length) * 100);
-        setUploadPercent(baseProgress + 10);
-        setUploadStatusText(`Optimizing photo ${i + 1} of ${fileList.length} (${resolution.toUpperCase()})...`);
+        setUploadPercent(baseProgress + 8);
+        setUploadStatusText(`Compressing photo ${i + 1} of ${fileList.length} (${resolution.toUpperCase()})...`);
 
-        // 1. Client-Side Image Compression
+        // 1. Client-Side Image Compression with live progress & aspect ratio framing
         const compressed = await compressImage(file, {
           maxDimension,
           quality,
           preferWebp: true,
+          aspectRatio,
+          onProgress: (pct, status) => {
+            const stepPct = Math.round(baseProgress + (pct * 0.45));
+            setUploadPercent(Math.min(95, stepPct));
+            setUploadStatusText(`Photo ${i + 1}: ${status} (${pct}%)`);
+          },
         });
         totalCompressed += compressed.compressedSize;
 
@@ -646,17 +652,18 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
           {/* Studio Tool Drawer 3: Resolution & Aspect Ratio */}
           {activeStudioTool === 'resolution' && (
-            <div className="p-4 bg-[#F1F5F2] rounded-2xl border border-[#2D3732]/10 space-y-3 animate-fade-in">
+            <div className="p-4 bg-[#EDF3F0] rounded-2xl border border-[#D1E2D9] space-y-4 animate-fade-in">
               <div>
-                <span className="block text-xs font-semibold text-[#2D3732] mb-1.5">
+                <span className="block text-xs font-bold text-[#064E3B] mb-2">
                   Resolution & Output Quality
                 </span>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {(
                     [
-                      { id: '4k', name: '4K Ultra Crisp', desc: '2560px max · Archival' },
-                      { id: '1080p', name: '1080p Web', desc: '1440px max · Balanced' },
-                      { id: '720p', name: '720p Mobile', desc: '800px max · Fast Data' },
+                      { id: '4k', name: '4K UHD Ultra', desc: '3840px · Archival' },
+                      { id: '1080p', name: '1080p Full HD', desc: '1920px · Optimal' },
+                      { id: '720p', name: '720p HD', desc: '1280px · Fast' },
+                      { id: 'original', name: 'Lossless Original', desc: 'Native camera' },
                     ] as const
                   ).map((r) => (
                     <button
@@ -665,28 +672,29 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                       onClick={() => setResolution(r.id)}
                       className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer ${
                         resolution === r.id
-                          ? 'bg-white border-[#8FA89B] shadow-xs'
-                          : 'bg-white/60 border-transparent hover:bg-white text-[#7A8A82]'
+                          ? 'bg-white border-[#064E3B] ring-2 ring-[#059669]/30 shadow-xs'
+                          : 'bg-white/70 border-[#D1E2D9]/80 hover:bg-white text-[#3D5A4C]'
                       }`}
                     >
-                      <div className="text-xs font-semibold text-[#2D3732]">{r.name}</div>
-                      <div className="text-[10px] text-[#7A8A82]">{r.desc}</div>
+                      <div className="text-xs font-bold text-[#064E3B]">{r.name}</div>
+                      <div className="text-[10px] text-[#3D5A4C]">{r.desc}</div>
                     </button>
                   ))}
                 </div>
               </div>
 
               <div>
-                <span className="block text-xs font-semibold text-[#2D3732] mb-1.5">
-                  Frame Aspect Ratio
+                <span className="block text-xs font-bold text-[#064E3B] mb-2">
+                  Frame Framing & Aspect Ratio
                 </span>
-                <div className="grid grid-cols-4 gap-2">
+                <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
                   {(
                     [
                       { id: 'original', label: 'Original' },
                       { id: '1:1', label: '1:1 Square' },
                       { id: '4:5', label: '4:5 Portrait' },
                       { id: '16:9', label: '16:9 Wide' },
+                      { id: '9:16', label: '9:16 Reel' },
                     ] as const
                   ).map((ar) => (
                     <button
@@ -695,8 +703,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
                       onClick={() => setAspectRatio(ar.id)}
                       className={`py-2 px-2 text-center text-xs rounded-xl border transition-all cursor-pointer ${
                         aspectRatio === ar.id
-                          ? 'bg-white border-[#8FA89B] text-[#2D3732] font-semibold shadow-xs'
-                          : 'bg-white/60 border-transparent hover:bg-white text-[#7A8A82]'
+                          ? 'bg-[#064E3B] text-white border-[#064E3B] font-bold shadow-xs'
+                          : 'bg-white border-[#D1E2D9] hover:bg-white text-[#3D5A4C]'
                       }`}
                     >
                       {ar.label}

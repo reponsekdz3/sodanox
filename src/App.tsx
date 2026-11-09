@@ -10,6 +10,7 @@ import {
   ActiveCall,
   NotificationItem,
   StoryHighlight,
+  SharedPostMeta,
 } from './types';
 
 import { Navbar } from './components/layout/Navbar';
@@ -31,6 +32,8 @@ import { FloatingCallPill } from './components/calls/FloatingCallPill';
 import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { NotificationsDrawer } from './components/notifications/NotificationsDrawer';
 import { AuthPage } from './components/auth/AuthPage';
+import { PostDetailModal } from './components/feed/PostDetailModal';
+import { useAuraRouter } from './hooks/useAuraRouter';
 import {
   initiateCallSession,
   subscribeToIncomingCalls,
@@ -94,8 +97,21 @@ export default function App() {
   const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
   const isOnline = useOnlineStatus();
 
-  // Navigation & View state
-  const [currentTab, setCurrentTab] = useState<'feed' | 'reels' | 'messages' | 'explore' | 'profile'>('feed');
+  // Powerful URL & Hash-based Routing (supports #/feed, #/post/:id, #/profile/:user, #/messages/:id, etc.)
+  const {
+    tab: currentTab,
+    postId: routePostId,
+    username: routeUsername,
+    chatId: routeChatId,
+    modal: routeModal,
+    navigateToTab,
+    navigateToPost,
+    navigateToProfile,
+    navigateToChat,
+    openModal,
+    closeModal,
+  } = useAuraRouter();
+
   const [targetChatUser, setTargetChatUser] = useState<User | null>(null);
   const [isMobileChatActive, setIsMobileChatActive] = useState(false);
 
@@ -124,19 +140,19 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
 
-  // Message notification tracking & PWA shortcuts
+  // Message notification tracking
   const prevSeenMsgIdsRef = React.useRef<Set<string>>(new Set());
   const hasInitialConvsLoaded = React.useRef(false);
 
-  // Parse PWA desktop shortcuts / parameters (?tab=messages, ?tab=explore, etc.)
+  // Sync route modal state
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    const tabParam = params.get('tab');
-    if (tabParam && ['feed', 'reels', 'messages', 'explore', 'profile'].includes(tabParam)) {
-      setCurrentTab(tabParam as any);
-    }
-  }, []);
+    if (routeModal === 'create-post') setIsCreatePostOpen(true);
+    else if (routeModal === 'create-story') setIsCreateStoryOpen(true);
+    else if (routeModal === 'create-reel') setIsCreateReelOpen(true);
+    else if (routeModal === 'edit-profile') setIsEditProfileOpen(true);
+    else if (routeModal === 'settings') setIsSettingsOpen(true);
+    else if (routeModal === 'notifications') setIsNotificationsDrawerOpen(true);
+  }, [routeModal]);
 
   // Current active user (guaranteed non-null when authenticated)
   const currentUser: User | null = useMemo(() => {
@@ -191,6 +207,28 @@ export default function App() {
       setViewingUser(userProfile);
     }
   }, [userProfile]);
+
+  // Sync route username to viewingUser
+  useEffect(() => {
+    if (routeUsername) {
+      const match = communityUsers.find(
+        (u) => u.username.toLowerCase() === routeUsername.toLowerCase()
+      );
+      if (match) {
+        setViewingUser(match);
+      }
+    }
+  }, [routeUsername, communityUsers]);
+
+  // Sync route chatId to targetChatUser
+  useEffect(() => {
+    if (routeChatId) {
+      const match = communityUsers.find((u) => u.id === routeChatId);
+      if (match) {
+        setTargetChatUser(match);
+      }
+    }
+  }, [routeChatId, communityUsers]);
 
   const refreshCommunity = async (uid: string) => {
     try {
@@ -299,7 +337,7 @@ export default function App() {
                   onClick: () => {
                     window.focus();
                     setTargetChatUser(c.participant);
-                    setCurrentTab('messages');
+                    navigateToTab('messages');
                   },
                 });
               }
@@ -319,13 +357,13 @@ export default function App() {
   // ---------------- Handlers for Navigation ----------------
   const handleOpenUserProfile = (user: User) => {
     setViewingUser(user);
-    setCurrentTab('profile');
+    navigateToProfile(user.username);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleOpenDirectChat = (user: User) => {
     setTargetChatUser(user);
-    setCurrentTab('messages');
+    navigateToChat(user.id);
   };
 
   // ---------------- Handlers for Stories ----------------
@@ -499,14 +537,18 @@ export default function App() {
     }
   };
 
-  const handleSendPostToChat = async (recipientId: string, messageText: string) => {
+  const handleSendPostToChat = async (
+    recipientId: string,
+    messageText: string,
+    sharedPost?: SharedPostMeta
+  ) => {
     if (!currentUser) return;
     try {
       const targetUser: User = communityUsers.find((u) => u.id === recipientId) || {
         id: recipientId,
         name: 'Community Member',
         username: 'member',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
+        avatar: MODERN_EMPTY_AVATAR_DATA_URI,
         bio: '',
         joinedDate: '',
         followersCount: 0,
@@ -516,7 +558,11 @@ export default function App() {
       const convId = await getOrCreateConversation(currentUser, targetUser);
       await sendChatMessage(
         convId,
-        { text: messageText, type: 'text' },
+        {
+          text: messageText,
+          type: sharedPost ? 'post' : 'text',
+          sharedPost,
+        },
         currentUser,
         recipientId
       );
@@ -1001,12 +1047,12 @@ export default function App() {
   // 1. Initial Auth Loading Screen
   if (loading) {
     return (
-      <div className="min-h-screen bg-[#FAFAF9] flex flex-col items-center justify-center p-4">
+      <div className="min-h-screen bg-[#F8FAF9] flex flex-col items-center justify-center p-4">
         <div className="flex flex-col items-center gap-4 animate-fade-in">
-          <div className="w-12 h-12 rounded-full border-2 border-[#8FA89B] border-t-transparent animate-spin" />
+          <div className="w-12 h-12 rounded-full border-2 border-[#059669] border-t-transparent animate-spin" />
           <div className="text-center">
-            <h1 className="font-serif text-2xl font-medium text-[#2D3732] tracking-wide">Aura</h1>
-            <p className="text-xs text-[#7A8A82] mt-1 font-mono">Entering Aura space...</p>
+            <h1 className="font-serif text-2xl font-semibold text-[#022C22] tracking-wide">AuraChats</h1>
+            <p className="text-xs text-[#4B6358] mt-1 font-mono">Entering AuraChats space...</p>
           </div>
         </div>
       </div>
@@ -1015,7 +1061,7 @@ export default function App() {
 
   // 2. Auth Gating: Unauthenticated users MUST see only Login / Register page
   if (!isAuthenticated || !currentUser) {
-    return <AuthPage onSuccess={() => setCurrentTab('feed')} />;
+    return <AuthPage onSuccess={() => navigateToTab('feed')} />;
   }
 
   // 3. Authenticated App Experience
@@ -1029,9 +1075,14 @@ export default function App() {
     });
   }, [posts, viewingUser, currentUser]);
 
+  const activeRoutePost = useMemo(() => {
+    if (!routePostId) return null;
+    return posts.find((p) => p.id === routePostId) || null;
+  }, [routePostId, posts]);
+
   return (
     <div
-      className={`bg-[#FAFAF9] text-[#2D3732] flex flex-col md:flex-row font-sans antialiased ${
+      className={`bg-[#F8FAF9] text-[#022C22] flex flex-col md:flex-row font-sans antialiased ${
         currentTab === 'messages' ? 'h-screen md:h-screen overflow-hidden' : 'min-h-screen'
       }`}
     >
@@ -1045,18 +1096,20 @@ export default function App() {
           onSelectTab={(tab) => {
             if (tab === 'profile') {
               setViewingUser(currentUser);
+              navigateToProfile(currentUser.username);
+            } else {
+              navigateToTab(tab);
             }
-            setCurrentTab(tab);
           }}
           onOpenCreatePost={() => setIsCreatePostOpen(true)}
           onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onSelectSavedTab={() => {
             setViewingUser(currentUser);
-            setCurrentTab('profile');
+            navigateToProfile(currentUser.username);
           }}
           onSelectTrendingTab={() => {
-            setCurrentTab('explore');
+            navigateToTab('explore');
           }}
         />
       </div>
@@ -1079,8 +1132,10 @@ export default function App() {
             onSelectTab={(tab) => {
               if (tab === 'profile') {
                 setViewingUser(currentUser);
+                navigateToProfile(currentUser.username);
+              } else {
+                navigateToTab(tab);
               }
-              setCurrentTab(tab);
             }}
             onOpenCreatePost={() => setIsCreatePostOpen(true)}
             onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
@@ -1150,7 +1205,14 @@ export default function App() {
             initialTargetUser={targetChatUser}
             onOpenAuth={() => setIsSettingsOpen(true)}
             onMobileChatActiveChange={setIsMobileChatActive}
-            onNavigateTab={(tab) => setCurrentTab(tab)}
+            onNavigateTab={(tab) => {
+              if (tab === 'profile') {
+                setViewingUser(currentUser);
+                navigateToProfile(currentUser.username);
+              } else {
+                navigateToTab(tab as any);
+              }
+            }}
           />
         )}
 
@@ -1160,8 +1222,8 @@ export default function App() {
             reels={reels}
             suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id && !c.isFollowing)}
             onToggleFollowUser={handleToggleFollow}
-            onSelectPost={() => setCurrentTab('feed')}
-            onSelectReel={() => setCurrentTab('reels')}
+            onSelectPost={(post) => navigateToPost(post.id)}
+            onSelectReel={() => navigateToTab('reels')}
             onOpenUserProfile={handleOpenUserProfile}
           />
         )}
@@ -1191,7 +1253,7 @@ export default function App() {
             onAddComment={handleAddComment}
             onLikeComment={handleLikeComment}
             onDeleteComment={handleDeleteComment}
-            onSelectReel={() => setCurrentTab('reels')}
+            onSelectReel={() => navigateToTab('reels')}
             onSelectHighlight={handleSelectHighlight}
             onNavigateToUser={handleOpenUserProfile}
           />
@@ -1207,8 +1269,10 @@ export default function App() {
           onSelectTab={(tab) => {
             if (tab === 'profile') {
               setViewingUser(currentUser);
+              navigateToProfile(currentUser.username);
+            } else {
+              navigateToTab(tab);
             }
-            setCurrentTab(tab);
           }}
           onOpenCreatePost={() => setIsCreatePostOpen(true)}
         />
@@ -1288,7 +1352,7 @@ export default function App() {
           onOpenUserProfile={handleOpenUserProfile}
           onSelectPost={() => {
             setIsNotificationsDrawerOpen(false);
-            setCurrentTab('feed');
+            navigateToTab('feed');
           }}
         />
       )}
@@ -1327,9 +1391,33 @@ export default function App() {
         />
       )}
 
+      {/* Route-driven Deep Link Post Detail Modal */}
+      {routePostId && (
+        <PostDetailModal
+          postId={routePostId}
+          initialPost={activeRoutePost}
+          currentUser={currentUser}
+          suggestedUsers={suggestedUsers}
+          onClose={() => navigateToTab(currentTab)}
+          onLikePost={handleLikePost}
+          onBookmarkPost={handleBookmarkPost}
+          onRepostPost={handleRepostPost}
+          onIncrementShare={handleIncrementShare}
+          onSendToChat={handleSendPostToChat}
+          onAddComment={handleAddComment}
+          onLikeComment={handleLikeComment}
+          onDeleteComment={handleDeleteComment}
+          onVotePoll={handleVotePoll}
+          onDeletePost={handleDeletePost}
+          onEditPost={handleEditPost}
+          onOpenUserProfile={handleOpenUserProfile}
+          onToggleFollowUser={handleToggleFollow}
+        />
+      )}
+
       {/* PWA Offline Connectivity Indicator */}
       {!isOnline && (
-        <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-2xl bg-[#2D3732] border border-[#8FA89B]/40 px-3.5 py-2 text-xs font-medium text-white shadow-soft-float animate-bounce">
+        <div className="fixed bottom-4 left-4 z-50 flex items-center gap-2 rounded-2xl bg-[#064E3B] border border-[#10B981]/40 px-3.5 py-2 text-xs font-semibold text-white shadow-soft-float animate-bounce">
           <span className="h-2 w-2 rounded-full bg-amber-400 animate-pulse" />
           <span>Offline Mode — Cached data is being used.</span>
         </div>

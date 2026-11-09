@@ -516,7 +516,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleTogglePrivacy(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -537,7 +537,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleToggleActivity(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -558,7 +558,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleToggleReshare(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
               </div>
@@ -588,7 +588,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateNotification('likes', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -604,7 +604,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateNotification('comments', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -620,7 +620,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateNotification('follows', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -636,7 +636,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateNotification('directChats', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -652,7 +652,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateNotification('calls', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
               </div>
@@ -708,7 +708,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateMediaPref('autoPlayReels', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -724,7 +724,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateMediaPref('highQualityUploads', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
 
@@ -743,7 +743,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       onChange={(e) => handleUpdateMediaPref('soundEffects', e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#8FA89B]"></div>
+                    <div className="w-11 h-6 bg-neutral-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#059669]"></div>
                   </label>
                 </div>
               </div>
@@ -842,22 +842,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="space-y-6">
               <div>
                 <h4 className="text-base font-semibold text-[#2D3732]">PC Desktop App & Notifications</h4>
-                <p className="text-xs text-[#7A8A82]">
-                  Install Aura on your PC, configure standalone window display, and manage real-time browser pop-ups
+                <p className="text-xs text-[#4B6358]">
+                  Install AuraChats on your PC, configure standalone window display, and manage real-time browser pop-ups
                 </p>
               </div>
 
               {/* PWA PC Installation Card */}
-              <div className="p-5 rounded-3xl bg-gradient-to-br from-[#EBF1ED] via-white to-[#F1F5F2] border border-[#8FA89B]/40 shadow-xs space-y-4">
+              <div className="p-5 rounded-3xl bg-gradient-to-br from-[#EDF3F0] via-white to-[#F8FAF9] border border-[#D1E2D9] shadow-xs space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 rounded-2xl bg-[#2F4438] text-white flex items-center justify-center shrink-0 shadow-sm">
+                    <div className="w-12 h-12 rounded-2xl bg-[#064E3B] text-white flex items-center justify-center shrink-0 shadow-sm">
                       <Laptop size={22} />
                     </div>
                     <div>
-                      <h5 className="text-sm font-bold text-[#2D3732]">Aura Desktop Application</h5>
-                      <p className="text-xs text-[#62736B]">
-                        Platform detected: <span className="font-semibold capitalize text-[#2D3732]">{platform}</span>
+                      <h5 className="text-sm font-bold text-[#022C22]">AuraChats Desktop Application</h5>
+                      <p className="text-xs text-[#4B6358]">
+                        Platform detected: <span className="font-semibold capitalize text-[#022C22]">{platform}</span>
                       </p>
                     </div>
                   </div>

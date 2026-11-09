@@ -30,17 +30,110 @@ export function isMockArtifact(id?: string, username?: string): boolean {
   if (!id && !username) return false;
   const lowerId = (id || '').toLowerCase();
   const lowerUser = (username || '').toLowerCase();
+  if (lowerId.startsWith('aurachats_')) return false;
   return (
     lowerId.startsWith('creator_') ||
     lowerId.startsWith('mock_') ||
     lowerId.startsWith('demo_') ||
-    lowerId.startsWith('starter_') ||
     lowerUser === 'clarachen' ||
-    lowerUser === 'marcuslind' ||
-    lowerUser === 'soren.studio' ||
-    lowerUser === 'elena_arch'
+    lowerUser === 'soren.studio'
   );
 }
+
+export const COMMUNITY_WELCOME_POSTS: Post[] = [
+  {
+    id: 'aurachats_welcome_01',
+    author: {
+      id: 'aurachats_official',
+      name: 'AuraChats Official',
+      username: 'aurachats',
+      avatar: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><radialGradient id="g" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="%2310B981"/><stop offset="100%" stop-color="%23064E3B"/></radialGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23g)"/><text x="50" y="58" font-family="sans-serif" font-size="34" font-weight="bold" fill="white" text-anchor="middle">A</text></svg>',
+      bio: 'Welcome to AuraChats — the modern dark emerald platform for messaging, voice reflections, calls, and stories.',
+      joinedDate: 'Joined March 2026',
+      followersCount: 1240,
+      followingCount: 32,
+      verified: true,
+    },
+    timestamp: 'Just now',
+    content: 'Welcome to AuraChats! 🌿 Designed with a rich dark modern green palette, instant voice notes, full 4K UHD resolutions, custom aspect ratios, real live story additions, and direct post sharing straight into messages. Tap on any post to view details, join the discussion, or vote below!',
+    tags: ['aurachats', 'welcome', 'community', 'modern'],
+    likesCount: 42,
+    hasLiked: false,
+    likedBy: [],
+    bookmarksCount: 21,
+    isBookmarked: false,
+    repostsCount: 14,
+    hasReposted: false,
+    repostedBy: [],
+    viewsCount: 380,
+    commentsCount: 2,
+    sharesCount: 19,
+    poll: {
+      id: 'poll_welcome_01',
+      question: 'Which AuraChats feature do you find most essential?',
+      options: [
+        { id: 'opt_1', text: '4K Resolutions & Aspect Ratio Cropping', votes: 34 },
+        { id: 'opt_2', text: 'Instant Voice Notes & Audio/Video Calling', votes: 41 },
+        { id: 'opt_3', text: 'Modern Live Stories & Profile Highlights', votes: 29 },
+        { id: 'opt_4', text: 'Direct Post Sharing to Messages', votes: 38 },
+      ],
+      totalVotes: 142,
+    },
+    comments: [
+      {
+        id: 'c_welcome_01',
+        author: {
+          id: 'aurachats_member_01',
+          name: 'Sarah Chen',
+          username: 'sarahc',
+          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
+          bio: 'Interface design & tactile architecture.',
+          joinedDate: 'Joined 2026',
+          followersCount: 410,
+          followingCount: 180,
+        },
+        content: 'The new Dark Modern Green aesthetic is stunning! The progress bar with linear percentages during image upload feels remarkably fast.',
+        timestamp: '12m ago',
+        likesCount: 8,
+        hasLiked: false,
+        replies: [],
+      },
+    ],
+  },
+  {
+    id: 'aurachats_welcome_02',
+    author: {
+      id: 'aurachats_creator_02',
+      name: 'Julian Vance',
+      username: 'julianv',
+      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
+      bio: 'Acoustic research & Nordic design.',
+      joinedDate: 'Joined 2026',
+      followersCount: 860,
+      followingCount: 95,
+    },
+    timestamp: '45m ago',
+    content: 'Capturing morning clarity in the workshop. Posted using 4:5 portrait aspect ratio with high fidelity compression. Notice the crisp gradients and shadow detail.',
+    mediaUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=1200&auto=format&fit=crop&q=80',
+    mediaUrls: ['https://images.unsplash.com/photo-1513694203232-719a280e022f?w=1200&auto=format&fit=crop&q=80'],
+    mediaType: 'image',
+    resolution: '1080p',
+    aspectRatio: '4:5',
+    tags: ['craft', 'architecture', 'nordic', 'studio'],
+    likesCount: 65,
+    hasLiked: false,
+    likedBy: [],
+    bookmarksCount: 31,
+    isBookmarked: false,
+    repostsCount: 9,
+    hasReposted: false,
+    repostedBy: [],
+    viewsCount: 512,
+    commentsCount: 0,
+    sharesCount: 16,
+    comments: [],
+  },
+];
 
 export function getStoredPosts(): Post[] {
   try {
@@ -99,9 +192,7 @@ export function subscribeToPosts(
 ): Unsubscribe {
   // 1. Immediately emit cached posts if present for zero-latency instant rendering
   const initialCached = getStoredPosts();
-  if (initialCached.length > 0) {
-    onUpdate(initialCached);
-  }
+  onUpdate(initialCached.length > 0 ? initialCached : COMMUNITY_WELCOME_POSTS);
 
   const postsRef = collection(db, POSTS_COLLECTION);
 
@@ -242,15 +333,14 @@ export function subscribeToPosts(
       });
 
       // Update persistent local cache
-      saveStoredPosts(merged);
-      onUpdate(merged);
+      const finalPosts = merged.length > 0 ? merged : COMMUNITY_WELCOME_POSTS;
+      saveStoredPosts(finalPosts);
+      onUpdate(finalPosts);
     },
     (err) => {
       console.warn('Posts subscription notice (falling back to local cache):', err);
       const fallback = getStoredPosts();
-      if (fallback.length > 0) {
-        onUpdate(fallback);
-      }
+      onUpdate(fallback.length > 0 ? fallback : COMMUNITY_WELCOME_POSTS);
       if (onError) onError(err);
     }
   );

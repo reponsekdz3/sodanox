@@ -131,15 +131,15 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
         >
           <defs>
             <radialGradient id="aura-halo-prime" cx="50%" cy="50%" r="50%" fx="35%" fy="35%">
-              <stop offset="0%" stopColor="#C4DBD0" stopOpacity="0.95" />
-              <stop offset="45%" stopColor="#8FA89B" stopOpacity="0.85" />
-              <stop offset="100%" stopColor="#4A6557" stopOpacity="0.98" />
+              <stop offset="0%" stopColor="#34D399" stopOpacity="0.95" />
+              <stop offset="45%" stopColor="#059669" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#064E3B" stopOpacity="1" />
             </radialGradient>
 
             <linearGradient id="aura-ring-dynamic" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#B3CFBF" />
-              <stop offset="50%" stopColor="#8FA89B" />
-              <stop offset="100%" stopColor="#3C5246" />
+              <stop offset="0%" stopColor="#6EE7B7" />
+              <stop offset="50%" stopColor="#059669" />
+              <stop offset="100%" stopColor="#064E3B" />
             </linearGradient>
 
             <filter id="aura-radiance-glow" x="-30%" y="-30%" width="160%" height="160%">
@@ -156,7 +156,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             stroke="url(#aura-ring-dynamic)"
             strokeWidth="1.8"
             strokeDasharray="6 3 2 3"
-            opacity="0.65"
+            opacity="0.8"
             className="animate-spin-slow origin-center"
           />
 
@@ -169,21 +169,21 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             strokeWidth="2.5"
             strokeLinecap="round"
             filter="url(#aura-radiance-glow)"
-            opacity="0.9"
+            opacity="0.95"
           />
 
-          {/* Orbital Satellites (Sacred Geometry Nodes) */}
-          <circle cx="22" cy="8" r="2.2" fill="#8FA89B" className="animate-pulse" />
-          <circle cx="36" cy="22" r="1.8" fill="#5E7C6E" />
-          <circle cx="22" cy="36" r="2.2" fill="#8FA89B" className="animate-pulse" />
-          <circle cx="8" cy="22" r="1.8" fill="#5E7C6E" />
+          {/* Orbital Satellites */}
+          <circle cx="22" cy="8" r="2.2" fill="#10B981" />
+          <circle cx="36" cy="22" r="1.8" fill="#059669" />
+          <circle cx="22" cy="36" r="2.2" fill="#10B981" />
+          <circle cx="8" cy="22" r="1.8" fill="#059669" />
 
           {/* Core Luminous Focal Sphere */}
           <circle cx="22" cy="22" r="6.5" fill="url(#aura-halo-prime)" />
 
           {/* Zenith Star Glint */}
           <circle cx="20" cy="20" r="1.8" fill="#FFFFFF" opacity="0.95" />
-          <circle cx="24" cy="24" r="0.9" fill="#FFFFFF" opacity="0.6" />
+          <circle cx="24" cy="24" r="0.9" fill="#FFFFFF" opacity="0.7" />
         </svg>
 
         {/* Live Audio / Status Pulse Indicator */}
@@ -195,7 +195,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
         )}
       </div>
 
-      {/* Wordmark cleanly styled with real brand identity */}
+      {/* Wordmark cleanly styled as AuraChats */}
       {showWordmark && (
         <div
           onClick={(e) => {
@@ -215,24 +215,24 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             <span
               className={`font-serif font-bold tracking-tight ${currentSize.text} ${textColor}`}
             >
-              Aura
+              Aura<span className="text-[#059669]">Chats</span>
             </span>
-            <span className="px-1.5 py-0.5 rounded-full bg-[#8FA89B]/20 text-[#3C5246] font-mono text-[9px] font-bold tracking-wider uppercase border border-[#8FA89B]/35 flex items-center gap-1 shadow-xs">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>Social</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-[#059669]/15 text-[#064E3B] font-mono text-[9px] font-bold tracking-wider uppercase border border-[#059669]/30 flex items-center gap-1 shadow-xs">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+              <span>Live</span>
             </span>
           </div>
-          <span className={`${currentSize.sub} text-[#7A8A82] font-mono tracking-wider mt-0.5 hidden sm:block`}>
-            mindful network
+          <span className={`${currentSize.sub} text-[#3D5A4C] font-mono tracking-wider mt-0.5 hidden sm:block`}>
+            modern social chats
           </span>
         </div>
       )}
 
-      {/* Advanced Aura Command Deck Popover */}
+      {/* Advanced Aura Command Dock Popover */}
       {isDockOpen && (
         <div
           ref={dockRef}
-          className="absolute top-full left-0 mt-3 w-80 sm:w-88 bg-[#FAFAF9] rounded-3xl shadow-2xl border border-[#2D3732]/15 p-5 z-50 animate-fade-in backdrop-blur-xl"
+          className="absolute top-full left-0 mt-3 w-80 sm:w-88 bg-[#F8FAF9] rounded-3xl shadow-2xl border border-[#064E3B]/15 p-5 z-50 animate-fade-in backdrop-blur-xl"
         >
           {/* Header */}
           <div className="flex items-center justify-between pb-3 border-b border-[#2D3732]/10 mb-3.5">

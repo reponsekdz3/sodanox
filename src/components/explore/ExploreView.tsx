@@ -184,7 +184,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         <div className="relative">
           <Search
             size={18}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-[#7A8A82]"
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-[#4B6358]"
           />
           <input
             type="text"
@@ -195,7 +195,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             }}
             onKeyDown={handleKeyDownSearch}
             placeholder="Search creators, hashtags, projects, and stories..."
-            className="w-full bg-[#F1F5F2] border border-transparent focus:border-[#8FA89B] focus:bg-[#FAFAF9] rounded-2xl pl-11 pr-20 py-3.5 text-xs sm:text-sm text-[#2D3732] placeholder-[#7A8A82] shadow-xs focus:outline-none transition-all"
+            className="w-full bg-white border border-[#D1E2D9] focus:border-[#059669] focus:bg-white rounded-2xl pl-11 pr-20 py-3.5 text-xs sm:text-sm text-[#022C22] placeholder-[#4B6358] shadow-xs focus:outline-none transition-all"
           />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
             {searchQuery && (
@@ -205,7 +205,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   setSearchQuery('');
                   setSelectedTag(null);
                 }}
-                className="p-1 rounded-full text-[#7A8A82] hover:text-[#2D3732] hover:bg-black/5 cursor-pointer"
+                className="p-1 rounded-full text-[#4B6358] hover:text-[#022C22] hover:bg-black/5 cursor-pointer"
               >
                 <X size={15} />
               </button>
@@ -216,7 +216,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         {/* Recent Search History Chips */}
         {searchHistory.length > 0 && !searchQuery && !selectedTag && (
           <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none text-xs">
-            <span className="flex items-center gap-1 text-[11px] text-[#7A8A82] shrink-0 font-medium">
+            <span className="flex items-center gap-1 text-[11px] text-[#4B6358] shrink-0 font-medium">
               <Clock size={12} />
               <span>Recent:</span>
             </span>
@@ -225,7 +225,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                 key={item}
                 type="button"
                 onClick={() => handleSelectHistoryTerm(item)}
-                className="px-2.5 py-1 rounded-lg bg-[#E6EDE9]/60 hover:bg-[#8FA89B]/20 text-[#2D3732] text-[11px] font-medium transition-colors border border-[#2D3732]/10 shrink-0 cursor-pointer flex items-center gap-1"
+                className="px-2.5 py-1 rounded-lg bg-[#EDF3F0] hover:bg-[#D1E2D9] text-[#022C22] text-[11px] font-medium transition-colors border border-[#D1E2D9] shrink-0 cursor-pointer flex items-center gap-1"
               >
                 <span>{item}</span>
               </button>
@@ -233,7 +233,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             <button
               type="button"
               onClick={handleClearHistory}
-              className="text-[10px] text-[#7A8A82] hover:text-rose-600 hover:underline shrink-0 ml-1 cursor-pointer"
+              className="text-[10px] text-[#4B6358] hover:text-rose-600 hover:underline shrink-0 ml-1 cursor-pointer"
             >
               Clear
             </button>
@@ -248,10 +248,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               setSelectedTag(null);
               setSearchQuery('');
             }}
-            className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors cursor-pointer ${
+            className={`px-3.5 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
               !selectedTag && !searchQuery
-                ? 'bg-[#2D3732] text-white shadow-xs'
-                : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9]'
+                ? 'bg-[#064E3B] text-white shadow-xs'
+                : 'bg-[#EDF3F0] text-[#4B6358] hover:text-[#022C22] hover:bg-[#D1E2D9]'
             }`}
           >
             All Discoveries
@@ -267,8 +267,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
               }}
               className={`px-3.5 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-all flex items-center gap-1 cursor-pointer ${
                 selectedTag === ch.tag
-                  ? 'bg-[#8FA89B] text-white shadow-xs'
-                  : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9]'
+                  ? 'bg-[#064E3B] text-white shadow-xs font-semibold'
+                  : 'bg-[#EDF3F0] text-[#4B6358] hover:text-[#022C22] hover:bg-[#D1E2D9]'
               }`}
             >
               {ch.isHot && (
@@ -285,15 +285,15 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       </div>
 
       {/* Category Navigation Bar & Sort Toggle */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#2D3732]/10 pb-3">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#D1E2D9] pb-3">
         <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto scrollbar-none">
           <button
             type="button"
             onClick={() => setActiveTab('all')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
               activeTab === 'all'
-                ? 'bg-[#2D3732] text-white shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2]'
+                ? 'bg-[#064E3B] text-white shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-[#EDF3F0]'
             }`}
           >
             <span>Top Results</span>
@@ -302,10 +302,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('people')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'people'
-                ? 'bg-[#2D3732] text-white shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2]'
+                ? 'bg-[#064E3B] text-white shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-[#EDF3F0]'
             }`}
           >
             <Users size={14} />
@@ -315,10 +315,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('posts')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'posts'
-                ? 'bg-[#2D3732] text-white shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2]'
+                ? 'bg-[#064E3B] text-white shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-[#EDF3F0]'
             }`}
           >
             <Compass size={14} />
@@ -328,10 +328,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('reels')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'reels'
-                ? 'bg-[#2D3732] text-white shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2]'
+                ? 'bg-[#064E3B] text-white shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-[#EDF3F0]'
             }`}
           >
             <Play size={14} />
@@ -341,10 +341,10 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           <button
             type="button"
             onClick={() => setActiveTab('tags')}
-            className={`px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center gap-1.5 ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
               activeTab === 'tags'
-                ? 'bg-[#2D3732] text-white shadow-xs'
-                : 'text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#F1F5F2]'
+                ? 'bg-[#064E3B] text-white shadow-xs'
+                : 'text-[#4B6358] hover:text-[#022C22] hover:bg-[#EDF3F0]'
             }`}
           >
             <Hash size={14} />
@@ -354,7 +354,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
 
         {/* Sort option */}
         <div className="flex items-center gap-2 text-xs self-end sm:self-center">
-          <span className="text-[11px] text-[#7A8A82] flex items-center gap-1">
+          <span className="text-[11px] text-[#4B6358] flex items-center gap-1">
             <SlidersHorizontal size={12} />
             <span>Sort:</span>
           </span>
@@ -363,8 +363,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             onClick={() => setSortBy('trending')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer ${
               sortBy === 'trending'
-                ? 'bg-[#8FA89B] text-white'
-                : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732]'
+                ? 'bg-[#064E3B] text-white font-semibold'
+                : 'bg-[#EDF3F0] text-[#4B6358] hover:text-[#022C22]'
             }`}
           >
             Popular
@@ -374,8 +374,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             onClick={() => setSortBy('latest')}
             className={`px-2.5 py-1 rounded-lg text-xs font-medium cursor-pointer ${
               sortBy === 'latest'
-                ? 'bg-[#8FA89B] text-white'
-                : 'bg-[#F1F5F2] text-[#7A8A82] hover:text-[#2D3732]'
+                ? 'bg-[#064E3B] text-white font-semibold'
+                : 'bg-[#EDF3F0] text-[#4B6358] hover:text-[#022C22]'
             }`}
           >
             Latest
@@ -387,15 +387,15 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {(activeTab === 'people' || (activeTab === 'all' && filteredUsers.length > 0)) && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#2D3732] flex items-center gap-2">
-              <Users size={16} className="text-[#8FA89B]" />
+            <h2 className="text-sm font-semibold text-[#022C22] flex items-center gap-2">
+              <Users size={16} className="text-[#059669]" />
               <span>{activeTab === 'all' ? 'Featured Creators' : 'Community Creators'}</span>
             </h2>
             {activeTab === 'all' && (
               <button
                 type="button"
                 onClick={() => setActiveTab('people')}
-                className="text-xs text-[#8FA89B] hover:text-[#7d988b] font-medium flex items-center gap-1 cursor-pointer"
+                className="text-xs text-[#059669] hover:text-[#064E3B] font-semibold flex items-center gap-1 cursor-pointer"
               >
                 <span>View all ({filteredUsers.length})</span>
                 <ArrowUpRight size={13} />
@@ -407,7 +407,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
             {(activeTab === 'all' ? filteredUsers.slice(0, 4) : filteredUsers).map((user) => (
               <div
                 key={user.id}
-                className="bg-[#F1F5F2] rounded-3xl p-4 sm:p-5 border border-[#E6EDE9] shadow-soft flex flex-col justify-between hover:border-[#8FA89B]/40 transition-all group"
+                className="bg-white rounded-3xl p-4 sm:p-5 border border-[#D1E2D9] shadow-soft flex flex-col justify-between hover:border-[#059669]/60 transition-all group"
               >
                 <div>
                   <div
@@ -423,18 +423,18 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                     />
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1">
-                        <span className="text-xs font-semibold text-[#2D3732] truncate hover:underline">
+                        <span className="text-xs font-semibold text-[#022C22] truncate hover:underline">
                           {user.name}
                         </span>
                         {user.verified && (
-                          <CheckCircle2 size={12} className="text-[#8FA89B] shrink-0" />
+                          <CheckCircle2 size={12} className="text-[#059669] shrink-0" />
                         )}
                       </div>
-                      <span className="text-[11px] text-[#7A8A82] block truncate font-mono">
+                      <span className="text-[11px] text-[#4B6358] block truncate font-mono">
                         @{user.username}
                       </span>
                       {user.location && (
-                        <span className="flex items-center gap-1 text-[10px] text-[#7A8A82] mt-0.5 truncate">
+                        <span className="flex items-center gap-1 text-[10px] text-[#4B6358] mt-0.5 truncate">
                           <MapPin size={10} />
                           <span>{user.location}</span>
                         </span>
@@ -442,13 +442,13 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-[#55635C] line-clamp-2 leading-relaxed mb-3">
-                    {user.bio || 'Exploring design, craft, and ideas on Aura.'}
+                  <p className="text-[11px] text-[#4B6358] line-clamp-2 leading-relaxed mb-3">
+                    {user.bio || 'Exploring design, craft, and ideas on AuraChats.'}
                   </p>
                 </div>
 
-                <div className="flex items-center justify-between pt-3 border-t border-[#2D3732]/5">
-                  <span className="text-[10px] text-[#7A8A82]">
+                <div className="flex items-center justify-between pt-3 border-t border-[#D1E2D9]">
+                  <span className="text-[10px] text-[#4B6358]">
                     {user.followersCount || 0} followers
                   </span>
 
@@ -472,15 +472,15 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {(activeTab === 'reels' || (activeTab === 'all' && filteredReels.length > 0)) && (
         <div className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#2D3732] flex items-center gap-2">
-              <Play size={15} className="text-[#8FA89B] fill-[#8FA89B]" />
+            <h2 className="text-sm font-semibold text-[#022C22] flex items-center gap-2">
+              <Play size={15} className="text-[#059669] fill-[#059669]" />
               <span>{activeTab === 'all' ? 'Trending Reels' : 'Matching Video Reels'}</span>
             </h2>
             {activeTab === 'all' && (
               <button
                 type="button"
                 onClick={() => setActiveTab('reels')}
-                className="text-xs text-[#8FA89B] hover:text-[#7d988b] font-medium flex items-center gap-1 cursor-pointer"
+                className="text-xs text-[#059669] hover:text-[#064E3B] font-semibold flex items-center gap-1 cursor-pointer"
               >
                 <span>View all ({filteredReels.length})</span>
                 <ArrowUpRight size={13} />
@@ -535,8 +535,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {/* 3. Topics & Hashtags View */}
       {activeTab === 'tags' && (
         <div className="space-y-4">
-          <h2 className="text-sm font-semibold text-[#2D3732] flex items-center gap-2">
-            <Hash size={16} className="text-[#8FA89B]" />
+          <h2 className="text-sm font-semibold text-[#022C22] flex items-center gap-2">
+            <Hash size={16} className="text-[#059669]" />
             <span>Community Topics &amp; Hashtags</span>
           </h2>
 
@@ -550,23 +550,23 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   setActiveTab('posts');
                   saveSearchTerm(`#${t.tag}`);
                 }}
-                className="bg-[#F1F5F2] rounded-2xl p-4 border border-[#E6EDE9] hover:border-[#8FA89B] shadow-xs cursor-pointer transition-all flex items-center justify-between group"
+                className="bg-white rounded-2xl p-4 border border-[#D1E2D9] hover:border-[#059669] shadow-xs cursor-pointer transition-all flex items-center justify-between group"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#8FA89B]/15 text-[#3A5245] flex items-center justify-center font-bold text-sm group-hover:bg-[#8FA89B] group-hover:text-white transition-colors">
+                  <div className="w-10 h-10 rounded-xl bg-[#059669]/15 text-[#064E3B] flex items-center justify-center font-bold text-sm group-hover:bg-[#064E3B] group-hover:text-white transition-colors">
                     #
                   </div>
                   <div>
-                    <div className="text-xs font-semibold text-[#2D3732] group-hover:text-[#3A5245] flex items-center gap-1.5">
+                    <div className="text-xs font-semibold text-[#022C22] group-hover:text-[#064E3B] flex items-center gap-1.5">
                       <span>#{t.tag}</span>
                       {t.isHot && <Flame size={12} className="text-amber-500" />}
                     </div>
-                    <div className="text-[11px] text-[#7A8A82]">
+                    <div className="text-[11px] text-[#4B6358]">
                       {t.count} {t.count === 1 ? 'post' : 'posts'} in discussion
                     </div>
                   </div>
                 </div>
-                <ArrowUpRight size={16} className="text-[#7A8A82] group-hover:text-[#2D3732] transition-colors" />
+                <ArrowUpRight size={16} className="text-[#4B6358] group-hover:text-[#064E3B] transition-colors" />
               </div>
             ))}
           </div>
@@ -577,8 +577,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
       {(activeTab === 'posts' || activeTab === 'all') && (
         <div className="space-y-4 pt-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#2D3732] flex items-center gap-2">
-              <TrendingUp size={15} className="text-[#8FA89B]" />
+            <h2 className="text-sm font-semibold text-[#022C22] flex items-center gap-2">
+              <TrendingUp size={15} className="text-[#059669]" />
               <span>
                 {effectiveQuery
                   ? `Posts matching "${effectiveQuery}" (${filteredPosts.length})`
@@ -588,11 +588,11 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
           </div>
 
           {filteredPosts.length === 0 ? (
-            <div className="py-16 text-center space-y-3 bg-[#F1F5F2]/60 rounded-3xl border border-dashed border-[#2D3732]/10 p-8">
-              <Compass size={32} className="mx-auto text-[#7A8A82] opacity-60" />
-              <div className="text-sm font-medium text-[#2D3732]">No posts match your search</div>
-              <p className="text-xs text-[#7A8A82] max-w-sm mx-auto">
-                Try searching for creators, topics like #nordic, #minimalism, #ceramics, or explore trending tags above.
+            <div className="py-16 text-center space-y-3 bg-white rounded-3xl border border-dashed border-[#D1E2D9] p-8">
+              <Compass size={32} className="mx-auto text-[#4B6358] opacity-60" />
+              <div className="text-sm font-semibold text-[#022C22]">No posts match your search</div>
+              <p className="text-xs text-[#4B6358] max-w-sm mx-auto">
+                Try searching for creators, topics like #nordic, #minimalism, #aurachats, or explore trending tags above.
               </p>
             </div>
           ) : (
@@ -605,7 +605,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                   <div
                     key={post.id}
                     onClick={() => onSelectPost(post)}
-                    className="bg-[#F1F5F2] rounded-3xl overflow-hidden border border-[#E6EDE9] shadow-soft hover:shadow-soft-lg transition-all cursor-pointer flex flex-col justify-between group"
+                    className="bg-white rounded-3xl overflow-hidden border border-[#D1E2D9] shadow-soft hover:shadow-soft-lg hover:border-[#059669] transition-all cursor-pointer flex flex-col justify-between group"
                   >
                     {displayCover && (
                       <div className="relative aspect-[4/3] bg-neutral-100 overflow-hidden">
@@ -638,20 +638,20 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                             size="sm"
                           />
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-semibold text-[#2D3732] truncate hover:underline flex items-center gap-1">
+                            <div className="text-xs font-semibold text-[#022C22] truncate hover:underline flex items-center gap-1">
                               <span>{post.author.name}</span>
                               {post.author.verified && (
-                                <CheckCircle2 size={11} className="text-[#8FA89B]" />
+                                <CheckCircle2 size={11} className="text-[#059669]" />
                               )}
                             </div>
-                            <div className="text-[10px] text-[#7A8A82] font-mono truncate">
+                            <div className="text-[10px] text-[#4B6358] font-mono truncate">
                               @{post.author.username}
                             </div>
                           </div>
                         </div>
 
                         {/* Caption */}
-                        <p className="text-xs text-[#2D3732] line-clamp-3 leading-relaxed">
+                        <p className="text-xs text-[#022C22] line-clamp-3 leading-relaxed">
                           {post.content}
                         </p>
                       </div>
@@ -668,7 +668,7 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                                 setSearchQuery('');
                                 saveSearchTerm(`#${tag}`);
                               }}
-                              className="text-[10px] text-[#8FA89B] hover:text-[#7e988b] font-medium hover:underline cursor-pointer"
+                              className="text-[10px] text-[#059669] hover:text-[#064E3B] font-medium hover:underline cursor-pointer"
                             >
                               #{tag}
                             </span>
@@ -677,22 +677,22 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
                       )}
 
                       {/* Post engagement footer */}
-                      <div className="flex items-center justify-between pt-2 border-t border-[#2D3732]/5 text-[11px] text-[#7A8A82]">
+                      <div className="flex items-center justify-between pt-2 border-t border-[#D1E2D9] text-[11px] text-[#4B6358]">
                         <div className="flex items-center gap-3">
-                          <span className="flex items-center gap-1 hover:text-[#2D3732]">
+                          <span className="flex items-center gap-1 hover:text-[#064E3B]">
                             <Heart
                               size={13}
                               className={post.hasLiked ? 'fill-rose-500 text-rose-500' : ''}
                             />
                             <span>{post.likesCount}</span>
                           </span>
-                          <span className="flex items-center gap-1 hover:text-[#2D3732]">
+                          <span className="flex items-center gap-1 hover:text-[#064E3B]">
                             <MessageCircle size={13} />
                             <span>{post.comments?.length || 0}</span>
                           </span>
                         </div>
 
-                        <span className="text-[10px] font-mono text-[#7A8A82]">
+                        <span className="text-[10px] font-mono text-[#4B6358]">
                           {post.timestamp}
                         </span>
                       </div>

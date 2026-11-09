@@ -86,11 +86,17 @@ export async function compressImage(
     quality?: number;
     preferWebp?: boolean;
     fileName?: string;
+    aspectRatio?: 'original' | '1:1' | '4:5' | '16:9' | '9:16';
+    onProgress?: (progress: number, status: string) => void;
   }
 ): Promise<CompressionResult> {
-  const maxDim = options?.maxDimension || 1600;
-  const quality = options?.quality ?? 0.82;
+  const maxDim = options?.maxDimension || 1920;
+  const quality = options?.quality ?? 0.85;
   const preferWebp = options?.preferWebp !== false;
+  const aspectRatio = options?.aspectRatio || 'original';
+  const onProgress = options?.onProgress;
+
+  onProgress?.(15, 'Reading media stream...');
 
   let originalSize = 0;
   let sourceUrl = '';
@@ -115,22 +121,55 @@ export async function compressImage(
           URL.revokeObjectURL(sourceUrl);
         }
 
-        let { width, height } = img;
-        if (width > height) {
-          if (width > maxDim) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          }
-        } else {
-          if (height > maxDim) {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
+        onProgress?.(35, 'Calculating aspect ratio & dimensions...');
+
+        let sourceX = 0;
+        let sourceY = 0;
+        let sourceWidth = img.naturalWidth || img.width;
+        let sourceHeight = img.naturalHeight || img.height;
+
+        // Apply aspect ratio cropping if requested
+        if (aspectRatio !== 'original') {
+          let targetRatio = 1;
+          if (aspectRatio === '1:1') targetRatio = 1;
+          else if (aspectRatio === '4:5') targetRatio = 4 / 5;
+          else if (aspectRatio === '16:9') targetRatio = 16 / 9;
+          else if (aspectRatio === '9:16') targetRatio = 9 / 16;
+
+          const currentRatio = sourceWidth / sourceHeight;
+          if (currentRatio > targetRatio) {
+            // Wider than target: crop horizontally centered
+            const croppedWidth = sourceHeight * targetRatio;
+            sourceX = (sourceWidth - croppedWidth) / 2;
+            sourceWidth = croppedWidth;
+          } else if (currentRatio < targetRatio) {
+            // Taller than target: crop vertically centered
+            const croppedHeight = sourceWidth / targetRatio;
+            sourceY = (sourceHeight - croppedHeight) / 2;
+            sourceHeight = croppedHeight;
           }
         }
 
+        let outputWidth = sourceWidth;
+        let outputHeight = sourceHeight;
+
+        if (outputWidth > outputHeight) {
+          if (outputWidth > maxDim) {
+            outputHeight = Math.round((outputHeight * maxDim) / outputWidth);
+            outputWidth = maxDim;
+          }
+        } else {
+          if (outputHeight > maxDim) {
+            outputWidth = Math.round((outputWidth * maxDim) / outputHeight);
+            outputHeight = maxDim;
+          }
+        }
+
+        onProgress?.(60, 'Encoding high-fidelity canvas frame...');
+
         const canvas = document.createElement('canvas');
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
 
         const ctx = canvas.getContext('2d', { alpha: false });
         if (!ctx) {
@@ -140,7 +179,19 @@ export async function compressImage(
         // High quality bicubic image smoothing
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
-        ctx.drawImage(img, 0, 0, width, height);
+        ctx.drawImage(
+          img,
+          sourceX,
+          sourceY,
+          sourceWidth,
+          sourceHeight,
+          0,
+          0,
+          outputWidth,
+          outputHeight
+        );
+
+        onProgress?.(80, 'Compressing WebP / JPEG buffer...');
 
         // Check WebP support
         const targetMime = preferWebp ? 'image/webp' : 'image/jpeg';
@@ -152,6 +203,7 @@ export async function compressImage(
               const compressedSize = fallbackBlob.size;
               const savingsPercent = Math.max(0, Math.round(((originalSize - compressedSize) / originalSize) * 100));
               const file = new File([fallbackBlob], fileName.replace(/\.[^/.]+$/, '.jpg'), { type: 'image/jpeg' });
+              onProgress?.(100, 'Compression completed!');
               return resolve({
                 file,
                 blob: fallbackBlob,
@@ -160,8 +212,8 @@ export async function compressImage(
                 compressedSize,
                 savingsPercent,
                 mimeType: 'image/jpeg',
-                width,
-                height,
+                width: outputWidth,
+                height: outputHeight,
               });
             }
 
@@ -172,6 +224,8 @@ export async function compressImage(
             const file = new File([blob], cleanName, { type: targetMime });
             const dataUrl = await blobToDataUrl(blob);
 
+            onProgress?.(100, 'Compression completed!');
+
             resolve({
               file,
               blob,
@@ -180,8 +234,8 @@ export async function compressImage(
               compressedSize,
               savingsPercent,
               mimeType: targetMime,
-              width,
-              height,
+              width: outputWidth,
+              height: outputHeight,
             });
           },
           targetMime,

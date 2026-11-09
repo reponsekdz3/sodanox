@@ -21,7 +21,7 @@ export const FloatingCallPill: React.FC<FloatingCallPillProps> = ({
   };
 
   return (
-    <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 bg-[#FAFAF9] border border-[#8FA89B] rounded-2xl shadow-soft-float p-2.5 flex items-center gap-3 animate-fadeIn">
+    <div className="fixed bottom-20 right-4 sm:bottom-6 sm:right-6 z-40 bg-white border border-[#D1E2D9] rounded-2xl shadow-soft-float p-2.5 flex items-center gap-3 animate-fadeIn">
       {/* Participant avatar with pulsing online indicator */}
       <div className="cursor-pointer" onClick={onMaximize}>
         <ModernAvatar
@@ -36,13 +36,13 @@ export const FloatingCallPill: React.FC<FloatingCallPillProps> = ({
       {/* Info & Duration */}
       <div className="cursor-pointer min-w-0" onClick={onMaximize}>
         <div className="flex items-center gap-1.5">
-          <p className="text-xs font-semibold text-[#2D3732] truncate max-w-[100px]">
+          <p className="text-xs font-semibold text-[#022C22] truncate max-w-[100px]">
             {call.participant.name}
           </p>
           {call.isMuted && <MicOff size={11} className="text-amber-600" />}
-          {call.type === 'video' && <Video size={11} className="text-[#8FA89B]" />}
+          {call.type === 'video' && <Video size={11} className="text-[#059669]" />}
         </div>
-        <p className="text-[11px] font-mono text-[#7A8A82] tabular-nums">
+        <p className="text-[11px] font-mono text-[#4B6358] tabular-nums">
           {formatTime(call.durationSeconds)}
         </p>
       </div>
@@ -51,7 +51,7 @@ export const FloatingCallPill: React.FC<FloatingCallPillProps> = ({
       <div className="flex items-center gap-1.5">
         <button
           onClick={onMaximize}
-          className="p-2 rounded-xl bg-[#F1F5F2] hover:bg-[#E6EDE9] text-[#2D3732] transition-colors"
+          className="p-2 rounded-xl bg-[#EDF3F0] hover:bg-[#D1E2D9] text-[#022C22] transition-colors cursor-pointer"
           title="Expand Call"
         >
           <Maximize2 size={14} />

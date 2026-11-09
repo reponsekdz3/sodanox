@@ -6,8 +6,8 @@ import { auraAudio } from '../../utils/audioSynthesizer';
 import { GoogleAuthModal } from './GoogleAuthModal';
 import { ModernAvatar, MODERN_EMPTY_AVATAR_DATA_URI } from '../common/ModernAvatar';
 import { compressImage } from '../../services/mediaCompressionService';
+import { UploadProgressBar } from '../common/UploadProgressBar';
 import {
-  Sparkles,
   Lock,
   Mail,
   User as UserIcon,
@@ -17,13 +17,11 @@ import {
   CheckCircle2,
   Upload,
   Feather,
-  Compass,
   Layers,
-  Heart,
   ShieldCheck,
   AlertCircle,
   RefreshCw,
-  Zap,
+  Sparkles,
 } from 'lucide-react';
 
 interface AuthPageProps {
@@ -42,6 +40,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [avatar, setAvatar] = useState(MODERN_EMPTY_AVATAR_DATA_URI);
   const [agreedToManifesto, setAgreedToManifesto] = useState(true);
+
+  // Avatar upload progress
+  const [avatarProgress, setAvatarProgress] = useState<number | null>(null);
+  const [avatarStatus, setAvatarStatus] = useState<string>('');
 
   // Forgot password state
   const [isForgotModalOpen, setIsForgotModalOpen] = useState(false);
@@ -80,15 +82,27 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
     const file = e.target.files?.[0];
     if (file) {
       setError(null);
+      setAvatarProgress(10);
+      setAvatarStatus('Preparing avatar...');
       try {
-        const compressed = await compressImage(file, { maxDimension: 500, quality: 0.82 });
+        const compressed = await compressImage(file, {
+          maxDimension: 512,
+          quality: 0.88,
+          onProgress: (p, status) => {
+            setAvatarProgress(p);
+            setAvatarStatus(status);
+          },
+        });
         setAvatar(compressed.dataUrl);
+        setAvatarProgress(100);
+        setTimeout(() => setAvatarProgress(null), 800);
       } catch {
         const reader = new FileReader();
         reader.onload = (event) => {
           if (event.target?.result) {
             setAvatar(event.target.result as string);
           }
+          setAvatarProgress(null);
         };
         reader.readAsDataURL(file);
       }
@@ -104,8 +118,8 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
     if (/[^A-Za-z0-9]/.test(pass)) score++;
 
     if (score <= 2) return { score: 2, label: 'Fair', color: 'bg-amber-400' };
-    if (score === 3) return { score: 3, label: 'Good', color: 'bg-[#8FA89B]' };
-    return { score: 4, label: 'Strong', color: 'bg-emerald-500' };
+    if (score === 3) return { score: 3, label: 'Good', color: 'bg-[#059669]' };
+    return { score: 4, label: 'Strong', color: 'bg-[#10B981]' };
   };
 
   const strength = getPasswordStrength(password);
@@ -176,12 +190,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#FAFAF9] flex flex-col lg:flex-row text-[#2D3732] antialiased selection:bg-[#8FA89B]/30">
-      {/* Left Column: Atmospheric Brand Manifesto (Hidden on mobile to show login/register immediately) */}
-      <div className="hidden lg:flex lg:w-5/12 bg-[#2D3732] text-[#FAFAF9] p-8 lg:p-16 flex-col justify-between relative overflow-hidden">
+    <div className="min-h-screen w-full bg-[#F8FAF9] flex flex-col lg:flex-row text-[#022C22] antialiased selection:bg-[#059669]/20">
+      {/* Left Column: Atmospheric Brand Manifesto */}
+      <div className="hidden lg:flex lg:w-5/12 bg-gradient-to-br from-[#022C22] via-[#064E3B] to-[#033B2B] text-white p-8 lg:p-16 flex-col justify-between relative overflow-hidden">
         {/* Subtle background ambient blur circles */}
-        <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[#8FA89B]/15 blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-[#7A8A82]/20 blur-3xl pointer-events-none" />
+        <div className="absolute -top-24 -left-24 w-96 h-96 rounded-full bg-[#10B981]/15 blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -right-24 w-96 h-96 rounded-full bg-[#059669]/20 blur-3xl pointer-events-none" />
 
         {/* Top: Logo & Title */}
         <div className="relative z-10">
@@ -193,45 +207,45 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             A quiet sanctuary for mindful creators.
           </h1>
 
-          <p className="text-white/70 text-sm sm:text-base leading-relaxed max-w-md font-light">
-            No dopamine feeds or endless noise. Share tactile stories, visual reflections, and purposeful conversations with creators across the globe.
+          <p className="text-[#D1E2D9] text-sm sm:text-base leading-relaxed max-w-md font-light">
+            No dopamine manipulation or endless noise. Share tactile stories, high-resolution visual reflections, and purposeful direct conversations in Dark Modern Green elegance.
           </p>
         </div>
 
         {/* Middle: Feature highlights */}
         <div className="relative z-10 my-10 space-y-4">
           <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
-            <div className="p-2 rounded-xl bg-[#8FA89B]/20 text-[#8FA89B] shrink-0 mt-0.5">
+            <div className="p-2 rounded-xl bg-[#059669]/20 text-[#34D399] shrink-0 mt-0.5">
               <Layers size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-medium text-white">Advanced Interactive Stories</h2>
-              <p className="text-xs text-white/60 mt-0.5">
-                Stickers, real polls, questions, custom color filters, and permanent profile highlights.
+              <h2 className="text-sm font-semibold text-white">Interactive Stories & Highlights</h2>
+              <p className="text-xs text-white/70 mt-0.5">
+                Live interactive story creator, permanent highlights, percentage progress uploads, and question stickers.
               </p>
             </div>
           </div>
 
           <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
-            <div className="p-2 rounded-xl bg-[#8FA89B]/20 text-[#8FA89B] shrink-0 mt-0.5">
+            <div className="p-2 rounded-xl bg-[#059669]/20 text-[#34D399] shrink-0 mt-0.5">
               <Feather size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-medium text-white">High-Fidelity Posts & Carousels</h2>
-              <p className="text-xs text-white/60 mt-0.5">
-                Multi-image media, location tagging, live audience voting, and threaded discussions.
+              <h2 className="text-sm font-semibold text-white">High-Fidelity Resolution Presets</h2>
+              <p className="text-xs text-white/70 mt-0.5">
+                4K UHD, 1080p, and multi-aspect ratio compression with live line-and-percent progress indicators.
               </p>
             </div>
           </div>
 
           <div className="flex items-start gap-4 p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-sm">
-            <div className="p-2 rounded-xl bg-[#8FA89B]/20 text-[#8FA89B] shrink-0 mt-0.5">
+            <div className="p-2 rounded-xl bg-[#059669]/20 text-[#34D399] shrink-0 mt-0.5">
               <ShieldCheck size={18} />
             </div>
             <div>
-              <h2 className="text-sm font-medium text-white">Real Creator Identity</h2>
-              <p className="text-xs text-white/60 mt-0.5">
-                Every profile is member-created with custom headers, creator bios, and direct messaging.
+              <h2 className="text-sm font-semibold text-white">Direct Chat & Deep Link Sharing</h2>
+              <p className="text-xs text-white/70 mt-0.5">
+                Share posts directly into encrypted chats with rich cards, voice notes, and real-time audio/video calls.
               </p>
             </div>
           </div>
@@ -240,25 +254,25 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
         {/* Bottom: Genuine Member Guarantee & Developer Credit */}
         <div className="relative z-10 pt-6 border-t border-white/10 space-y-3">
           <div className="flex items-center gap-3 p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xs">
-            <div className="w-8 h-8 rounded-xl bg-[#8FA89B]/20 flex items-center justify-center shrink-0">
-              <ShieldCheck size={18} className="text-[#8FA89B]" />
+            <div className="w-8 h-8 rounded-xl bg-[#059669]/25 flex items-center justify-center shrink-0">
+              <Sparkles size={18} className="text-[#34D399]" />
             </div>
             <div>
-              <p className="text-xs font-medium text-white">Pure User-Generated Community</p>
-              <p className="text-[11px] text-white/60">
-                100% genuine member accounts. All stories, posts, and conversations are created in real time.
+              <p className="text-xs font-semibold text-white">Pure User-Generated Community</p>
+              <p className="text-[11px] text-[#D1E2D9]">
+                100% genuine member accounts. All stories, posts, and conversations persist in real time.
               </p>
             </div>
           </div>
           <div className="text-center">
             <p className="text-[11px] text-white/60 font-medium tracking-wide">
-              app developed by reponsekdz · Aura
+              app developed by reponsekdz · AuraChats
             </p>
           </div>
         </div>
       </div>
 
-      {/* Right Column: Interactive Login & Register Forms (Primary on mobile & desktop) */}
+      {/* Right Column: Interactive Login & Register Forms */}
       <div className="w-full lg:w-7/12 flex items-center justify-center p-4 sm:p-8 lg:p-16 overflow-y-auto">
         <div className="w-full max-w-xl">
           {/* Mobile Logo on small screens */}
@@ -267,20 +281,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </div>
 
           {/* Segmented Mode Switcher */}
-          <div className="p-1 bg-[#F1F5F2] rounded-2xl flex items-center mb-8 border border-[#2D3732]/10 shadow-inner">
+          <div className="p-1.5 bg-[#EDF3F0] rounded-2xl flex items-center mb-8 border border-[#D1E2D9] shadow-inner">
             <button
               type="button"
               onClick={() => {
                 setMode('signin');
                 setError(null);
               }}
-              className={`flex-1 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all ${
+              className={`flex-1 py-3 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
                 mode === 'signin'
-                  ? 'bg-white text-[#2D3732] shadow-sm font-semibold'
-                  : 'text-[#7A8A82] hover:text-[#2D3732]'
+                  ? 'bg-white text-[#064E3B] shadow-sm'
+                  : 'text-[#4B6358] hover:text-[#022C22]'
               }`}
             >
-              Sign In to Your Space
+              Sign In to AuraChats
             </button>
             <button
               type="button"
@@ -288,10 +302,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 setMode('signup');
                 setError(null);
               }}
-              className={`flex-1 py-3 text-xs sm:text-sm font-medium rounded-xl transition-all ${
+              className={`flex-1 py-3 text-xs sm:text-sm font-semibold rounded-xl transition-all cursor-pointer ${
                 mode === 'signup'
-                  ? 'bg-white text-[#2D3732] shadow-sm font-semibold'
-                  : 'text-[#7A8A82] hover:text-[#2D3732]'
+                  ? 'bg-white text-[#064E3B] shadow-sm'
+                  : 'text-[#4B6358] hover:text-[#022C22]'
               }`}
             >
               Create Account
@@ -300,21 +314,21 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
           {/* Form Header */}
           <div className="mb-6">
-            <h2 className="font-serif text-2xl sm:text-3xl font-light text-[#2D3732]">
-              {mode === 'signin' ? 'Welcome back to Aura' : 'Begin your creative journey'}
+            <h2 className="font-serif text-2xl sm:text-3xl font-light text-[#022C22]">
+              {mode === 'signin' ? 'Welcome back to AuraChats' : 'Begin your creative journey'}
             </h2>
-            <p className="text-xs sm:text-sm text-[#7A8A82] mt-1">
+            <p className="text-xs sm:text-sm text-[#4B6358] mt-1">
               {mode === 'signin'
-                ? 'Enter your credentials to enter your quiet feed.'
-                : 'Craft your profile, set your handle, and start posting stories and projects.'}
+                ? 'Enter your credentials to enter your curated mindful feed.'
+                : 'Craft your profile, set your unique handle, and start posting stories and projects.'}
             </p>
           </div>
 
           {/* Error Alert */}
           {error && (
-            <div className="mb-6 p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex flex-col gap-2.5 animate-fade-in">
+            <div className="mb-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs sm:text-sm flex flex-col gap-2.5 animate-fade-in">
               <div className="flex items-start gap-3">
-                <AlertCircle size={18} className="shrink-0 mt-0.5 text-red-500" />
+                <AlertCircle size={18} className="shrink-0 mt-0.5 text-rose-600" />
                 <div className="flex-1 leading-relaxed">{error}</div>
               </div>
               {(error.includes('No account found') || error.includes('Create one now')) && mode === 'signin' && (
@@ -330,7 +344,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                       setUsername(email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, ''));
                     }
                   }}
-                  className="self-start text-xs font-medium px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors shadow-sm ml-7 cursor-pointer"
+                  className="self-start text-xs font-semibold px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-colors shadow-sm ml-7 cursor-pointer"
                 >
                   Create account with {email || 'this email'} →
                 </button>
@@ -357,7 +371,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 }
               }}
               disabled={isSubmitting}
-              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white border border-[#2D3732]/15 hover:bg-[#F1F5F2] text-xs sm:text-sm font-medium text-[#2D3732] shadow-sm transition-all cursor-pointer disabled:opacity-50"
+              className="w-full flex items-center justify-center gap-3 py-3.5 px-4 rounded-2xl bg-white border border-[#D1E2D9] hover:bg-[#EDF3F0] text-xs sm:text-sm font-semibold text-[#022C22] shadow-sm transition-all cursor-pointer disabled:opacity-50"
             >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
@@ -382,11 +396,11 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </div>
 
           <div className="relative flex py-2 items-center mb-6">
-            <div className="flex-grow border-t border-[#2D3732]/10"></div>
-            <span className="flex-shrink mx-4 text-[11px] uppercase tracking-wider text-[#7A8A82] font-mono">
+            <div className="flex-grow border-t border-[#D1E2D9]"></div>
+            <span className="flex-shrink mx-4 text-[11px] uppercase tracking-wider text-[#4B6358] font-mono font-medium">
               Or with email & password
             </span>
-            <div className="flex-grow border-t border-[#2D3732]/10"></div>
+            <div className="flex-grow border-t border-[#D1E2D9]"></div>
           </div>
 
           {/* Form */}
@@ -394,15 +408,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             {mode === 'signup' && (
               <>
                 {/* Profile Photo Selection */}
-                <div className="p-4 rounded-2xl bg-[#F1F5F2]/60 border border-[#2D3732]/10 space-y-3">
+                <div className="p-4 rounded-2xl bg-white border border-[#D1E2D9] shadow-soft space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-[#2D3732] uppercase tracking-wider">
+                    <span className="text-xs font-semibold text-[#022C22] uppercase tracking-wider">
                       Profile Avatar
                     </span>
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
-                      className="text-xs text-[#8FA89B] hover:text-[#7e9689] font-medium flex items-center gap-1.5"
+                      className="text-xs text-[#059669] hover:text-[#064E3B] font-semibold flex items-center gap-1.5 cursor-pointer"
                     >
                       <Upload size={13} />
                       <span>Upload Custom Photo</span>
@@ -421,64 +435,71 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                       src={avatar}
                       size="xl"
                       ring
-                      className="border-2 border-white shadow-md"
+                      className="border-2 border-white shadow-md ring-2 ring-[#059669]/30"
                     />
                     <div className="flex-1">
-                      <div className="text-xs font-semibold text-[#2D3732] mb-0.5">
-                        Modern Empty Avatar
+                      <div className="text-xs font-semibold text-[#022C22] mb-0.5">
+                        Interactive Avatar
                       </div>
-                      <div className="text-[11px] text-[#7A8A82] leading-snug">
-                        Minimalist geometric aesthetic default. You can also upload your own picture anytime.
+                      <div className="text-[11px] text-[#4B6358] leading-snug">
+                        Instant compression with live progress. You can also customize your avatar anytime in settings.
                       </div>
                       {avatar !== MODERN_EMPTY_AVATAR_DATA_URI && (
                         <button
                           type="button"
                           onClick={() => setAvatar(MODERN_EMPTY_AVATAR_DATA_URI)}
-                          className="mt-1.5 text-[11px] text-[#5E7C6E] hover:underline font-medium cursor-pointer"
+                          className="mt-1.5 text-[11px] text-[#059669] hover:underline font-semibold cursor-pointer"
                         >
                           Reset to default Modern Avatar
                         </button>
                       )}
                     </div>
                   </div>
+
+                  {avatarProgress !== null && (
+                    <UploadProgressBar
+                      progress={avatarProgress}
+                      statusText={avatarStatus}
+                    />
+                  )}
                 </div>
 
                 {/* Name & Username Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-xs font-medium text-[#2D3732] mb-1">
+                    <label className="block text-xs font-semibold text-[#022C22] mb-1">
                       Full Name *
                     </label>
                     <div className="relative">
-                      <UserIcon size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
+                      <UserIcon size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B6358]" />
                       <input
                         type="text"
                         required
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="Elena Rostova"
-                        className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
+                        className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs sm:text-sm text-[#022C22] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669]"
                       />
                     </div>
                   </div>
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-medium text-[#2D3732]">
+                      <label className="block text-xs font-semibold text-[#022C22]">
                         Username *
                       </label>
                       {usernameStatus === 'checking' && (
-                        <span className="text-[10px] text-[#7A8A82]">Checking...</span>
+                        <span className="text-[10px] text-[#4B6358]">Checking...</span>
                       )}
                       {usernameStatus === 'available' && (
-                        <span className="text-[10px] text-emerald-600 font-medium">Available</span>
+                        <span className="text-[10px] text-emerald-600 font-semibold">Available</span>
                       )}
                       {usernameStatus === 'taken' && (
-                        <span className="text-[10px] text-red-500 font-medium">Taken</span>
+                        <span className="text-[10px] text-rose-500 font-semibold">Taken</span>
                       )}
                     </div>
                     <div className="relative">
-                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-[#7A8A82]">
+                      <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-[#4B6358]">
                         @
                       </span>
                       <input
@@ -487,12 +508,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                         value={username}
                         onChange={(e) => handleUsernameChange(e.target.value)}
                         placeholder="elenarostova"
-                        className={`w-full pl-8 pr-3 py-2.5 rounded-xl bg-white border text-xs sm:text-sm text-[#2D3732] focus:outline-none ${
+                        className={`w-full pl-8 pr-3 py-2.5 rounded-xl bg-white border text-xs sm:text-sm text-[#022C22] focus:outline-none ${
                           usernameStatus === 'available'
                             ? 'border-emerald-400 focus:border-emerald-500'
                             : usernameStatus === 'taken'
-                            ? 'border-red-400 focus:border-red-500'
-                            : 'border-[#2D3732]/15 focus:border-[#8FA89B]'
+                            ? 'border-rose-400 focus:border-rose-500'
+                            : 'border-[#D1E2D9] focus:border-[#059669] focus:ring-1 focus:ring-[#059669]'
                         }`}
                       />
                     </div>
@@ -504,13 +525,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             {/* Email Address */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-medium text-[#2D3732]">
+                <label className="block text-xs font-semibold text-[#022C22]">
                   Email Address *
                 </label>
               </div>
 
               <div className="relative">
-                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
+                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B6358]" />
                 <input
                   type="email"
                   autoComplete="email"
@@ -518,7 +539,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@example.com"
-                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
+                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs sm:text-sm text-[#022C22] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669]"
                 />
               </div>
             </div>
@@ -526,7 +547,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             {/* Password with strength meter & toggle */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-medium text-[#2D3732]">
+                <label className="block text-xs font-semibold text-[#022C22]">
                   Password *
                 </label>
                 {mode === 'signin' && (
@@ -536,14 +557,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                       setResetEmail(email);
                       setIsForgotModalOpen(true);
                     }}
-                    className="text-[11px] text-[#8FA89B] hover:underline"
+                    className="text-[11px] text-[#059669] hover:underline font-semibold cursor-pointer"
                   >
                     Forgot password?
                   </button>
                 )}
               </div>
               <div className="relative">
-                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82]" />
+                <Lock size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B6358]" />
                 <input
                   type={showPassword ? 'text' : 'password'}
                   autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
@@ -551,12 +572,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••••••"
-                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs sm:text-sm text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
+                  className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs sm:text-sm text-[#022C22] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669]"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#7A8A82] hover:text-[#2D3732]"
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 text-[#4B6358] hover:text-[#022C22]"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -565,13 +586,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               {/* Password strength indicator for signup */}
               {mode === 'signup' && password.length > 0 && (
                 <div className="mt-2 space-y-1">
-                  <div className="flex items-center gap-1.5 h-1.5 w-full bg-[#E5EAE7] rounded-full overflow-hidden">
+                  <div className="flex items-center gap-1.5 h-1.5 w-full bg-[#EDF3F0] rounded-full overflow-hidden">
                     <div
                       className={`h-full transition-all duration-300 ${strength.color}`}
                       style={{ width: `${(strength.score / 4) * 100}%` }}
                     />
                   </div>
-                  <div className="text-[10px] text-[#7A8A82] flex justify-between">
+                  <div className="text-[10px] text-[#4B6358] flex justify-between">
                     <span>Strength: {strength.label}</span>
                     <span>Min 6 characters</span>
                   </div>
@@ -581,15 +602,15 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
             {/* Slow social manifesto agreement */}
             {mode === 'signup' && (
-              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-[#F1F5F2] border border-[#2D3732]/10 cursor-pointer">
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-[#EDF3F0] border border-[#D1E2D9] cursor-pointer">
                 <input
                   type="checkbox"
                   checked={agreedToManifesto}
                   onChange={(e) => setAgreedToManifesto(e.target.checked)}
-                  className="mt-0.5 rounded text-[#8FA89B] focus:ring-[#8FA89B]"
+                  className="mt-0.5 rounded text-[#064E3B] focus:ring-[#059669]"
                 />
-                <span className="text-xs text-[#2D3732]/80 leading-snug">
-                  I agree to support slow, thoughtful sharing and respect authentic creators on Aura.
+                <span className="text-xs text-[#022C22]/80 leading-snug">
+                  I agree to support slow, thoughtful sharing and respect authentic creators on AuraChats.
                 </span>
               </label>
             )}
@@ -598,16 +619,16 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full mt-4 py-3.5 px-6 rounded-2xl bg-[#2D3732] hover:bg-[#3d4a43] text-white text-xs sm:text-sm font-medium shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+              className="w-full mt-4 py-3.5 px-6 rounded-2xl bg-[#064E3B] hover:bg-[#022C22] text-white text-xs sm:text-sm font-semibold shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
             >
               {isSubmitting ? (
                 <>
-                  <RefreshCw size={16} className="animate-spin text-[#8FA89B]" />
+                  <RefreshCw size={16} className="animate-spin text-[#34D399]" />
                   <span>Processing...</span>
                 </>
               ) : (
                 <>
-                  <span>{mode === 'signin' ? 'Sign In to Aura' : 'Create My Account'}</span>
+                  <span>{mode === 'signin' ? 'Sign In to AuraChats' : 'Create My Account'}</span>
                   <ArrowRight size={16} />
                 </>
               )}
@@ -615,25 +636,25 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </form>
 
           {/* Footer note */}
-          <div className="mt-8 text-center text-xs text-[#7A8A82]">
+          <div className="mt-8 text-center text-xs text-[#4B6358]">
             {mode === 'signin' ? (
               <p>
                 Don't have an account yet?{' '}
                 <button
                   type="button"
                   onClick={() => setMode('signup')}
-                  className="font-semibold text-[#2D3732] hover:underline cursor-pointer"
+                  className="font-bold text-[#064E3B] hover:underline cursor-pointer"
                 >
                   Create one now
                 </button>
               </p>
             ) : (
               <p>
-                Already have an Aura account?{' '}
+                Already have an AuraChats account?{' '}
                 <button
                   type="button"
                   onClick={() => setMode('signin')}
-                  className="font-semibold text-[#2D3732] hover:underline cursor-pointer"
+                  className="font-bold text-[#064E3B] hover:underline cursor-pointer"
                 >
                   Sign in
                 </button>
@@ -642,12 +663,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           </div>
 
           {/* Mandatory Developer Footer Attribution */}
-          <div className="mt-8 pt-6 border-t border-[#2D3732]/10 text-center space-y-1">
-            <p className="text-xs font-semibold text-[#55635C] tracking-wide hover:text-[#2D3732] transition-colors">
+          <div className="mt-8 pt-6 border-t border-[#D1E2D9] text-center space-y-1">
+            <p className="text-xs font-semibold text-[#064E3B] tracking-wide hover:text-[#022C22] transition-colors">
               developed by reponsekdz
             </p>
-            <p className="text-[11px] text-[#7A8A82]">
-              Aura · Mindful Modern Social Platform
+            <p className="text-[11px] text-[#4B6358]">
+              AuraChats · Mindful Modern Social Platform
             </p>
           </div>
         </div>
@@ -655,10 +676,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
       {/* Forgot Password Modal */}
       {isForgotModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2D3732]/50 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-md bg-[#FAFAF9] rounded-3xl p-6 sm:p-8 shadow-2xl border border-[#2D3732]/10">
-            <h3 className="font-serif text-xl text-[#2D3732] mb-2">Reset Password</h3>
-            <p className="text-xs text-[#7A8A82] mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-[#D1E2D9]">
+            <h3 className="font-serif text-xl font-medium text-[#022C22] mb-2">Reset Password</h3>
+            <p className="text-xs text-[#4B6358] mb-4">
               Enter your email address to receive a secure password reset link.
             </p>
 
@@ -675,7 +696,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                     setIsForgotModalOpen(false);
                     setResetSent(false);
                   }}
-                  className="w-full py-2.5 rounded-xl bg-emerald-700 text-white font-medium text-xs mt-2"
+                  className="w-full py-2.5 rounded-xl bg-[#064E3B] hover:bg-[#022C22] text-white font-semibold text-xs mt-2"
                 >
                   Return to Sign In
                 </button>
@@ -683,12 +704,12 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
             ) : (
               <form onSubmit={handlePasswordResetSubmit} className="space-y-4">
                 {resetError && (
-                  <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-600 text-xs">
+                  <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-600 text-xs">
                     {resetError}
                   </div>
                 )}
                 <div>
-                  <label className="block text-xs font-medium text-[#2D3732] mb-1">
+                  <label className="block text-xs font-semibold text-[#022C22] mb-1">
                     Your Registered Email
                   </label>
                   <input
@@ -697,20 +718,20 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
                     placeholder="you@domain.com"
-                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#2D3732]/15 text-xs text-[#2D3732] focus:outline-none focus:border-[#8FA89B]"
+                    className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs text-[#022C22] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669]"
                   />
                 </div>
                 <div className="flex items-center justify-end gap-2 pt-2">
                   <button
                     type="button"
                     onClick={() => setIsForgotModalOpen(false)}
-                    className="py-2.5 px-4 rounded-xl text-xs text-[#7A8A82] hover:text-[#2D3732]"
+                    className="py-2.5 px-4 rounded-xl text-xs text-[#4B6358] hover:text-[#022C22]"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    className="py-2.5 px-5 rounded-xl bg-[#2D3732] text-white text-xs font-medium hover:bg-[#3d4a43]"
+                    className="py-2.5 px-5 rounded-xl bg-[#064E3B] text-white text-xs font-semibold hover:bg-[#022C22]"
                   >
                     Send Reset Link
                   </button>
