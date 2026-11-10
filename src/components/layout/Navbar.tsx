@@ -10,6 +10,7 @@ import {
   LogOut,
   Search,
   Sparkles,
+  MoreHorizontal,
 } from 'lucide-react';
 import { User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -36,6 +37,7 @@ interface NavbarProps {
   onOpenNotifications: () => void;
   onOpenAuth: () => void;
   onOpenSettings: () => void;
+  onOpenMobileNav?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -48,6 +50,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenNotifications,
   onOpenAuth,
   onOpenSettings,
+  onOpenMobileNav,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -271,6 +274,20 @@ export const Navbar: React.FC<NavbarProps> = ({
             {unreadNotificationsCount > 0 && (
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-emerald-500 ring-2 ring-white animate-pulse" />
             )}
+          </button>
+
+          {/* Mobile 3-Dots Navigation Trigger - Opens All Left Aside Navigations as Full Page */}
+          <button
+            type="button"
+            onClick={() => {
+              auraAudio.playClick(500, 0.04);
+              if (onOpenMobileNav) onOpenMobileNav();
+            }}
+            className="md:hidden p-2 rounded-2xl border border-[#D1E2D9] bg-white hover:bg-[#EDF3F0] text-[#022C22] flex items-center justify-center transition-all cursor-pointer active:scale-95 shadow-xs"
+            title="All Navigations"
+            aria-label="Open Navigation Menu"
+          >
+            <MoreHorizontal size={19} className="stroke-[2.4] text-[#064E3B]" />
           </button>
 
           {/* PWA PC Desktop App Installation Trigger */}

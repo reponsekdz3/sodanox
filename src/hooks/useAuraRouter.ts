@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useMemo, useCallback } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 export type AuraTab = 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile';
 export type AuraModalType =
@@ -10,6 +11,7 @@ export type AuraModalType =
   | 'notifications'
   | 'pay-verified'
   | 'super-admin'
+  | 'mobile-menu'
   | null;
 
 export interface AuraRouteState {
@@ -41,159 +43,128 @@ export function isSuperAdminUrl(): boolean {
   );
 }
 
-function parseHash(hash: string): AuraRouteState {
-  const cleanHash = hash.replace(/^#\/?/, '').trim();
-  const [pathAndQuery] = cleanHash.split('?');
-  const queryPart = cleanHash.includes('?') ? cleanHash.split('?')[1] : '';
-  const searchParams = new URLSearchParams(queryPart);
-  const q = searchParams.get('q') || '';
-
-  const segments = pathAndQuery.split('/').filter(Boolean);
-  const first = segments[0] || 'feed';
-
-  let tab: AuraTab = 'feed';
-  let postId: string | null = null;
-  let username: string | null = null;
-  let chatId: string | null = null;
-  let storyId: string | null = null;
-  let modal: AuraModalType = null;
-
-  // Check for /.super secret access in path, query, or hash
-  if (isSuperAdminUrl()) {
-    modal = 'super-admin';
-  }
-
-  if (first === 'feed') tab = 'feed';
-  else if (first === 'reels') tab = 'reels';
-  else if (first === 'messages') {
-    tab = 'messages';
-    if (segments[1]) chatId = segments[1];
-  } else if (first === 'explore') tab = 'explore';
-  else if (first === 'marketplace') tab = 'marketplace';
-  else if (first === 'profile') {
-    tab = 'profile';
-    if (segments[1]) username = segments[1];
-  } else if (first === 'post' && segments[1]) {
-    tab = 'feed';
-    postId = segments[1];
-  } else if (first === 'story' && segments[1]) {
-    storyId = segments[1];
-  } else if (first === 'create-post') {
-    modal = 'create-post';
-  } else if (first === 'create-story') {
-    modal = 'create-story';
-  } else if (first === 'create-reel') {
-    modal = 'create-reel';
-  } else if (first === 'edit-profile') {
-    modal = 'edit-profile';
-  } else if (first === 'settings') {
-    modal = 'settings';
-  } else if (first === 'notifications') {
-    modal = 'notifications';
-  } else if (first === 'pay-verified' || first === 'verify') {
-    modal = 'pay-verified';
-  } else if (first === 'super' || first === '.super') {
-    modal = 'super-admin';
-  }
-
-  return {
-    tab,
-    postId,
-    username,
-    chatId,
-    storyId,
-    modal,
-    searchQuery: q,
-  };
-}
-
 export function useAuraRouter() {
-  const [route, setRoute] = useState<AuraRouteState>(() => {
-    if (typeof window !== 'undefined') {
-      return parseHash(window.location.hash || '');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const route = useMemo<AuraRouteState>(() => {
+    // In HashRouter, location.pathname represents the path inside the hash, e.g. "/feed", "/messages/123", "/post/abc"
+    const path = location.pathname.replace(/^\//, '').trim();
+    const segments = path.split('/').filter(Boolean);
+    const first = segments[0] || 'feed';
+    const q = searchParams.get('q') || '';
+
+    let tab: AuraTab = 'feed';
+    let postId: string | null = null;
+    let username: string | null = null;
+    let chatId: string | null = null;
+    let storyId: string | null = null;
+    let modal: AuraModalType = null;
+
+    if (isSuperAdminUrl() || first === 'super' || first === '.super') {
+      modal = 'super-admin';
     }
+
+    if (first === 'feed') tab = 'feed';
+    else if (first === 'reels') tab = 'reels';
+    else if (first === 'messages') {
+      tab = 'messages';
+      if (segments[1]) chatId = segments[1];
+    } else if (first === 'explore') tab = 'explore';
+    else if (first === 'marketplace') tab = 'marketplace';
+    else if (first === 'profile') {
+      tab = 'profile';
+      if (segments[1]) username = segments[1];
+    } else if (first === 'post' && segments[1]) {
+      tab = 'feed';
+      postId = segments[1];
+    } else if (first === 'story' && segments[1]) {
+      storyId = segments[1];
+    } else if (first === 'create-post') {
+      modal = 'create-post';
+    } else if (first === 'create-story') {
+      modal = 'create-story';
+    } else if (first === 'create-reel') {
+      modal = 'create-reel';
+    } else if (first === 'edit-profile') {
+      modal = 'edit-profile';
+    } else if (first === 'settings') {
+      modal = 'settings';
+    } else if (first === 'notifications') {
+      modal = 'notifications';
+    } else if (first === 'pay-verified' || first === 'verify') {
+      modal = 'pay-verified';
+    } else if (first === 'mobile-menu' || first === 'menu') {
+      modal = 'mobile-menu';
+    }
+
     return {
-      tab: 'feed',
-      postId: null,
-      username: null,
-      chatId: null,
-      storyId: null,
-      modal: null,
-      searchQuery: '',
+      tab,
+      postId,
+      username,
+      chatId,
+      storyId,
+      modal,
+      searchQuery: q,
     };
-  });
+  }, [location.pathname, searchParams]);
 
-  // Sync state on hash change
-  useEffect(() => {
-    const handleHashChange = () => {
-      setRoute(parseHash(window.location.hash || ''));
-    };
-
-    window.addEventListener('hashchange', handleHashChange);
-    window.addEventListener('popstate', handleHashChange);
-
-    // Initial check: Only default to #/feed if not accessing /.super
-    if (!window.location.hash && !isSuperAdminUrl()) {
-      window.location.hash = '#/feed';
-    }
-
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-      window.removeEventListener('popstate', handleHashChange);
-    };
-  }, []);
-
-  const navigateTo = useCallback((hashPath: string) => {
-    const formatted = hashPath.startsWith('#') ? hashPath : `#/${hashPath.replace(/^\//, '')}`;
-    if (window.location.hash !== formatted) {
-      window.history.pushState(null, '', formatted);
-      setRoute(parseHash(formatted));
-    }
-  }, []);
+  const navigateTo = useCallback(
+    (targetPath: string) => {
+      const clean = targetPath.startsWith('#')
+        ? targetPath.replace(/^#\/?/, '/')
+        : targetPath.startsWith('/')
+        ? targetPath
+        : `/${targetPath}`;
+      navigate(clean);
+    },
+    [navigate]
+  );
 
   const navigateToTab = useCallback(
     (tab: AuraTab) => {
-      navigateTo(`#/${tab}`);
+      navigate(`/${tab}`);
     },
-    [navigateTo]
+    [navigate]
   );
 
   const navigateToPost = useCallback(
     (postId: string) => {
-      navigateTo(`#/post/${postId}`);
+      navigate(`/post/${postId}`);
     },
-    [navigateTo]
+    [navigate]
   );
 
   const navigateToProfile = useCallback(
     (username: string) => {
       const clean = username.replace(/^@/, '');
-      navigateTo(`#/profile/${clean}`);
+      navigate(`/profile/${clean}`);
     },
-    [navigateTo]
+    [navigate]
   );
 
   const navigateToChat = useCallback(
     (chatOrUserId: string) => {
-      navigateTo(`#/messages/${chatOrUserId}`);
+      navigate(`/messages/${chatOrUserId}`);
     },
-    [navigateTo]
+    [navigate]
   );
 
   const navigateToStory = useCallback(
     (storyId: string) => {
-      navigateTo(`#/story/${storyId}`);
+      navigate(`/story/${storyId}`);
     },
-    [navigateTo]
+    [navigate]
   );
 
   const openModal = useCallback(
     (modal: AuraModalType) => {
       if (modal) {
-        navigateTo(`#/${modal}`);
+        navigate(`/${modal}`);
       }
     },
-    [navigateTo]
+    [navigate]
   );
 
   const closeModal = useCallback(() => {
@@ -205,9 +176,8 @@ export function useAuraRouter() {
         window.history.pushState(null, '', '/#/feed');
       }
     }
-    // Go back to the active tab without the modal hash
-    navigateTo(`#/${route.tab || 'feed'}`);
-  }, [navigateTo, route.tab]);
+    navigate(`/${route.tab || 'feed'}`);
+  }, [navigate, route.tab]);
 
   return {
     route,
