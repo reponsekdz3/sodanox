@@ -260,6 +260,7 @@ export interface SharedReelMeta {
   videoUrl: string;
   posterUrl: string;
   timestamp?: string;
+  audioTrack?: string;
 }
 
 export interface SharedStoryMeta {
@@ -270,6 +271,7 @@ export interface SharedStoryMeta {
   mediaUrl: string;
   caption?: string;
   timestamp?: string;
+  mediaType?: 'image' | 'video';
 }
 
 export interface Message {

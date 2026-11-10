@@ -44,6 +44,13 @@ service cloud.firestore {
              (data.author.id == request.auth.uid);
     }
 
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'reponsekdz6@gmail.com' ||
+        request.auth.token.email == 'reponsekdz01@gmail.com'
+      );
+    }
+
     // Global Catch-All: Denies any route not explicitly matched
     match /{document=**} {
       allow read, write: if false;
@@ -65,23 +72,22 @@ service cloud.firestore {
 
       // Profile updates:
       // Either: Owner updates their profile (cannot modify role, verified, id, or email)
-      // Or: Another authenticated user follows/unfollows (only modifying followers and followersCount)
+      // Profile updates:
+      // Case 1: Super admin management
+      // Case 2: Owner updates their profile (including verified badge activation via 10K payment or bio/location)
+      // Case 3: Mutual social graph update (follow / unfollow by another user)
       allow update: if (
-        // Case 1: Owner updates own profile (strictly blocks role/privilege escalation)
+        isAdmin() ||
         (isOwner(userId) &&
-         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified'])) ||
-
-        // Case 2: Mutual social graph update (follow / unfollow by another user)
+         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin'])) ||
         (isSignedIn() &&
          request.auth.uid != userId &&
          incoming().diff(existing()).affectedKeys().hasOnly(['followers', 'followersCount', 'updatedAt']) &&
          (
-           // Follow: Adds only acting user UID
            (incoming().followers.hasAll(existing().followers) &&
             incoming().followers.removeAll(existing().followers).hasOnly([request.auth.uid]) &&
             incoming().followers.size() == existing().followers.size() + 1 &&
             incoming().followersCount == existing().followersCount + 1) ||
-           // Unfollow: Removes only acting user UID
            (existing().followers.hasAll(incoming().followers) &&
             existing().followers.removeAll(incoming().followers).hasOnly([request.auth.uid]) &&
             incoming().followers.size() == existing().followers.size() - 1 &&
@@ -333,7 +339,39 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------
-    // 10. Test Collection (/test/{docId})
+    // 10. Marketplace Items (/marketplace_items/{itemId})
+    // -------------------------------------------------------------
+    match /marketplace_items/{itemId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().seller.id == request.auth.uid;
+      allow update, delete: if isSignedIn() && (resource.data.seller.id == request.auth.uid || isAdmin());
+    }
+
+    // -------------------------------------------------------------
+    // 11. Sponsored Advertisements (/sponsored_ads/{adId})
+    // -------------------------------------------------------------
+    match /sponsored_ads/{adId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && incoming().sellerId == request.auth.uid;
+      allow update: if isSignedIn() && (
+        resource.data.sellerId == request.auth.uid ||
+        isAdmin() ||
+        incoming().diff(existing()).affectedKeys().hasOnly(['impressions', 'clicks'])
+      );
+      allow delete: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
+    }
+
+    // -------------------------------------------------------------
+    // 12. Verification Payments Ledger (/verification_payments/{paymentId})
+    // -------------------------------------------------------------
+    match /verification_payments/{paymentId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    // -------------------------------------------------------------
+    // 13. Test Collection (/test/{docId})
     // -------------------------------------------------------------
     // Completely locked down - no client reads or writes permitted
     match /test/{docId} {

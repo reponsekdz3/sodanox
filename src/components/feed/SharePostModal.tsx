@@ -105,6 +105,7 @@ export const SharePostModal: React.FC<ShareModalProps> = ({
         caption: reel.caption,
         videoUrl: reel.videoUrl,
         posterUrl: reel.posterUrl,
+        audioTrack: reel.audioTrack ? `${reel.audioTrack.title} — ${reel.audioTrack.artist}` : undefined,
       };
       const text = customNote.trim() || `Shared a video reel from @${reel.author.username}`;
       onSendToChat(targetUser.id, text, { reel: sharedReel });
@@ -116,6 +117,7 @@ export const SharePostModal: React.FC<ShareModalProps> = ({
         authorUsername: story.userUsername,
         authorAvatar: story.userAvatar,
         mediaUrl: firstItem?.mediaUrl || '',
+        mediaType: firstItem?.type,
         caption: firstItem?.caption || '',
       };
       const text = customNote.trim() || `Shared a story from @${story.userUsername}`;

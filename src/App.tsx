@@ -36,7 +36,7 @@ import { PostDetailModal } from './components/feed/PostDetailModal';
 import { MarketplaceView } from './components/marketplace/MarketplaceView';
 import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
 import { PayVerifiedModal } from './components/verification/PayVerifiedModal';
-import { useAuraRouter } from './hooks/useAuraRouter';
+import { useAuraRouter, isSuperAdminUrl } from './hooks/useAuraRouter';
 import {
   initiateCallSession,
   subscribeToIncomingCalls,
@@ -92,6 +92,7 @@ import {
   getAllUsers,
   getSuggestedUsers,
   getUserByUsername,
+  updateUserProfile,
 } from './services/userService';
 import { rankFeedWithML, getSmartSuggestedCreatorsML } from './services/mlFeedService';
 import { PermissionsOnboardingModal } from './components/common/PermissionsOnboardingModal';
@@ -146,7 +147,8 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
   const [isPayVerifiedOpen, setIsPayVerifiedOpen] = useState(false);
-  const [isSuperAdminOpen, setIsSuperAdminOpen] = useState(false);
+  const [isSuperAdminOpen, setIsSuperAdminOpen] = useState<boolean>(() => isSuperAdminUrl());
+  const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
 
   // Message notification tracking
   const prevSeenMsgIdsRef = React.useRef<Set<string>>(new Set());
@@ -167,13 +169,11 @@ export default function App() {
   // Secret /.super URL listener
   useEffect(() => {
     const checkSuper = () => {
-      if (
-        window.location.hash.includes('.super') ||
-        window.location.hash.includes('super') ||
-        window.location.pathname.includes('.super') ||
-        window.location.search.includes('super=1')
-      ) {
+      if (isSuperAdminUrl()) {
         setIsSuperAdminOpen(true);
+        // Ensure community users and posts are loaded for Super Admin
+        getAllUsers('', '').then(setCommunityUsers).catch(() => {});
+        subscribeToPosts('', (pts) => setPosts(pts));
       }
     };
     checkSuper();
@@ -228,6 +228,16 @@ export default function App() {
     }
     return null;
   }, [userProfile, fbAuthUser]);
+
+  // Check permissions onboarding status
+  useEffect(() => {
+    if (currentUser) {
+      const onboarded = localStorage.getItem(`aura_onboarded_${currentUser.id}`);
+      if (!onboarded) {
+        setIsPermissionsModalOpen(true);
+      }
+    }
+  }, [currentUser?.id]);
 
   // Profile currently being viewed
   const [viewingUser, setViewingUser] = useState<User | null>(null);
@@ -1113,6 +1123,31 @@ export default function App() {
     setActiveCall({ ...activeCall, isMinimized: false });
   };
 
+  // Super Administrator Portal: Immediate priority entry when visiting /.super, #/super, or ?super=1
+  if (isSuperAdminOpen) {
+    return (
+      <SuperAdminDashboard
+        allUsers={communityUsers}
+        allPosts={posts}
+        currentUser={currentUser}
+        onClose={() => {
+          setIsSuperAdminOpen(false);
+          if (
+            window.location.pathname.includes('.super') ||
+            window.location.pathname.includes('/super')
+          ) {
+            window.history.pushState(null, '', '/#/feed');
+          } else if (window.location.hash.includes('super')) {
+            window.location.hash = '#/feed';
+          }
+        }}
+        onRefreshUsers={() => {
+          getAllUsers('', '').then(setCommunityUsers).catch(() => {});
+        }}
+      />
+    );
+  }
+
   // 1. Initial Auth Loading Screen
   if (loading) {
     return (
@@ -1131,12 +1166,31 @@ export default function App() {
   // 2. Auth Gating: Unauthenticated users MUST see only Login / Register page
   if (!isAuthenticated || !currentUser) {
     return (
-      <AuthPage
-        onSuccess={() => {
-          navigateToTab('feed');
-          window.location.hash = '#/feed';
-        }}
-      />
+      <>
+        <AuthPage
+          onSuccess={() => {
+            navigateToTab('feed');
+            window.location.hash = '#/feed';
+          }}
+        />
+        {/* Hidden Super Administrator Portal (triggered via /.super in URL) */}
+        {isSuperAdminOpen && (
+          <SuperAdminDashboard
+            allUsers={communityUsers}
+            allPosts={posts}
+            currentUser={currentUser}
+            onClose={() => {
+              setIsSuperAdminOpen(false);
+              if (window.location.hash.includes('super')) {
+                window.location.hash = '#/feed';
+              }
+            }}
+            onRefreshUsers={() => {
+              getAllUsers('', '').then(setCommunityUsers).catch(() => {});
+            }}
+          />
+        )}
+      </>
     );
   }
 
@@ -1530,7 +1584,12 @@ export default function App() {
           currentUser={currentUser}
           onClose={() => {
             setIsSuperAdminOpen(false);
-            if (window.location.hash.includes('super')) {
+            if (
+              window.location.pathname.includes('.super') ||
+              window.location.pathname.includes('/super')
+            ) {
+              window.history.pushState(null, '', '/#/feed');
+            } else if (window.location.hash.includes('super')) {
               window.location.hash = '#/feed';
             }
           }}
@@ -1539,20 +1598,30 @@ export default function App() {
       )}
 
       {/* Permissions Onboarding Modal (Automatic post-login prompt for notifications & location) */}
-      <PermissionsOnboardingModal
-        currentUser={currentUser}
-        onLocationUpdated={(coords) => {
-          updateUserProfile(currentUser.id, {
-            detectedLocation: {
-              lat: coords.latitude,
-              lng: coords.longitude,
-              city: 'Kigali',
-              country: 'Rwanda',
-              enabledAt: Date.now(),
-            },
-          }).catch(() => {});
-        }}
-      />
+      {isPermissionsModalOpen && currentUser && (
+        <PermissionsOnboardingModal
+          isOpen={isPermissionsModalOpen}
+          onClose={() => {
+            setIsPermissionsModalOpen(false);
+            if (currentUser) {
+              localStorage.setItem(`aura_onboarded_${currentUser.id}`, 'true');
+            }
+          }}
+          onLocationGranted={(coords) => {
+            if (currentUser) {
+              updateUserProfile(currentUser.id, {
+                detectedLocation: {
+                  lat: coords.latitude,
+                  lng: coords.longitude,
+                  city: 'Kigali',
+                  country: 'Rwanda',
+                  enabledAt: Date.now(),
+                },
+              }).catch(() => {});
+            }
+          }}
+        />
+      )}
 
       {/* PWA Offline Connectivity Indicator */}
       {!isOnline && (

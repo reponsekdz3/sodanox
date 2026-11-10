@@ -22,6 +22,25 @@ export interface AuraRouteState {
   searchQuery: string;
 }
 
+export function isSuperAdminUrl(): boolean {
+  if (typeof window === 'undefined') return false;
+  const p = (window.location.pathname || '').toLowerCase();
+  const h = (window.location.hash || '').toLowerCase();
+  const s = (window.location.search || '').toLowerCase();
+  return (
+    p === '/.super' ||
+    p.startsWith('/.super') ||
+    p === '/super' ||
+    p.startsWith('/super') ||
+    h === '#.super' ||
+    h === '#/super' ||
+    h.includes('.super') ||
+    h.includes('super') ||
+    s.includes('super=1') ||
+    s.includes('.super')
+  );
+}
+
 function parseHash(hash: string): AuraRouteState {
   const cleanHash = hash.replace(/^#\/?/, '').trim();
   const [pathAndQuery] = cleanHash.split('?');
@@ -39,15 +58,8 @@ function parseHash(hash: string): AuraRouteState {
   let storyId: string | null = null;
   let modal: AuraModalType = null;
 
-  // Check for /.super secret access in path or hash
-  if (
-    cleanHash === '.super' ||
-    cleanHash.startsWith('.super') ||
-    cleanHash === 'super' ||
-    cleanHash.startsWith('super') ||
-    (typeof window !== 'undefined' &&
-      (window.location.pathname.includes('.super') || window.location.search.includes('super=1')))
-  ) {
+  // Check for /.super secret access in path, query, or hash
+  if (isSuperAdminUrl()) {
     modal = 'super-admin';
   }
 
@@ -80,6 +92,8 @@ function parseHash(hash: string): AuraRouteState {
     modal = 'notifications';
   } else if (first === 'pay-verified' || first === 'verify') {
     modal = 'pay-verified';
+  } else if (first === 'super' || first === '.super') {
+    modal = 'super-admin';
   }
 
   return {
@@ -96,7 +110,7 @@ function parseHash(hash: string): AuraRouteState {
 export function useAuraRouter() {
   const [route, setRoute] = useState<AuraRouteState>(() => {
     if (typeof window !== 'undefined') {
-      return parseHash(window.location.hash || '#/feed');
+      return parseHash(window.location.hash || '');
     }
     return {
       tab: 'feed',
@@ -112,14 +126,14 @@ export function useAuraRouter() {
   // Sync state on hash change
   useEffect(() => {
     const handleHashChange = () => {
-      setRoute(parseHash(window.location.hash || '#/feed'));
+      setRoute(parseHash(window.location.hash || ''));
     };
 
     window.addEventListener('hashchange', handleHashChange);
     window.addEventListener('popstate', handleHashChange);
 
-    // Initial check
-    if (!window.location.hash) {
+    // Initial check: Only default to #/feed if not accessing /.super
+    if (!window.location.hash && !isSuperAdminUrl()) {
       window.location.hash = '#/feed';
     }
 
@@ -183,8 +197,16 @@ export function useAuraRouter() {
   );
 
   const closeModal = useCallback(() => {
+    if (isSuperAdminUrl()) {
+      if (
+        window.location.pathname.includes('.super') ||
+        window.location.pathname.includes('/super')
+      ) {
+        window.history.pushState(null, '', '/#/feed');
+      }
+    }
     // Go back to the active tab without the modal hash
-    navigateTo(`#/${route.tab}`);
+    navigateTo(`#/${route.tab || 'feed'}`);
   }, [navigateTo, route.tab]);
 
   return {

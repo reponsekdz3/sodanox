@@ -51,6 +51,34 @@ class AudioSynthesizer {
   }
 
   /**
+   * Bubble pop for reactions and likes
+   */
+  public playPop(frequency = 720) {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(frequency, now);
+      osc.frequency.exponentialRampToValueAtTime(frequency * 0.4, now + 0.05);
+
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.06);
+    } catch {
+      // Audio suppressed
+    }
+  }
+
+  /**
    * Warm harmonic chime
    */
   public playChime() {

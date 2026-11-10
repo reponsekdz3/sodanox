@@ -1,10 +1,12 @@
-import React, { useState, useMemo } from 'react';
-import { Post, User, Story } from '../../types';
+import React, { useState, useMemo, useEffect } from 'react';
+import { Post, User, Story, SponsoredAd } from '../../types';
 import { StoryBar } from '../story/StoryBar';
 import { PostCard } from './PostCard';
+import { SponsoredFeedAdCard } from './SponsoredFeedAdCard';
 import { RightAside } from '../layout/RightAside';
 import { Sparkles, Hash, X } from 'lucide-react';
 import { calculateTrendingTopics } from '../../services/trendingService';
+import { getActiveAds } from '../../services/marketplaceService';
 import { BrowserNotificationBanner } from '../common/BrowserNotificationBanner';
 
 interface FeedProps {
@@ -59,6 +61,11 @@ export const Feed: React.FC<FeedProps> = ({
   const [activeFilter, setActiveFilter] = useState<'all' | 'following' | 'ceramics' | 'architecture'>('all');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [feedAds, setFeedAds] = useState<SponsoredAd[]>([]);
+
+  useEffect(() => {
+    getActiveAds('feed_post').then(setFeedAds).catch(() => {});
+  }, []);
 
   const trendingTopics = useMemo(() => calculateTrendingTopics(posts), [posts]);
 
@@ -205,26 +212,35 @@ export const Feed: React.FC<FeedProps> = ({
               </div>
             </div>
           ) : (
-            filteredPosts.map((post) => (
-              <PostCard
-                key={post.id}
-                post={post}
-                currentUser={currentUser}
-                suggestedUsers={suggestedUsers}
-                onLikePost={onLikePost}
-                onBookmarkPost={onBookmarkPost}
-                onRepostPost={onRepostPost}
-                onIncrementShare={onIncrementShare}
-                onSendToChat={onSendToChat}
-                onAddComment={onAddComment}
-                onLikeComment={onLikeComment}
-                onDeleteComment={onDeleteComment}
-                onVotePoll={onVotePoll}
-                onDeletePost={onDeletePost}
-                onEditPost={onEditPost}
-                onOpenUserProfile={onOpenUserProfile}
-                onToggleFollowUser={onToggleFollowUser}
-              />
+            filteredPosts.map((post, idx) => (
+              <React.Fragment key={post.id}>
+                <PostCard
+                  post={post}
+                  currentUser={currentUser}
+                  suggestedUsers={suggestedUsers}
+                  onLikePost={onLikePost}
+                  onBookmarkPost={onBookmarkPost}
+                  onRepostPost={onRepostPost}
+                  onIncrementShare={onIncrementShare}
+                  onSendToChat={onSendToChat}
+                  onAddComment={onAddComment}
+                  onLikeComment={onLikeComment}
+                  onDeleteComment={onDeleteComment}
+                  onVotePoll={onVotePoll}
+                  onDeletePost={onDeletePost}
+                  onEditPost={onEditPost}
+                  onOpenUserProfile={onOpenUserProfile}
+                  onToggleFollowUser={onToggleFollowUser}
+                />
+                {/* Interleaved Active Sponsored Feed Ad */}
+                {feedAds.length > 0 && (idx === 1 || (idx > 1 && (idx + 1) % 4 === 0)) && (
+                  <SponsoredFeedAdCard
+                    ad={feedAds[Math.floor(idx / 2) % feedAds.length]}
+                    currentUser={currentUser}
+                    onOpenDirectChat={onOpenDirectChat}
+                  />
+                )}
+              </React.Fragment>
             ))
           )}
         </div>

@@ -29,6 +29,14 @@ import { updateUserProfile } from '../../services/userService';
 import { getAllVerificationPayments } from '../../services/verificationPaymentService';
 import { getMarketplaceItems, getActiveAds } from '../../services/marketplaceService';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import {
+  trainFeedRankerModel,
+  evaluateContentWithML,
+  getMLModelWeights,
+  resetMLModelWeights,
+  MLModelWeights,
+  ContentSafetyResult,
+} from '../../services/mlFeedService';
 
 interface SuperAdminDashboardProps {
   allUsers: User[];
@@ -141,44 +149,66 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
     }
   };
 
-  const handleRunMLTraining = () => {
+  const [modelWeights, setModelWeights] = useState<MLModelWeights>(getMLModelWeights);
+
+  const handleRunMLTraining = async () => {
     setIsTrainingML(true);
     auraAudio.playClick(500, 0.04);
+    const epochsCount = parseInt(mlEpochs, 10) || 25;
+
     setMlOutputLog((prev) => [
       ...prev,
-      `[${new Date().toLocaleTimeString()}] Initiating SGD training loop on ${allPosts.length} posts and ${allUsers.length} creators...`,
+      `[${new Date().toLocaleTimeString()}] >>> Initializing training loop on ${allPosts.length} posts and ${allUsers.length} creators...`,
+      `[${new Date().toLocaleTimeString()}] Features: [ContentSimilarity, EngagementVelocity, RecencyDecay, SocialAffinity, VerifiedBoost, MediaRichness]`,
+      `[${new Date().toLocaleTimeString()}] Optimization: Stochastic Gradient Descent (SGD) with L2 regularization`,
     ]);
 
-    setTimeout(() => {
+    try {
+      const summary = await trainFeedRankerModel(allPosts, allUsers, {
+        epochs: epochsCount,
+        learningRate: 0.06,
+        onEpochEnd: (res) => {
+          if (res.epoch % 5 === 0 || res.epoch === epochsCount) {
+            setMlOutputLog((prev) => [
+              ...prev,
+              `[${new Date().toLocaleTimeString()}] Epoch ${res.epoch}/${res.totalEpochs} | BCE Loss: ${res.loss.toFixed(4)} | Accuracy: ${res.accuracy.toFixed(1)}% | Bias: ${res.bias.toFixed(3)}`,
+            ]);
+          }
+        },
+      });
+
+      setModelWeights(summary.learnedWeights);
       setMlOutputLog((prev) => [
         ...prev,
-        `[${new Date().toLocaleTimeString()}] Epoch 10/30 - Loss: 0.5841 - Vector Cosine Norm: 1.000`,
-        `[${new Date().toLocaleTimeString()}] Epoch 20/30 - Loss: 0.4120 - CTR Correlation: 0.884`,
-        `[${new Date().toLocaleTimeString()}] Epoch 30/30 - Converged - Final Loss: 0.2891`,
-        `[${new Date().toLocaleTimeString()}] Model weights updated successfully in memory. Ranking indices regenerated.`,
+        `[${new Date().toLocaleTimeString()}] ✓ Training completed successfully in ${summary.durationMs}ms.`,
+        `[${new Date().toLocaleTimeString()}] Initial Loss: ${summary.initialLoss.toFixed(4)} -> Final Loss: ${summary.finalLoss.toFixed(4)} (${summary.lossReductionPercent}% reduction).`,
+        `[${new Date().toLocaleTimeString()}] Active learned weights updated: ${JSON.stringify(summary.learnedWeights)}`,
       ]);
-      setIsTrainingML(false);
       auraAudio.playChime();
-    }, 1400);
+    } catch (err: any) {
+      setMlOutputLog((prev) => [
+        ...prev,
+        `[${new Date().toLocaleTimeString()}] Training log: ${err?.message || err}`,
+      ]);
+    } finally {
+      setIsTrainingML(false);
+    }
+  };
+
+  const handleResetWeights = () => {
+    const defaultW = resetMLModelWeights();
+    setModelWeights(defaultW);
+    setMlOutputLog((prev) => [
+      ...prev,
+      `[${new Date().toLocaleTimeString()}] ML model weights reset to baseline values.`,
+    ]);
+    auraAudio.playClick(440, 0.03);
   };
 
   const handleScanContent = () => {
     if (!contentToScan.trim()) return;
-    const lower = contentToScan.toLowerCase();
-    const toxicWords = ['scam', 'fraud', 'hate', 'phishing', 'fake', 'abuse', 'illegal'].filter((w) =>
-      lower.includes(w)
-    );
-    const posWords = ['craft', 'mindful', 'design', 'peace', 'slow', 'nordic'].filter((w) =>
-      lower.includes(w)
-    );
-
-    const isSafe = toxicWords.length === 0;
-    setScanResult({
-      isSafe,
-      toxicityScore: toxicWords.length > 0 ? 0.85 : 0.02,
-      sentiment: isSafe ? (posWords.length > 0 ? 'Mindful / Positive' : 'Neutral') : 'Toxic / Flagged',
-      flaggedKeywords: toxicWords,
-    });
+    const result = evaluateContentWithML(contentToScan);
+    setScanResult(result);
     auraAudio.playClick(600, 0.04);
   };
 
@@ -741,30 +771,94 @@ export const SuperAdminDashboard: React.FC<SuperAdminDashboardProps> = ({
 
           {/* TAB 5: AI & MACHINE LEARNING TRAINING STUDIO */}
           {activeTab === 'ml_center' && (
-            <div className="space-y-4 animate-fade-in">
-              <div className="flex items-center justify-between">
+            <div className="space-y-6 animate-fade-in">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                   <h2 className="text-xl font-bold text-emerald-100">Machine Learning Neural Training Studio</h2>
                   <p className="text-xs text-emerald-200/80">
-                    Pure-Python Vectorized Gradient Descent & TF-IDF Feed Ranking Engine
+                    Real-time Vectorized Gradient Descent & TF-IDF Feed Ranking Engine
                   </p>
                 </div>
-                <button
-                  type="button"
-                  disabled={isTrainingML}
-                  onClick={handleRunMLTraining}
-                  className="py-2.5 px-4 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-[#022C22] text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                >
-                  <Play size={15} />
-                  <span>{isTrainingML ? 'Training Model...' : 'Train ML Model on App Corpus'}</span>
-                </button>
+                <div className="flex items-center gap-2.5">
+                  <select
+                    value={mlEpochs}
+                    onChange={(e) => setMlEpochs(e.target.value)}
+                    className="px-3 py-2 rounded-xl bg-emerald-950 border border-emerald-700/60 text-xs font-mono text-emerald-200 focus:outline-none"
+                  >
+                    <option value="10">10 Epochs</option>
+                    <option value="25">25 Epochs</option>
+                    <option value="50">50 Epochs</option>
+                    <option value="100">100 Epochs</option>
+                  </select>
+
+                  <button
+                    type="button"
+                    disabled={isTrainingML}
+                    onClick={handleRunMLTraining}
+                    className="py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 to-[#10B981] hover:brightness-110 text-[#022C22] text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                  >
+                    <Play size={14} />
+                    <span>{isTrainingML ? 'Training In Progress...' : 'Train ML Model'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResetWeights}
+                    className="p-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-emerald-200 transition-colors cursor-pointer"
+                    title="Reset weights to baseline"
+                  >
+                    <RotateCcw size={15} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Active Learned Neural Parameters */}
+              <div className="rounded-3xl border border-emerald-700/60 bg-[#064E3B] p-4 sm:p-5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-emerald-200 flex items-center gap-2">
+                    <Sparkles size={16} className="text-emerald-400" />
+                    <span>Active Learned Model Weights (Commited to Feed Algorithm)</span>
+                  </h3>
+                  <span className="text-[10px] text-emerald-300 font-mono">Real-time Dynamic Scoring</span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2.5 text-xs font-mono">
+                  <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-center space-y-1">
+                    <p className="text-[10px] text-emerald-400 truncate">Content Sim</p>
+                    <p className="text-base font-bold text-white">{modelWeights.contentSimilarity}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-center space-y-1">
+                    <p className="text-[10px] text-emerald-400 truncate">Engagement</p>
+                    <p className="text-base font-bold text-white">{modelWeights.engagementVelocity}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-center space-y-1">
+                    <p className="text-[10px] text-emerald-400 truncate">Recency Decay</p>
+                    <p className="text-base font-bold text-white">{modelWeights.recencyFactor}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-center space-y-1">
+                    <p className="text-[10px] text-emerald-400 truncate">Social Affinity</p>
+                    <p className="text-base font-bold text-white">{modelWeights.socialAffinity}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-center space-y-1">
+                    <p className="text-[10px] text-emerald-400 truncate">10K Verified</p>
+                    <p className="text-base font-bold text-white">{modelWeights.verifiedMultiplier}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-center space-y-1">
+                    <p className="text-[10px] text-emerald-400 truncate">Media Bonus</p>
+                    <p className="text-base font-bold text-white">{modelWeights.mediaRichness}</p>
+                  </div>
+                  <div className="p-3 rounded-2xl bg-emerald-950/60 border border-emerald-800/60 text-center space-y-1">
+                    <p className="text-[10px] text-emerald-400 truncate">Bias term</p>
+                    <p className="text-base font-bold text-white">{modelWeights.bias}</p>
+                  </div>
+                </div>
               </div>
 
               {/* Console Terminal */}
-              <div className="rounded-3xl border border-emerald-800 bg-black/80 p-4 sm:p-5 font-mono text-xs text-emerald-300 space-y-2 max-h-96 overflow-y-auto">
+              <div className="rounded-3xl border border-emerald-800 bg-black/85 p-4 sm:p-5 font-mono text-xs text-emerald-300 space-y-2 max-h-80 overflow-y-auto shadow-inner">
                 <div className="flex items-center justify-between pb-2 border-b border-emerald-900 text-emerald-500 text-[11px]">
-                  <span>DUCATE_ML_ENGINE_V2.0 :: PYTHON 3 VIRTUAL ENGINE</span>
-                  <span>SGD OPTIMIZER</span>
+                  <span>DUCATE_NEURAL_ENGINE :: SGD GRADIENT DESCENT TERMINAL</span>
+                  <span>OPTIMIZER: ACTIVE</span>
                 </div>
                 {mlOutputLog.map((line, idx) => (
                   <div key={idx} className="leading-relaxed">

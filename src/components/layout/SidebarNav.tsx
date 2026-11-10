@@ -55,6 +55,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onOpenSettings,
   onSelectSavedTab,
   onSelectTrendingTab,
+  onOpenPayVerified,
 }) => {
   const { signOut } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);

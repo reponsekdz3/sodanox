@@ -847,7 +847,7 @@ export const PostCard: React.FC<PostCardProps> = ({
           currentUser={currentUser}
           onClose={() => setIsShareModalOpen(false)}
           onSendToChat={(recipientId, text, sharedMeta) => {
-            onSendToChat?.(recipientId, text, sharedMeta);
+            onSendToChat?.(recipientId, text, sharedMeta?.post);
           }}
           onIncrementShare={() => onIncrementShare?.(post.id)}
         />

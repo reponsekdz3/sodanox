@@ -212,9 +212,87 @@
         "createdAt": { "type": "string" }
       },
       "required": ["userId", "title", "coverUrl"]
+    },
+    "MarketplaceItem": {
+      "title": "MarketplaceItem",
+      "description": "Products listed for sale or trade on marketplace",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "price": { "type": "number" },
+        "currency": { "type": "string" },
+        "category": { "type": "string" },
+        "condition": { "type": "string" },
+        "images": { "type": "array" },
+        "seller": { "type": "object" },
+        "location": { "type": "string" },
+        "createdAt": { "type": "number" },
+        "isSold": { "type": "boolean" },
+        "tags": { "type": "array" },
+        "contactPhone": { "type": "string" }
+      },
+      "required": ["title", "price", "seller"]
+    },
+    "SponsoredAd": {
+      "title": "SponsoredAd",
+      "description": "Sponsored promotional ads rendered in feed and stories",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "mediaUrl": { "type": "string" },
+        "mediaType": { "type": "string" },
+        "ctaText": { "type": "string" },
+        "ctaUrl": { "type": "string" },
+        "sellerId": { "type": "string" },
+        "sellerName": { "type": "string" },
+        "sellerAvatar": { "type": "string" },
+        "sellerUsername": { "type": "string" },
+        "budget": { "type": "number" },
+        "impressions": { "type": "number" },
+        "clicks": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["type", "title", "mediaUrl", "sellerId"]
+    },
+    "VerificationPayment": {
+      "title": "VerificationPayment",
+      "description": "Ledger of 10K verified badge purchases across MTN, Flutterwave, Stripe",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "username": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "provider": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string" },
+        "transactionRef": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["userId", "provider", "amount", "transactionRef"]
     }
   },
   "firestore": {
+    "/marketplace_items/{itemId}": {
+      "schema": "MarketplaceItem",
+      "description": "Marketplace listings collection"
+    },
+    "/sponsored_ads/{adId}": {
+      "schema": "SponsoredAd",
+      "description": "Sponsored ads for feeds and stories"
+    },
+    "/verification_payments/{paymentId}": {
+      "schema": "VerificationPayment",
+      "description": "Audit records for 10K verified badge purchases"
+    },
     "/highlights/{highlightId}": {
       "schema": "Highlight",
       "description": "User profile story highlights collection"

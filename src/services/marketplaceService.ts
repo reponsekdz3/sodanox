@@ -280,7 +280,10 @@ export async function getActiveAds(placement: 'feed_post' | 'story_ad'): Promise
  * Create a new sponsored advertisement
  */
 export async function createSponsoredAd(
-  adData: Omit<SponsoredAd, 'id' | 'impressions' | 'clicks' | 'createdAt' | 'status'>,
+  adData: Omit<
+    SponsoredAd,
+    'id' | 'impressions' | 'clicks' | 'createdAt' | 'status' | 'sellerId' | 'sellerName' | 'sellerAvatar' | 'sellerUsername'
+  >,
   user: User
 ): Promise<SponsoredAd> {
   const adId = `ad_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;

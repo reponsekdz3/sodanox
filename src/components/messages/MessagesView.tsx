@@ -138,6 +138,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [hoveredMessageId, setHoveredMessageId] = useState<string | null>(null);
   const [activeReactionMessageId, setActiveReactionMessageId] = useState<string | null>(null);
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [selectedMessageMenuId, setSelectedMessageMenuId] = useState<string | null>(null);
   const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
 
   // Modals
@@ -1003,10 +1004,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               filteredConversations.map((conv) => {
                 const isActive = conv.id === activeConv?.id;
                 return (
-                  <button
+                  <div
                     key={conv.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleSelectConv(conv.id)}
-                    className={`w-full p-3 sm:p-3.5 md:p-4 flex items-center gap-2.5 sm:gap-3 text-left transition-colors cursor-pointer border-l-3 ${
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        handleSelectConv(conv.id);
+                      }
+                    }}
+                    className={`group w-full p-3 sm:p-3.5 md:p-4 flex items-center gap-2.5 sm:gap-3 text-left transition-colors cursor-pointer border-l-3 select-none ${
                       isActive
                         ? 'bg-[#EBF1ED] border-[#4A6757]'
                         : 'border-transparent hover:bg-[#F4F7F5]'
@@ -1030,8 +1039,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         </span>
                       </div>
 
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs text-[#62736B] truncate max-w-[180px]">
+                      <div className="flex items-center justify-between gap-1">
+                        <p className="text-xs text-[#62736B] truncate max-w-[150px] sm:max-w-[180px]">
                           {conv.isTyping ? (
                             <span className="text-emerald-700 font-semibold animate-pulse flex items-center gap-1">
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 inline-block animate-ping" />
@@ -1057,14 +1066,42 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                           )}
                         </p>
 
-                        {conv.unreadCount > 0 && (
-                          <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#4A6757] text-white text-[10px] font-bold flex items-center justify-center shrink-0 shadow-xs">
-                            {conv.unreadCount}
-                          </span>
-                        )}
+                        <div className="flex items-center gap-1 shrink-0">
+                          {conv.unreadCount > 0 && (
+                            <span className="min-w-5 h-5 px-1.5 rounded-full bg-[#4A6757] text-white text-[10px] font-bold flex items-center justify-center shrink-0 shadow-xs">
+                              {conv.unreadCount}
+                            </span>
+                          )}
+
+                          {/* Quick call buttons accessible on both mobile & desktop */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              auraAudio.playClick(600, 0.04);
+                              onStartCall(conv.participant, 'audio');
+                            }}
+                            className="p-1.5 rounded-lg text-emerald-800 bg-emerald-100/70 hover:bg-emerald-200 transition-colors cursor-pointer"
+                            title={`Call ${conv.participant.name}`}
+                          >
+                            <Phone size={12} className="stroke-[2.5]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              auraAudio.playClick(600, 0.04);
+                              onStartCall(conv.participant, 'video');
+                            }}
+                            className="p-1.5 rounded-lg text-emerald-800 bg-emerald-100/70 hover:bg-emerald-200 transition-colors cursor-pointer"
+                            title={`Video Call ${conv.participant.name}`}
+                          >
+                            <Video size={12} className="stroke-[2.5]" />
+                          </button>
+                        </div>
                       </div>
                     </div>
-                  </button>
+                  </div>
                 );
               })
             )}
@@ -1193,11 +1230,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     auraAudio.playClick(600, 0.04);
                     onStartCall(activeConv.participant, 'audio');
                   }}
-                  className="p-2 sm:p-2.5 rounded-2xl bg-emerald-50 text-[#064E3B] hover:bg-emerald-100 border border-emerald-200/60 transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-2xl bg-emerald-50 text-[#064E3B] hover:bg-emerald-100 border border-emerald-200/80 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                   title="Start Audio Call"
                 >
-                  <Phone size={16} className="stroke-[2.2] text-[#059669]" />
-                  <span className="hidden sm:inline text-xs font-semibold">Call</span>
+                  <Phone size={15} className="stroke-[2.4] text-[#059669]" />
+                  <span className="text-xs font-semibold">Call</span>
                 </button>
 
                 {/* Video Call */}
@@ -1206,11 +1243,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     auraAudio.playClick(600, 0.04);
                     onStartCall(activeConv.participant, 'video');
                   }}
-                  className="p-2 sm:p-2.5 rounded-2xl bg-[#064E3B] text-white hover:bg-[#059669] transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
+                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-2xl bg-[#064E3B] text-white hover:bg-[#059669] transition-all flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95"
                   title="Start Video Call"
                 >
-                  <Video size={16} className="stroke-[2.2]" />
-                  <span className="hidden sm:inline text-xs font-semibold">Video</span>
+                  <Video size={15} className="stroke-[2.4]" />
+                  <span className="text-xs font-semibold">Video</span>
                 </button>
 
                 {/* Info Panel Toggle */}
@@ -1300,15 +1337,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         {/* If self message, action icons appear on the left */}
                         {isSelf && (
                           <div
-                            className={`flex items-center gap-0.5 transition-opacity ${
-                              isHovered || activeReactionMessageId === msg.id
-                                ? 'opacity-100'
-                                : 'opacity-0 md:group-hover:opacity-100'
+                            className={`flex items-center gap-0.5 transition-all ${
+                              isHovered || activeReactionMessageId === msg.id || selectedMessageMenuId === msg.id
+                                ? 'opacity-100 scale-100'
+                                : 'opacity-0 md:group-hover:opacity-100 pointer-events-none md:pointer-events-auto'
                             }`}
                           >
                             <button
                               type="button"
-                              onClick={() => handleInitiateReply(msg)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleInitiateReply(msg);
+                              }}
                               className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="Reply"
                             >
@@ -1316,11 +1356,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setActiveReactionMessageId(
                                   activeReactionMessageId === msg.id ? null : msg.id
-                                )
-                              }
+                                );
+                              }}
                               className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="React"
                             >
@@ -1329,7 +1370,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             {msg.text && (
                               <button
                                 type="button"
-                                onClick={() => handleCopyMessage(msg)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCopyMessage(msg);
+                                }}
                                 className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                                 title="Copy text"
                               >
@@ -1342,7 +1386,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             )}
                             <button
                               type="button"
-                              onClick={() => handleDeleteMessage(msg.id)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteMessage(msg.id);
+                              }}
                               className="p-1.5 rounded-lg text-[#7A8A82] hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                               title="Delete message"
                             >
@@ -1373,7 +1420,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
                         {/* Bubble Content Body */}
                         <div
-                          className={`relative space-y-1 shadow-xs transition-all ${
+                          onClick={() => setSelectedMessageMenuId(selectedMessageMenuId === msg.id ? null : msg.id)}
+                          className={`relative space-y-1 shadow-xs transition-all cursor-pointer select-text ${
+                            selectedMessageMenuId === msg.id ? 'ring-2 ring-emerald-500/70' : ''
+                          } ${
                             isSelf
                               ? 'bg-gradient-to-r from-[#2F4438] via-[#3B5446] to-[#4A6757] text-white rounded-3xl rounded-tr-xs p-3 sm:p-3.5'
                               : 'bg-white text-[#1E2A23] border border-[#E2EAE4] rounded-3xl rounded-tl-xs p-3 sm:p-3.5'
@@ -1797,15 +1847,18 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         {/* If received message, action icons appear on the right */}
                         {!isSelf && (
                           <div
-                            className={`flex items-center gap-0.5 transition-opacity ${
-                              isHovered || activeReactionMessageId === msg.id
-                                ? 'opacity-100'
-                                : 'opacity-0 md:group-hover:opacity-100'
+                            className={`flex items-center gap-0.5 transition-all ${
+                              isHovered || activeReactionMessageId === msg.id || selectedMessageMenuId === msg.id
+                                ? 'opacity-100 scale-100'
+                                : 'opacity-0 md:group-hover:opacity-100 pointer-events-none md:pointer-events-auto'
                             }`}
                           >
                             <button
                               type="button"
-                              onClick={() => handleInitiateReply(msg)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleInitiateReply(msg);
+                              }}
                               className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="Reply"
                             >
@@ -1813,11 +1866,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 setActiveReactionMessageId(
                                   activeReactionMessageId === msg.id ? null : msg.id
-                                )
-                              }
+                                );
+                              }}
                               className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                               title="React"
                             >
@@ -1826,7 +1880,10 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                             {msg.text && (
                               <button
                                 type="button"
-                                onClick={() => handleCopyMessage(msg)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCopyMessage(msg);
+                                }}
                                 className="p-1.5 rounded-lg text-[#7A8A82] hover:text-[#2D3732] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
                                 title="Copy text"
                               >
