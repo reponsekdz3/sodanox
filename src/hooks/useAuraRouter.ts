@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 
-export type AuraTab = 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
+export type AuraTab = 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile';
 export type AuraModalType =
   | 'create-post'
   | 'create-story'
@@ -8,6 +8,8 @@ export type AuraModalType =
   | 'edit-profile'
   | 'settings'
   | 'notifications'
+  | 'pay-verified'
+  | 'super-admin'
   | null;
 
 export interface AuraRouteState {
@@ -37,12 +39,25 @@ function parseHash(hash: string): AuraRouteState {
   let storyId: string | null = null;
   let modal: AuraModalType = null;
 
+  // Check for /.super secret access in path or hash
+  if (
+    cleanHash === '.super' ||
+    cleanHash.startsWith('.super') ||
+    cleanHash === 'super' ||
+    cleanHash.startsWith('super') ||
+    (typeof window !== 'undefined' &&
+      (window.location.pathname.includes('.super') || window.location.search.includes('super=1')))
+  ) {
+    modal = 'super-admin';
+  }
+
   if (first === 'feed') tab = 'feed';
   else if (first === 'reels') tab = 'reels';
   else if (first === 'messages') {
     tab = 'messages';
     if (segments[1]) chatId = segments[1];
   } else if (first === 'explore') tab = 'explore';
+  else if (first === 'marketplace') tab = 'marketplace';
   else if (first === 'profile') {
     tab = 'profile';
     if (segments[1]) username = segments[1];
@@ -63,6 +78,8 @@ function parseHash(hash: string): AuraRouteState {
     modal = 'settings';
   } else if (first === 'notifications') {
     modal = 'notifications';
+  } else if (first === 'pay-verified' || first === 'verify') {
+    modal = 'pay-verified';
   }
 
   return {

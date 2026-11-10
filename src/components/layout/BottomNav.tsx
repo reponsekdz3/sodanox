@@ -1,12 +1,12 @@
 import React from 'react';
-import { Home, Compass, MessageSquare, User as UserIcon } from 'lucide-react';
+import { Home, Compass, MessageSquare, User as UserIcon, ShoppingBag } from 'lucide-react';
 import { auraAudio } from '../../utils/audioSynthesizer';
 import { PlusIcon as HeroPlusSolid } from '@heroicons/react/24/solid';
 
 interface BottomNavProps {
-  currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
+  currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile';
   unreadMessagesCount: number;
-  onSelectTab: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => void;
+  onSelectTab: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile') => void;
   onOpenCreatePost: () => void;
 }
 
@@ -16,7 +16,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
   onSelectTab,
   onOpenCreatePost,
 }) => {
-  const handleTabClick = (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => {
+  const handleTabClick = (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile') => {
     auraAudio.playClick(680, 0.03);
     onSelectTab(tab);
   };
@@ -52,27 +52,27 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           <span className="text-[10px] tracking-tight">Home</span>
         </button>
 
-        {/* 2. Explore & Search */}
+        {/* 2. Marketplace */}
         <button
           type="button"
-          onClick={() => handleTabClick('explore')}
+          onClick={() => handleTabClick('marketplace')}
           className={`min-h-[44px] flex flex-col items-center justify-center transition-all cursor-pointer ${
-            currentTab === 'explore'
+            currentTab === 'marketplace'
               ? 'text-[#022C22] font-semibold scale-105'
               : 'text-[#4B6358] hover:text-[#022C22]'
           }`}
-          title="Explore"
+          title="Marketplace"
         >
           <div className="relative p-1">
-            <Compass
+            <ShoppingBag
               size={20}
-              className={currentTab === 'explore' ? 'stroke-[2.5] text-[#059669]' : ''}
+              className={currentTab === 'marketplace' ? 'stroke-[2.5] text-[#059669]' : ''}
             />
-            {currentTab === 'explore' && (
+            {currentTab === 'marketplace' && (
               <span className="absolute -bottom-0.5 left-1/2 -translate-x-1/2 w-1 h-1 rounded-full bg-[#059669]" />
             )}
           </div>
-          <span className="text-[10px] tracking-tight">Explore</span>
+          <span className="text-[10px] tracking-tight">Market</span>
         </button>
 
         {/* 3. Center Elevated Quick Create Button with Hero PlusIcon */}

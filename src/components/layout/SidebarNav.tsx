@@ -12,6 +12,8 @@ import {
   Plus,
   LogOut,
   Sparkles,
+  ShoppingBag,
+  ShieldCheck,
 } from 'lucide-react';
 import { User } from '../../types';
 import { AuraLogo } from '../common/AuraLogo';
@@ -29,16 +31,17 @@ import {
 } from '@heroicons/react/24/solid';
 
 interface SidebarNavProps {
-  currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
+  currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile';
   currentUser: User | null;
   unreadMessagesCount: number;
   unreadNotificationsCount: number;
-  onSelectTab: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => void;
+  onSelectTab: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile') => void;
   onOpenCreatePost: () => void;
   onOpenNotifications: () => void;
   onOpenSettings: () => void;
   onSelectSavedTab?: () => void;
   onSelectTrendingTab?: () => void;
+  onOpenPayVerified?: () => void;
 }
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({
@@ -116,6 +119,24 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
               className={currentTab === 'explore' ? 'text-[#059669]' : 'text-[#4B6358]'}
             />
             <span className="hidden lg:inline text-[14px]">Explore & Search</span>
+          </button>
+
+          {/* Marketplace Navigation Tab */}
+          <button
+            type="button"
+            onClick={() => onSelectTab('marketplace')}
+            className={`w-full flex items-center justify-center lg:justify-start gap-3.5 px-2.5 lg:px-3.5 py-3 rounded-2xl transition-all cursor-pointer ${
+              currentTab === 'marketplace'
+                ? 'bg-[#EDF3F0] text-[#022C22] font-semibold shadow-xs'
+                : 'text-[#4B6358] hover:bg-[#EDF3F0] hover:text-[#022C22]'
+            }`}
+            title="Ducate Marketplace"
+          >
+            <ShoppingBag
+              size={20}
+              className={currentTab === 'marketplace' ? 'text-[#059669]' : 'text-[#4B6358]'}
+            />
+            <span className="hidden lg:inline text-[14px]">Marketplace</span>
           </button>
 
           {/* Reels / Cinema with Hero FilmIcon from @heroicons/react */}
@@ -231,6 +252,22 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             />
             <span className="hidden lg:inline text-[14px]">Your Profile</span>
           </button>
+
+          {/* 10K Blue Verification Badge Button */}
+          {!currentUser?.verified && onOpenPayVerified && (
+            <button
+              type="button"
+              onClick={onOpenPayVerified}
+              className="w-full flex items-center justify-center lg:justify-start gap-3 px-2.5 lg:px-3.5 py-2.5 rounded-2xl bg-blue-50/90 hover:bg-blue-100 border border-blue-200 text-blue-700 transition-all cursor-pointer shadow-xs"
+              title="Get 10K Verified Badge"
+            >
+              <ShieldCheck size={18} className="text-blue-600 shrink-0" />
+              <div className="hidden lg:block text-left">
+                <span className="text-xs font-bold block leading-tight">Get Verified</span>
+                <span className="text-[10px] text-blue-600 font-mono">10K RWF</span>
+              </div>
+            </button>
+          )}
 
           {/* Settings & Privacy */}
           <button

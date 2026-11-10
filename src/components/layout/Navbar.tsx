@@ -27,11 +27,11 @@ import { ModernAvatar } from '../common/ModernAvatar';
 import { PWAInstallButton } from '../pwa/PWAInstallButton';
 
 interface NavbarProps {
-  currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile';
+  currentTab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile';
   currentUser: User;
   unreadMessagesCount: number;
   unreadNotificationsCount: number;
-  onSelectTab: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => void;
+  onSelectTab: (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile') => void;
   onOpenCreatePost: () => void;
   onOpenNotifications: () => void;
   onOpenAuth: () => void;
@@ -66,7 +66,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleTabClick = (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'profile') => {
+  const handleTabClick = (tab: 'feed' | 'reels' | 'messages' | 'explore' | 'marketplace' | 'profile') => {
     auraAudio.playClick(440, 0.04);
     onSelectTab(tab);
   };
@@ -100,6 +100,19 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 -ml-3" />
             <span>Live Sync</span>
           </div>
+
+          {/* Mobile Header Messages Bracket Badge */}
+          {unreadMessagesCount > 0 && (
+            <button
+              type="button"
+              onClick={() => handleTabClick('messages')}
+              className="flex md:hidden items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-[#064E3B] text-[11px] font-bold border border-emerald-300"
+              title="Unread Messages"
+            >
+              <MessageSquare size={11} className="text-[#059669]" />
+              <span>[{unreadMessagesCount}]</span>
+            </button>
+          )}
         </div>
 
         {/* Zone 2: Spotlight Quick Search (Desktop) */}
@@ -171,7 +184,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             </span>
           </button>
 
-          {/* Messages Tab with Live Unread Counter */}
+          {/* Messages Tab with Live Unread Counter in Brackets */}
           <button
             type="button"
             onClick={() => handleTabClick('messages')}
@@ -182,7 +195,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             }`}
           >
             <MessageSquare size={16} className={currentTab === 'messages' ? 'text-[#059669]' : 'text-[#4B6358]'} />
-            <span>Messages</span>
+            <span>Messages{unreadMessagesCount > 0 ? ` [${unreadMessagesCount}]` : ''}</span>
             {unreadMessagesCount > 0 && (
               <span className="px-1.5 py-0.2 bg-[#059669] text-white text-[10px] font-semibold rounded-full tabular-nums shadow-xs">
                 {unreadMessagesCount}

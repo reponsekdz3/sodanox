@@ -32,6 +32,7 @@ import {
   ExternalLink,
   PanelLeft,
   Globe,
+  Film,
 } from 'lucide-react';
 import { ChatConversation, Message, MessageReplyInfo, User, VoiceNoteMeta } from '../../types';
 import { VoiceNotePlayer } from './VoiceNotePlayer';
@@ -110,7 +111,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [convFilter, setConvFilter] = useState<'all' | 'unread' | 'online'>('all');
   const [sidebarSection, setSidebarSection] = useState<'chats' | 'contacts'>('chats');
 
-  // Staged File/Image Attachment & Drag-and-Drop
+  // Staged File/Image/Video Attachment & Drag-and-Drop
   const [stagedAttachment, setStagedAttachment] = useState<{
     file: File;
     name: string;
@@ -118,6 +119,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     type: string;
     dataUrl: string;
     isImage: boolean;
+    isVideo?: boolean;
   } | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState<boolean>(false);
 
@@ -148,9 +150,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const messageInputRef = useRef<HTMLInputElement | null>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const messageElementsRef = useRef<{ [key: string]: HTMLDivElement | null }>({});
+  const lastKnownMsgIdRef = useRef<string | null>(null);
 
   // -------------------------------------------------------------
   // Effects: Sync external conversation ID
@@ -230,8 +234,21 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           markConversationAsRead(activeConvId, currentUser.id).catch(() => {});
         }
 
-        // Trigger browser notification if page is backgrounded or user is viewing another tab
+        // Trigger audio chime for new incoming message
         const lastMsg = msgs[msgs.length - 1];
+        if (
+          lastMsg &&
+          lastMsg.senderId !== currentUser.id &&
+          lastKnownMsgIdRef.current &&
+          lastMsg.id !== lastKnownMsgIdRef.current
+        ) {
+          auraAudio.playReceivedSound();
+        }
+        if (lastMsg) {
+          lastKnownMsgIdRef.current = lastMsg.id;
+        }
+
+        // Trigger browser notification if page is backgrounded or user is viewing another tab
         if (
           lastMsg &&
           lastMsg.senderId !== currentUser.id &&
@@ -243,6 +260,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
               lastMsg.text ||
               (lastMsg.type === 'image'
                 ? 'Sent a photo'
+                : lastMsg.type === 'video'
+                ? 'Sent a video'
                 : lastMsg.type === 'file'
                 ? `Sent file: ${lastMsg.file?.name}`
                 : 'Sent a voice note'),
@@ -399,7 +418,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
   const handleReaction = async (messageId: string, emoji: string) => {
     if (!activeConvId) return;
-    auraAudio.playClick(800, 0.04);
+    auraAudio.playPop();
     setActiveReactionMessageId(null);
     await addMessageReaction(activeConvId, messageId, emoji);
   };
@@ -460,14 +479,17 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
     setReplyingTo(null);
 
-    // If an image or file is staged, send it (with caption if provided)
+    // If an image, video, or file is staged, send it (with caption if provided)
     if (stagedAttachment) {
       const isImg = stagedAttachment.isImage;
+      const isVid = Boolean(stagedAttachment.isVideo || stagedAttachment.type.startsWith('video/'));
       const fileToSend = stagedAttachment;
       const caption = inputText.trim();
       setStagedAttachment(null);
       setInputText('');
       setIsSending(true);
+
+      const msgType: Message['type'] = isImg ? 'image' : isVid ? 'video' : 'file';
 
       const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
@@ -477,7 +499,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         senderName: currentUser.name,
         senderAvatar: currentUser.avatar,
         timestamp: nowTime,
-        type: isImg ? 'image' : 'file',
+        type: msgType,
         text: caption || fileToSend.name,
         file: {
           name: fileToSend.name,
@@ -493,11 +515,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
       setTimeout(() => scrollToBottom('smooth'), 40);
 
       try {
-        auraAudio.playClick(640, 0.05);
+        auraAudio.playSentSound();
         await sendChatMessage(
           activeConvId,
           {
-            type: isImg ? 'image' : 'file',
+            type: msgType,
             text: caption || fileToSend.name,
             file: {
               name: fileToSend.name,
@@ -511,7 +533,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           replyPayload
         );
       } catch (err) {
-        console.error('Error sending file/image message:', err);
+        console.error('Error sending file/image/video message:', err);
       } finally {
         setIsSending(false);
       }
@@ -539,7 +561,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     setTimeout(() => scrollToBottom('smooth'), 40);
 
     try {
-      auraAudio.playClick(640, 0.05);
+      auraAudio.playSentSound();
       await sendChatMessage(
         activeConvId,
         {
@@ -560,6 +582,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const stageFile = async (file: File) => {
     if (!file || !activeConvId || !activeConv) return;
     const isImage = file.type.startsWith('image/');
+    const isVideo = file.type.startsWith('video/');
     auraAudio.playClick(580, 0.04);
 
     if (isImage) {
@@ -579,6 +602,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           type: 'image/webp',
           dataUrl: uploadRes.url,
           isImage: true,
+          isVideo: false,
         });
         return;
       } catch (err) {
@@ -604,6 +628,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           type: file.type,
           dataUrl: uploadRes.url,
           isImage,
+          isVideo,
         });
       } catch {
         setStagedAttachment({
@@ -613,6 +638,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           type: file.type,
           dataUrl,
           isImage,
+          isVideo,
         });
       }
     };
@@ -634,6 +660,15 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     stageFile(file);
     if (imageInputRef.current) {
       imageInputRef.current.value = '';
+    }
+  };
+
+  const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    stageFile(file);
+    if (videoInputRef.current) {
+      videoInputRef.current.value = '';
     }
   };
 
@@ -1158,10 +1193,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     auraAudio.playClick(600, 0.04);
                     onStartCall(activeConv.participant, 'audio');
                   }}
-                  className="p-2 sm:p-2.5 rounded-2xl text-[#4A6757] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                  className="p-2 sm:p-2.5 rounded-2xl bg-emerald-50 text-[#064E3B] hover:bg-emerald-100 border border-emerald-200/60 transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
                   title="Start Audio Call"
                 >
-                  <Phone size={17} className="stroke-[2.2]" />
+                  <Phone size={16} className="stroke-[2.2] text-[#059669]" />
+                  <span className="hidden sm:inline text-xs font-semibold">Call</span>
                 </button>
 
                 {/* Video Call */}
@@ -1170,10 +1206,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     auraAudio.playClick(600, 0.04);
                     onStartCall(activeConv.participant, 'video');
                   }}
-                  className="p-2 sm:p-2.5 rounded-2xl text-[#4A6757] hover:bg-[#E6EDE9] transition-colors cursor-pointer"
+                  className="p-2 sm:p-2.5 rounded-2xl bg-[#064E3B] text-white hover:bg-[#059669] transition-all flex items-center gap-1 cursor-pointer shadow-xs active:scale-95"
                   title="Start Video Call"
                 >
-                  <Video size={17} className="stroke-[2.2]" />
+                  <Video size={16} className="stroke-[2.2]" />
+                  <span className="hidden sm:inline text-xs font-semibold">Video</span>
                 </button>
 
                 {/* Info Panel Toggle */}
@@ -1441,6 +1478,175 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                   <ExternalLink size={12} />
                                 </button>
                               </div>
+                            </div>
+                          )}
+
+                          {/* Shared Reel in Direct Message */}
+                          {msg.type === 'reel' && msg.sharedReel && (
+                            <div className="w-full min-w-[240px] max-w-sm rounded-2xl overflow-hidden border border-[#D8E4DC] bg-white shadow-xs text-left mb-1">
+                              <div className="p-2.5 flex items-center gap-2 border-b border-[#EAEFEA] bg-[#FAFAF9]">
+                                <ModernAvatar
+                                  src={msg.sharedReel.authorAvatar}
+                                  alt={msg.sharedReel.authorName}
+                                  size="xs"
+                                  className="shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-[#1E2A23] truncate leading-tight">
+                                    {msg.sharedReel.authorName}
+                                  </p>
+                                  <p className="text-[10px] text-[#7A8A82] truncate">
+                                    @{msg.sharedReel.authorUsername}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-[#064E3B] font-semibold flex items-center gap-1">
+                                  🎬 Reel
+                                </span>
+                              </div>
+
+                              {msg.sharedReel.videoUrl && (
+                                <div className="relative max-h-60 overflow-hidden bg-black flex items-center justify-center">
+                                  <video
+                                    src={msg.sharedReel.videoUrl}
+                                    controls
+                                    className="w-full max-h-60 object-cover"
+                                  />
+                                </div>
+                              )}
+
+                              {msg.sharedReel.caption && (
+                                <div className="p-2.5">
+                                  <p className="text-xs text-[#2D3732] line-clamp-2 leading-relaxed">
+                                    {msg.sharedReel.caption}
+                                  </p>
+                                  {msg.sharedReel.audioTrack && (
+                                    <p className="text-[10px] text-[#059669] mt-1 flex items-center gap-1 font-medium">
+                                      🎵 {msg.sharedReel.audioTrack}
+                                    </p>
+                                  )}
+                                </div>
+                              )}
+
+                              {msg.text && msg.text !== `Shared reel from @${msg.sharedReel.authorUsername}` && (
+                                <div className="px-2.5 pb-2 text-xs italic text-[#62736B]">
+                                  "{msg.text}"
+                                </div>
+                              )}
+
+                              <div className="p-2 pt-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onNavigateTab) {
+                                      onNavigateTab('reels');
+                                    } else {
+                                      window.location.hash = '#/reels';
+                                    }
+                                  }}
+                                  className="w-full py-2 px-3 rounded-xl bg-[#064E3B] hover:bg-[#059669] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                >
+                                  <span>Watch in Reels</span>
+                                  <ExternalLink size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Shared Story in Direct Message */}
+                          {msg.type === 'story' && msg.sharedStory && (
+                            <div className="w-full min-w-[240px] max-w-sm rounded-2xl overflow-hidden border border-[#D8E4DC] bg-white shadow-xs text-left mb-1">
+                              <div className="p-2.5 flex items-center gap-2 border-b border-[#EAEFEA] bg-[#FAFAF9]">
+                                <ModernAvatar
+                                  src={msg.sharedStory.authorAvatar}
+                                  alt={msg.sharedStory.authorName}
+                                  size="xs"
+                                  className="shrink-0"
+                                />
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-xs font-bold text-[#1E2A23] truncate leading-tight">
+                                    {msg.sharedStory.authorName}
+                                  </p>
+                                  <p className="text-[10px] text-[#7A8A82] truncate">
+                                    @{msg.sharedStory.authorUsername}
+                                  </p>
+                                </div>
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-[#064E3B] font-semibold flex items-center gap-1">
+                                  ✨ Story
+                                </span>
+                              </div>
+
+                              {msg.sharedStory.mediaUrl && (
+                                <div className="relative max-h-60 overflow-hidden bg-black flex items-center justify-center">
+                                  {msg.sharedStory.mediaType === 'video' ? (
+                                    <video
+                                      src={msg.sharedStory.mediaUrl}
+                                      controls
+                                      className="w-full max-h-60 object-cover"
+                                    />
+                                  ) : (
+                                    <img
+                                      src={msg.sharedStory.mediaUrl}
+                                      alt="Story media"
+                                      className="w-full max-h-60 object-cover"
+                                    />
+                                  )}
+                                </div>
+                              )}
+
+                              {msg.sharedStory.caption && (
+                                <div className="p-2.5">
+                                  <p className="text-xs text-[#2D3732] line-clamp-2 leading-relaxed">
+                                    {msg.sharedStory.caption}
+                                  </p>
+                                </div>
+                              )}
+
+                              {msg.text && msg.text !== `Shared story from @${msg.sharedStory.authorUsername}` && (
+                                <div className="px-2.5 pb-2 text-xs italic text-[#62736B]">
+                                  "{msg.text}"
+                                </div>
+                              )}
+
+                              <div className="p-2 pt-0">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (onNavigateTab) {
+                                      onNavigateTab('feed');
+                                    } else {
+                                      window.location.hash = '#/feed';
+                                    }
+                                  }}
+                                  className="w-full py-2 px-3 rounded-xl bg-[#064E3B] hover:bg-[#059669] text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                                >
+                                  <span>View Stories</span>
+                                  <ExternalLink size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Video Message */}
+                          {(msg.type === 'video' || (msg.file && msg.file.type.startsWith('video/'))) && msg.file && (
+                            <div className="w-full min-w-[220px] max-w-sm rounded-2xl overflow-hidden shadow-xs border border-emerald-900/20 bg-black/90">
+                              <video
+                                src={msg.file.url}
+                                controls
+                                playsInline
+                                className="w-full max-h-72 object-contain rounded-t-2xl bg-black"
+                              />
+                              <div className="p-2 bg-[#064E3B]/90 backdrop-blur-xs flex items-center justify-between text-xs text-white">
+                                <span className="truncate font-medium flex items-center gap-1.5">
+                                  <Film size={13} className="text-[#34D399]" />
+                                  {msg.file.name}
+                                </span>
+                                <span className="text-[10px] text-emerald-200 ml-2 shrink-0">{msg.file.size}</span>
+                              </div>
+                              {msg.text && msg.text !== msg.file.name && (
+                                <p className="p-2 text-xs bg-[#022C22] text-emerald-100">{msg.text}</p>
+                              )}
                             </div>
                           )}
 
@@ -1761,11 +1967,20 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                       className="hidden"
                     />
 
+                    {/* Hidden Video Input */}
+                    <input
+                      ref={videoInputRef}
+                      type="file"
+                      accept="video/*"
+                      onChange={handleVideoUpload}
+                      className="hidden"
+                    />
+
                     {/* Hidden Document / File Upload Input */}
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".pdf,.doc,.docx,.zip,.rar,.tar.gz,.txt,.ts,.tsx,.json,.xlsx,.csv"
+                      accept=".pdf,.doc,.docx,.zip,.rar,.tar.gz,.txt,.ts,.tsx,.json,.xlsx,.csv,video/*,audio/*"
                       onChange={handleFileUpload}
                       className="hidden"
                     />
@@ -1777,10 +1992,23 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         auraAudio.playClick(500, 0.03);
                         imageInputRef.current?.click();
                       }}
-                      className="p-1.5 text-[#55635C] hover:text-[#1E2A23] hover:bg-white rounded-xl transition-colors shrink-0 cursor-pointer"
+                      className="p-1.5 text-[#55635C] hover:text-[#064E3B] hover:bg-emerald-50 rounded-xl transition-colors shrink-0 cursor-pointer"
                       title="Send photo / image"
                     >
                       <ImageIcon size={18} />
+                    </button>
+
+                    {/* Video Attachment Button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        auraAudio.playClick(500, 0.03);
+                        videoInputRef.current?.click();
+                      }}
+                      className="p-1.5 text-[#55635C] hover:text-[#064E3B] hover:bg-emerald-50 rounded-xl transition-colors shrink-0 cursor-pointer"
+                      title="Send video"
+                    >
+                      <Film size={18} />
                     </button>
 
                     {/* Document Attachment Button */}
@@ -1790,7 +2018,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                         auraAudio.playClick(500, 0.03);
                         fileInputRef.current?.click();
                       }}
-                      className="p-1.5 text-[#55635C] hover:text-[#1E2A23] hover:bg-white rounded-xl transition-colors shrink-0 cursor-pointer"
+                      className="p-1.5 text-[#55635C] hover:text-[#064E3B] hover:bg-emerald-50 rounded-xl transition-colors shrink-0 cursor-pointer"
                       title="Attach document / file"
                     >
                       <Paperclip size={18} />

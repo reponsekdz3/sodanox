@@ -1,14 +1,14 @@
 {
   "id": "/",
-  "name": "Aura Social",
-  "short_name": "Aura",
+  "name": "Ducate",
+  "short_name": "Ducate",
   "description": "A mindful, high-performance social platform with real-time messaging, HD voice & video calls, audio waveforms, file sharing, stories, and reels.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#FAFAF9",
-  "theme_color": "#2D3E33",
+  "background_color": "#F8FAF9",
+  "theme_color": "#064E3B",
   "categories": ["social", "communication", "lifestyle"],
   "icons": [
     {

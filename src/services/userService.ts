@@ -141,6 +141,48 @@ export async function checkUsernameAvailable(username: string, excludeUid?: stri
 }
 
 /**
+ * Fetch a user profile by unique username handle
+ */
+export async function getUserByUsername(username: string): Promise<User | null> {
+  if (!username) return null;
+  const clean = username.trim().toLowerCase().replace(/^@/, '');
+
+  // 1. Check local cached users
+  const cached = getCachedUsers().find((u) => u.username.toLowerCase() === clean);
+  if (cached) return cached;
+
+  // 2. Query Firestore users collection
+  try {
+    const usersRef = collection(db, USERS_COLLECTION);
+    const q = query(usersRef, where('username', '==', clean));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const docSnap = snap.docs[0];
+      const data = docSnap.data();
+      const profile = {
+        ...data,
+        id: docSnap.id,
+        followers: data.followers || [],
+        following: data.following || [],
+        followersCount: typeof data.followersCount === 'number' ? Math.max(0, data.followersCount) : (data.followers?.length || 0),
+        followingCount: typeof data.followingCount === 'number' ? Math.max(0, data.followingCount) : (data.following?.length || 0),
+      } as User;
+
+      const current = getCachedUsers();
+      if (!current.some((u) => u.id === profile.id)) {
+        current.push(profile);
+        saveCachedUsers(current);
+      }
+      return profile;
+    }
+  } catch (err) {
+    console.warn('Error fetching user by username:', err);
+  }
+
+  return null;
+}
+
+/**
  * Create or overwrite a user profile in Firestore
  */
 export async function createUserProfile(uid: string, profileData: Partial<User>): Promise<User> {

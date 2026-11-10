@@ -574,8 +574,8 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 {/* Question Sticker rendering */}
                 {s.type === 'question' && (
                   <div className="w-64 bg-gradient-to-br from-[#8FA89B] to-[#6b8577] text-white rounded-2xl p-4 shadow-xl border border-white/20">
-                    <div className="text-xs uppercase tracking-wider text-white/80 font-mono text-center mb-1">
-                      Aura Question
+                    <div className="text-xs uppercase tracking-wider text-emerald-100 font-mono text-center mb-1">
+                      Ducate Question
                     </div>
                     <div className="text-sm font-serif font-medium text-center mb-3">
                       {s.data.question}

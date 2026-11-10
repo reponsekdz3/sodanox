@@ -33,6 +33,9 @@ import { IncomingCallModal } from './components/calls/IncomingCallModal';
 import { NotificationsDrawer } from './components/notifications/NotificationsDrawer';
 import { AuthPage } from './components/auth/AuthPage';
 import { PostDetailModal } from './components/feed/PostDetailModal';
+import { MarketplaceView } from './components/marketplace/MarketplaceView';
+import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
+import { PayVerifiedModal } from './components/verification/PayVerifiedModal';
 import { useAuraRouter } from './hooks/useAuraRouter';
 import {
   initiateCallSession,
@@ -88,7 +91,10 @@ import {
   toggleFollowUser,
   getAllUsers,
   getSuggestedUsers,
+  getUserByUsername,
 } from './services/userService';
+import { rankFeedWithML, getSmartSuggestedCreatorsML } from './services/mlFeedService';
+import { PermissionsOnboardingModal } from './components/common/PermissionsOnboardingModal';
 import { sendBrowserNotification } from './services/browserNotificationService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from './components/common/ModernAvatar';
 import { useOnlineStatus } from './hooks/usePWAInstall';
@@ -139,6 +145,8 @@ export default function App() {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
+  const [isPayVerifiedOpen, setIsPayVerifiedOpen] = useState(false);
+  const [isSuperAdminOpen, setIsSuperAdminOpen] = useState(false);
 
   // Message notification tracking
   const prevSeenMsgIdsRef = React.useRef<Set<string>>(new Set());
@@ -152,7 +160,30 @@ export default function App() {
     else if (routeModal === 'edit-profile') setIsEditProfileOpen(true);
     else if (routeModal === 'settings') setIsSettingsOpen(true);
     else if (routeModal === 'notifications') setIsNotificationsDrawerOpen(true);
+    else if (routeModal === 'pay-verified') setIsPayVerifiedOpen(true);
+    else if (routeModal === 'super-admin') setIsSuperAdminOpen(true);
   }, [routeModal]);
+
+  // Secret /.super URL listener
+  useEffect(() => {
+    const checkSuper = () => {
+      if (
+        window.location.hash.includes('.super') ||
+        window.location.hash.includes('super') ||
+        window.location.pathname.includes('.super') ||
+        window.location.search.includes('super=1')
+      ) {
+        setIsSuperAdminOpen(true);
+      }
+    };
+    checkSuper();
+    window.addEventListener('hashchange', checkSuper);
+    window.addEventListener('popstate', checkSuper);
+    return () => {
+      window.removeEventListener('hashchange', checkSuper);
+      window.removeEventListener('popstate', checkSuper);
+    };
+  }, []);
 
   // Current active user (guaranteed non-null when authenticated)
   const currentUser: User | null = useMemo(() => {
@@ -208,17 +239,31 @@ export default function App() {
     }
   }, [userProfile]);
 
-  // Sync route username to viewingUser
+  // Sync route username to viewingUser without blank screen
   useEffect(() => {
+    let active = true;
     if (routeUsername) {
       const match = communityUsers.find(
         (u) => u.username.toLowerCase() === routeUsername.toLowerCase()
       );
       if (match) {
         setViewingUser(match);
+      } else {
+        getUserByUsername(routeUsername).then((user) => {
+          if (active && user) {
+            setViewingUser(user);
+          }
+        }).catch((err) => {
+          console.warn('Error fetching route user:', err);
+        });
       }
+    } else if (currentTab === 'profile' && currentUser && !viewingUser) {
+      setViewingUser(currentUser);
     }
-  }, [routeUsername, communityUsers]);
+    return () => {
+      active = false;
+    };
+  }, [routeUsername, communityUsers, currentTab, currentUser, viewingUser]);
 
   // Sync route chatId to targetChatUser
   useEffect(() => {
@@ -353,6 +398,30 @@ export default function App() {
   // Derived counts
   const totalUnreadMessages = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
   const totalUnreadNotifications = notifications.filter((n) => !n.read).length;
+
+  // ML-ranked feed & smart creator recommendations (low data usage)
+  const rankedPosts = useMemo(() => {
+    return rankFeedWithML(posts, currentUser);
+  }, [posts, currentUser]);
+
+  const smartSuggestedUsers = useMemo(() => {
+    return getSmartSuggestedCreatorsML(communityUsers, currentUser, posts);
+  }, [communityUsers, currentUser, posts]);
+
+  // Dynamic Document Title based on unread messages & active route
+  useEffect(() => {
+    const tabTitles: Record<string, string> = {
+      feed: 'Feed',
+      reels: 'Reels',
+      messages: 'Messages',
+      explore: 'Explore',
+      marketplace: 'Marketplace',
+      profile: viewingUser ? `${viewingUser.name} (@${viewingUser.username})` : 'Profile',
+    };
+    const activeTitle = tabTitles[currentTab] || 'Home';
+    const unreadPrefix = totalUnreadMessages > 0 ? `(${totalUnreadMessages}) ` : '';
+    document.title = `${unreadPrefix}Ducate • ${activeTitle}`;
+  }, [currentTab, totalUnreadMessages, viewingUser]);
 
   // ---------------- Handlers for Navigation ----------------
   const handleOpenUserProfile = (user: User) => {
@@ -1051,8 +1120,8 @@ export default function App() {
         <div className="flex flex-col items-center gap-4 animate-fade-in">
           <div className="w-12 h-12 rounded-full border-2 border-[#059669] border-t-transparent animate-spin" />
           <div className="text-center">
-            <h1 className="font-serif text-2xl font-semibold text-[#022C22] tracking-wide">AuraChats</h1>
-            <p className="text-xs text-[#4B6358] mt-1 font-mono">Entering AuraChats space...</p>
+            <h1 className="font-serif text-2xl font-semibold text-[#022C22] tracking-wide">Ducate</h1>
+            <p className="text-xs text-[#4B6358] mt-1 font-mono">Entering Ducate space...</p>
           </div>
         </div>
       </div>
@@ -1061,7 +1130,14 @@ export default function App() {
 
   // 2. Auth Gating: Unauthenticated users MUST see only Login / Register page
   if (!isAuthenticated || !currentUser) {
-    return <AuthPage onSuccess={() => navigateToTab('feed')} />;
+    return (
+      <AuthPage
+        onSuccess={() => {
+          navigateToTab('feed');
+          window.location.hash = '#/feed';
+        }}
+      />
+    );
   }
 
   // 3. Authenticated App Experience
@@ -1111,6 +1187,7 @@ export default function App() {
           onSelectTrendingTab={() => {
             navigateToTab('explore');
           }}
+          onOpenPayVerified={() => setIsPayVerifiedOpen(true)}
         />
       </div>
 
@@ -1152,10 +1229,10 @@ export default function App() {
         >
         {currentTab === 'feed' && (
           <Feed
-            posts={posts}
+            posts={rankedPosts}
             stories={stories}
             currentUser={currentUser}
-            suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id && !c.isFollowing)}
+            suggestedUsers={smartSuggestedUsers}
             onSelectStory={handleSelectStory}
             onOpenCreateStory={() => setIsCreateStoryOpen(true)}
             onLikePost={handleLikePost}
@@ -1218,9 +1295,9 @@ export default function App() {
 
         {currentTab === 'explore' && (
           <ExploreView
-            posts={posts}
+            posts={rankedPosts}
             reels={reels}
-            suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id && !c.isFollowing)}
+            suggestedUsers={smartSuggestedUsers}
             onToggleFollowUser={handleToggleFollow}
             onSelectPost={(post) => navigateToPost(post.id)}
             onSelectReel={() => navigateToTab('reels')}
@@ -1228,35 +1305,53 @@ export default function App() {
           />
         )}
 
-        {currentTab === 'profile' && viewingUser && (
-          <ProfileView
-            user={viewingUser}
+        {currentTab === 'marketplace' && (
+          <MarketplaceView
             currentUser={currentUser}
-            userPosts={viewingUserPosts}
-            userReels={reels.filter((r) => r.author.id === viewingUser.id)}
-            savedPosts={posts.filter((p) => p.isBookmarked)}
-            userStories={stories.filter((s) => s.userId === viewingUser.id).flatMap((s) => s.items)}
-            suggestedUsers={suggestedUsers.length > 0 ? suggestedUsers : communityUsers.filter((c) => c.id !== currentUser.id)}
-            onToggleFollow={handleToggleFollow}
-            onOpenEditProfile={() => setIsEditProfileOpen(true)}
-            onOpenCreatePost={() => setIsCreatePostOpen(true)}
-            onOpenCreateStory={() => setIsCreateStoryOpen(true)}
-            onStartCall={handleStartCall}
             onOpenDirectChat={handleOpenDirectChat}
-            onLikePost={handleLikePost}
-            onBookmarkPost={handleBookmarkPost}
-            onRepostPost={handleRepostPost}
-            onIncrementShare={handleIncrementShare}
-            onSendToChat={handleSendPostToChat}
-            onDeletePost={handleDeletePost}
-            onEditPost={handleEditPost}
-            onAddComment={handleAddComment}
-            onLikeComment={handleLikeComment}
-            onDeleteComment={handleDeleteComment}
-            onSelectReel={() => navigateToTab('reels')}
-            onSelectHighlight={handleSelectHighlight}
-            onNavigateToUser={handleOpenUserProfile}
+            onOpenPayVerified={() => setIsPayVerifiedOpen(true)}
           />
+        )}
+
+        {currentTab === 'profile' && (
+          viewingUser ? (
+            <ProfileView
+              user={viewingUser}
+              currentUser={currentUser}
+              userPosts={viewingUserPosts}
+              userReels={reels.filter((r) => r.author.id === viewingUser.id)}
+              savedPosts={posts.filter((p) => p.isBookmarked)}
+              userStories={stories.filter((s) => s.userId === viewingUser.id).flatMap((s) => s.items)}
+              suggestedUsers={smartSuggestedUsers}
+              onToggleFollow={handleToggleFollow}
+              onOpenEditProfile={() => setIsEditProfileOpen(true)}
+              onOpenCreatePost={() => setIsCreatePostOpen(true)}
+              onOpenCreateStory={() => setIsCreateStoryOpen(true)}
+              onStartCall={handleStartCall}
+              onOpenDirectChat={handleOpenDirectChat}
+              onLikePost={handleLikePost}
+              onBookmarkPost={handleBookmarkPost}
+              onRepostPost={handleRepostPost}
+              onIncrementShare={handleIncrementShare}
+              onSendToChat={handleSendPostToChat}
+              onDeletePost={handleDeletePost}
+              onEditPost={handleEditPost}
+              onAddComment={handleAddComment}
+              onLikeComment={handleLikeComment}
+              onDeleteComment={handleDeleteComment}
+              onSelectReel={() => navigateToTab('reels')}
+              onSelectHighlight={handleSelectHighlight}
+              onNavigateToUser={handleOpenUserProfile}
+            />
+          ) : (
+            <div className="w-full max-w-4xl mx-auto py-16 px-4 text-center">
+              <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                <span className="text-2xl">🌱</span>
+              </div>
+              <p className="text-sm font-bold text-[#064E3B]">Loading profile...</p>
+              <p className="text-xs text-[#55635C] mt-1">Connecting to Ducate network</p>
+            </div>
+          )
         )}
       </main>
       </div>
@@ -1414,6 +1509,50 @@ export default function App() {
           onToggleFollowUser={handleToggleFollow}
         />
       )}
+
+      {/* Pay for 10K Verified Badge Modal */}
+      {isPayVerifiedOpen && (
+        <PayVerifiedModal
+          currentUser={currentUser}
+          onClose={() => setIsPayVerifiedOpen(false)}
+          onSuccess={(updatedUser) => {
+            updateUser(updatedUser);
+            refreshCommunity(currentUser.id);
+          }}
+        />
+      )}
+
+      {/* Hidden Super Administrator Portal (triggered via /.super in URL) */}
+      {isSuperAdminOpen && (
+        <SuperAdminDashboard
+          allUsers={communityUsers}
+          allPosts={posts}
+          currentUser={currentUser}
+          onClose={() => {
+            setIsSuperAdminOpen(false);
+            if (window.location.hash.includes('super')) {
+              window.location.hash = '#/feed';
+            }
+          }}
+          onRefreshUsers={() => refreshCommunity(currentUser.id)}
+        />
+      )}
+
+      {/* Permissions Onboarding Modal (Automatic post-login prompt for notifications & location) */}
+      <PermissionsOnboardingModal
+        currentUser={currentUser}
+        onLocationUpdated={(coords) => {
+          updateUserProfile(currentUser.id, {
+            detectedLocation: {
+              lat: coords.latitude,
+              lng: coords.longitude,
+              city: 'Kigali',
+              country: 'Rwanda',
+              enabledAt: Date.now(),
+            },
+          }).catch(() => {});
+        }}
+      />
 
       {/* PWA Offline Connectivity Indicator */}
       {!isOnline && (

@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { Post, Reel, User } from '../../types';
 import { calculateTrendingTopics } from '../../services/trendingService';
+import { searchWithML } from '../../services/mlSearchService';
 import { FollowButton } from '../common/FollowButton';
 import { ModernAvatar } from '../common/ModernAvatar';
 
@@ -91,24 +92,27 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
   // Unified effective query (from text search or selected hashtag)
   const effectiveQuery = (selectedTag || searchQuery).trim().toLowerCase();
 
-  // Filtered Posts
-  const filteredPosts = useMemo(() => {
-    let result = posts.filter((post) => {
-      if (!effectiveQuery) return true;
-      const cleanTag = effectiveQuery.replace(/^#/, '');
-      return (
-        post.content.toLowerCase().includes(effectiveQuery) ||
-        post.author.name.toLowerCase().includes(effectiveQuery) ||
-        post.author.username.toLowerCase().includes(effectiveQuery) ||
-        (post.location && post.location.toLowerCase().includes(effectiveQuery)) ||
-        post.tags.some(
-          (t) =>
-            t.toLowerCase().includes(effectiveQuery) ||
-            t.toLowerCase().includes(cleanTag)
-        )
-      );
+  // ML-powered semantic search result
+  const mlSearchResult = useMemo(() => {
+    if (!effectiveQuery) return null;
+    const usersMap = new Map<string, User>();
+    suggestedUsers.forEach((u) => usersMap.set(u.id, u));
+    posts.forEach((p) => {
+      if (p.author && !usersMap.has(p.author.id)) {
+        usersMap.set(p.author.id, p.author);
+      }
     });
+    return searchWithML(effectiveQuery, {
+      posts,
+      creators: Array.from(usersMap.values()),
+    });
+  }, [posts, suggestedUsers, effectiveQuery]);
 
+  // Filtered Posts (Enhanced with Machine Learning TF-IDF Scoring)
+  const filteredPosts = useMemo(() => {
+    if (mlSearchResult) return mlSearchResult.posts;
+
+    let result = posts;
     if (sortBy === 'trending') {
       result = [...result].sort((a, b) => b.likesCount + (b.comments?.length || 0) * 2 - (a.likesCount + (a.comments?.length || 0) * 2));
     } else {
@@ -120,11 +124,12 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
     }
 
     return result;
-  }, [posts, effectiveQuery, sortBy]);
+  }, [posts, mlSearchResult, sortBy]);
 
-  // Filtered Creators
+  // Filtered Creators (Enhanced with Machine Learning Semantic Relevance)
   const filteredUsers = useMemo(() => {
-    // Unique list of authors from suggestedUsers + authors from posts
+    if (mlSearchResult) return mlSearchResult.creators;
+
     const usersMap = new Map<string, User>();
     suggestedUsers.forEach((u) => usersMap.set(u.id, u));
     posts.forEach((p) => {
@@ -132,19 +137,8 @@ export const ExploreView: React.FC<ExploreViewProps> = ({
         usersMap.set(p.author.id, p.author);
       }
     });
-    const allUsers = Array.from(usersMap.values());
-
-    if (!effectiveQuery) return allUsers;
-
-    const clean = effectiveQuery.replace(/^@/, '');
-    return allUsers.filter(
-      (u) =>
-        u.name.toLowerCase().includes(clean) ||
-        u.username.toLowerCase().includes(clean) ||
-        (u.bio && u.bio.toLowerCase().includes(clean)) ||
-        (u.location && u.location.toLowerCase().includes(clean))
-    );
-  }, [suggestedUsers, posts, effectiveQuery]);
+    return Array.from(usersMap.values());
+  }, [suggestedUsers, posts, mlSearchResult]);
 
   // Filtered Reels
   const filteredReels = useMemo(() => {

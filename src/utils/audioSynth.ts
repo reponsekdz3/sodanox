@@ -1,16 +1,22 @@
 /**
- * Web Audio API synthesizer for ringtones, call beeps, and audio waveform simulation
+ * Web Audio API synthesizer for Ducate:
+ * - Real phone ringtone, connected beep, call end tone
+ * - Modern acoustic message sent sound (soft pop/whoosh)
+ * - Modern crystal message received chime (dual harmonic glass bell)
+ * - Modern notification alert chime
+ * - Reaction bubble pops
+ * - Voice waveform synthesis
  */
 
 class AudioSynthService {
   private ctx: AudioContext | null = null;
-  private ringOscillator: OscillatorNode | null = null;
-  private ringGain: GainNode | null = null;
   private ringInterval: number | null = null;
 
-  private initCtx() {
+  public initCtx(): AudioContext | null {
     if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const AudioCtx =
+        window.AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
         this.ctx = new AudioCtx();
       }
@@ -22,9 +28,135 @@ class AudioSynthService {
   }
 
   /**
+   * Modern acoustic chime when a message is sent (subtle swoosh + soft pop)
+   */
+  public playSentSound() {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      // Subtle whoosh
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.exponentialRampToValueAtTime(780, now + 0.08);
+
+      gain.gain.setValueAtTime(0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.13);
+    } catch {
+      // Audio suppressed by browser policy
+    }
+  }
+
+  /**
+   * Modern dual-tone crystal chime when a message is received from peer
+   */
+  public playReceivedSound() {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      // 880Hz (A5) followed immediately by 1174.66Hz (D6)
+      const tones = [
+        { freq: 880, start: 0, dur: 0.22, vol: 0.07 },
+        { freq: 1174.66, start: 0.07, dur: 0.35, vol: 0.09 },
+      ];
+
+      tones.forEach(({ freq, start, dur, vol }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + start);
+
+        gain.gain.setValueAtTime(vol, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + start);
+        osc.stop(now + start + dur + 0.02);
+      });
+    } catch {
+      // Audio suppressed
+    }
+  }
+
+  /**
+   * Modern notification bell chime
+   */
+  public playNotificationSound() {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      const chord = [659.25, 830.61, 987.77]; // E major triad
+      chord.forEach((freq, idx) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(freq, now + idx * 0.04);
+
+        gain.gain.setValueAtTime(0.05, now + idx * 0.04);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.04 + 0.45);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + idx * 0.04);
+        osc.stop(now + idx * 0.04 + 0.48);
+      });
+    } catch {
+      // Audio suppressed
+    }
+  }
+
+  /**
+   * Bubble pop for reactions and likes
+   */
+  public playPop(frequency = 720) {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(frequency, now);
+      osc.frequency.exponentialRampToValueAtTime(frequency * 0.3, now + 0.06);
+
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.07);
+    } catch {
+      // Audio suppressed
+    }
+  }
+
+  /**
    * Play a gentle soft telephone ringtone
    */
-  startRinging() {
+  public startRinging() {
     const ctx = this.initCtx();
     if (!ctx) return;
 
@@ -62,7 +194,7 @@ class AudioSynthService {
     this.ringInterval = window.setInterval(playChime, 3000);
   }
 
-  stopRinging() {
+  public stopRinging() {
     if (this.ringInterval) {
       clearInterval(this.ringInterval);
       this.ringInterval = null;
@@ -70,9 +202,9 @@ class AudioSynthService {
   }
 
   /**
-   * Play a gentle call connected beep
+   * Play call connected chime
    */
-  playConnectedChime() {
+  public playConnectedChime() {
     const ctx = this.initCtx();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -83,7 +215,7 @@ class AudioSynthService {
     osc.frequency.setValueAtTime(523.25, now); // C5
     osc.frequency.exponentialRampToValueAtTime(659.25, now + 0.15); // E5
 
-    gain.gain.setValueAtTime(0.06, now);
+    gain.gain.setValueAtTime(0.07, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
 
     osc.connect(gain);
@@ -96,7 +228,7 @@ class AudioSynthService {
   /**
    * Play call end tone
    */
-  playEndChime() {
+  public playEndChime() {
     const ctx = this.initCtx();
     if (!ctx) return;
     const now = ctx.currentTime;
@@ -118,9 +250,9 @@ class AudioSynthService {
   }
 
   /**
-   * Play synthetic preview sound for voice note if no audio file is provided
+   * Play synthetic preview sound for voice note
    */
-  playVoiceWaveform(durationSeconds: number, onTick?: (progress: number) => void, onComplete?: () => void) {
+  public playVoiceWaveform(durationSeconds: number, onTick?: (progress: number) => void, onComplete?: () => void) {
     const ctx = this.initCtx();
     if (!ctx) {
       if (onComplete) onComplete();
@@ -132,7 +264,6 @@ class AudioSynthService {
     const gain = ctx.createGain();
 
     osc.type = 'triangle';
-    // Gentle melodic frequency modulation
     osc.frequency.setValueAtTime(260, now);
     osc.frequency.linearRampToValueAtTime(320, now + durationSeconds * 0.3);
     osc.frequency.linearRampToValueAtTime(290, now + durationSeconds * 0.7);

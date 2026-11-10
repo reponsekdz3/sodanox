@@ -80,6 +80,70 @@ class AudioSynthesizer {
   }
 
   /**
+   * Modern acoustic chime when a message is sent
+   */
+  public playSentSound() {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(420, now);
+      osc.frequency.exponentialRampToValueAtTime(780, now + 0.08);
+
+      gain.gain.setValueAtTime(0.04, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(now);
+      osc.stop(now + 0.13);
+    } catch {
+      // Audio suppressed
+    }
+  }
+
+  /**
+   * Modern dual-tone crystal chime when a message is received
+   */
+  public playReceivedSound() {
+    try {
+      const ctx = this.initCtx();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+
+      const tones = [
+        { freq: 880, start: 0, dur: 0.22, vol: 0.07 },
+        { freq: 1174.66, start: 0.07, dur: 0.35, vol: 0.09 },
+      ];
+
+      tones.forEach(({ freq, start, dur, vol }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(freq, now + start);
+
+        gain.gain.setValueAtTime(vol, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + start + dur);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start(now + start);
+        osc.stop(now + start + dur + 0.02);
+      });
+    } catch {
+      // Audio suppressed
+    }
+  }
+
+  /**
    * Gentle, two-tone notification audio alert
    */
   public playNotification() {

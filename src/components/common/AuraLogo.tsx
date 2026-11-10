@@ -195,7 +195,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
         )}
       </div>
 
-      {/* Wordmark cleanly styled as AuraChats */}
+      {/* Wordmark cleanly styled as Ducate */}
       {showWordmark && (
         <div
           onClick={(e) => {
@@ -213,9 +213,9 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
         >
           <div className="flex items-center gap-1.5">
             <span
-              className={`font-serif font-bold tracking-tight ${currentSize.text} ${textColor}`}
+              className={`font-serif font-bold tracking-tight ${currentSize.text} text-[#022C22]`}
             >
-              Aura<span className="text-[#059669]">Chats</span>
+              Duc<span className="text-[#059669]">ate</span>
             </span>
             <span className="px-1.5 py-0.5 rounded-full bg-[#059669]/15 text-[#064E3B] font-mono text-[9px] font-bold tracking-wider uppercase border border-[#059669]/30 flex items-center gap-1 shadow-xs">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
@@ -223,32 +223,32 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
             </span>
           </div>
           <span className={`${currentSize.sub} text-[#3D5A4C] font-mono tracking-wider mt-0.5 hidden sm:block`}>
-            modern social chats
+            mindful modern social
           </span>
         </div>
       )}
 
-      {/* Advanced Aura Command Dock Popover */}
+      {/* Advanced Ducate Command Dock Popover */}
       {isDockOpen && (
         <div
           ref={dockRef}
-          className="absolute top-full left-0 mt-3 w-80 sm:w-88 bg-[#F8FAF9] rounded-3xl shadow-2xl border border-[#064E3B]/15 p-5 z-50 animate-fade-in backdrop-blur-xl"
+          className="absolute top-full left-0 mt-3 w-80 sm:w-88 bg-white rounded-3xl shadow-2xl border border-[#D1E2D9] p-5 z-50 animate-fade-in backdrop-blur-xl"
         >
           {/* Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-[#2D3732]/10 mb-3.5">
+          <div className="flex items-center justify-between pb-3 border-b border-[#D1E2D9] mb-3.5">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-xl bg-[#8FA89B]/20 flex items-center justify-center text-[#5E7C6E]">
+              <div className="w-7 h-7 rounded-xl bg-[#059669]/20 flex items-center justify-center text-[#064E3B]">
                 <Radio size={16} className="animate-pulse" />
               </div>
               <div>
-                <h4 className="text-xs font-semibold text-[#2D3732]">Aura Command Dock</h4>
-                <p className="text-[10px] text-[#7A8A82] font-mono">Real-time aura controls</p>
+                <h4 className="text-xs font-semibold text-[#022C22]">Ducate Command Dock</h4>
+                <p className="text-[10px] text-[#4B6358] font-mono">Real-time acoustic & feed controls</p>
               </div>
             </div>
             <button
               type="button"
               onClick={() => setIsDockOpen(false)}
-              className="p-1.5 rounded-full text-[#7A8A82] hover:bg-black/5 cursor-pointer"
+              className="p-1.5 rounded-full text-[#4B6358] hover:bg-[#EDF3F0] cursor-pointer"
             >
               <X size={15} />
             </button>
@@ -256,12 +256,12 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
 
           {/* 1. Acoustic Soundscapes */}
           <div className="space-y-2 mb-4">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-[#2D3732]">
+            <div className="flex items-center justify-between text-[11px] font-semibold text-[#022C22]">
               <span className="flex items-center gap-1.5">
-                <Volume2 size={13} className="text-[#8FA89B]" />
+                <Volume2 size={13} className="text-[#059669]" />
                 <span>Ambient Soundscape</span>
               </span>
-              <span className="text-[10px] text-[#7A8A82] font-mono uppercase">
+              <span className="text-[10px] text-[#4B6358] font-mono uppercase">
                 {activeAmbient === 'off' ? 'Muted' : activeAmbient}
               </span>
             </div>
@@ -283,8 +283,8 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
                     onClick={() => handleSelectAmbient(item.id as any)}
                     className={`py-1.5 px-2 rounded-xl text-[10px] font-medium transition-all flex items-center justify-center gap-1 border cursor-pointer active:scale-95 ${
                       isSel
-                        ? 'bg-[#8FA89B] text-white border-[#8FA89B] shadow-xs'
-                        : 'bg-[#F1F5F2] text-[#55635C] border-transparent hover:border-[#8FA89B]/40'
+                        ? 'bg-[#064E3B] text-white border-[#064E3B] shadow-xs'
+                        : 'bg-[#EDF3F0] text-[#022C22] border-transparent hover:border-[#059669]/40'
                     }`}
                   >
                     <Icon size={11} />
@@ -303,11 +303,11 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
                 onClick={handleToggleFocus}
                 className={`flex-1 py-2 px-3 rounded-2xl text-xs font-medium border flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                   isFocusMode
-                    ? 'bg-[#2D3732] text-white border-[#2D3732]'
-                    : 'bg-[#F1F5F2] text-[#2D3732] border-[#2D3732]/10 hover:border-[#8FA89B]'
+                    ? 'bg-[#064E3B] text-white border-[#064E3B]'
+                    : 'bg-[#EDF3F0] text-[#022C22] border-[#D1E2D9] hover:border-[#059669]'
                 }`}
               >
-                <Zap size={13} className={isFocusMode ? 'text-amber-400' : 'text-[#8FA89B]'} />
+                <Zap size={13} className={isFocusMode ? 'text-amber-400' : 'text-[#059669]'} />
                 <span>{isFocusMode ? 'Exit Zen Mode' : 'Zen Focus Mode'}</span>
               </button>
 
@@ -319,9 +319,9 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
                     auraAudio.playClick(600, 0.04);
                     onNavigateHome();
                   }}
-                  className="flex-1 py-2 px-3 rounded-2xl text-xs font-semibold bg-[#2D3732] text-white hover:bg-[#3d4a43] flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  className="flex-1 py-2 px-3 rounded-2xl text-xs font-semibold bg-[#064E3B] text-white hover:bg-[#022C22] flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                 >
-                  <Sparkles size={13} className="text-[#8FA89B]" />
+                  <Sparkles size={13} className="text-[#34D399]" />
                   <span>Go to Feed</span>
                 </button>
               )}
@@ -333,7 +333,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
                     setIsDockOpen(false);
                     onOpenCreatePost();
                   }}
-                  className="flex-1 py-2 px-3 rounded-2xl text-xs font-semibold bg-[#8FA89B] text-white hover:bg-[#7e9689] flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
+                  className="flex-1 py-2 px-3 rounded-2xl text-xs font-semibold bg-[#059669] text-white hover:bg-[#047857] flex items-center justify-center gap-1.5 shadow-sm transition-all cursor-pointer"
                 >
                   <Flame size={13} />
                   <span>Express Post</span>
@@ -343,17 +343,17 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
           </div>
 
           {/* 3. Link & Cloud Engine Status */}
-          <div className="p-3 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 space-y-2">
-            <div className="flex items-center justify-between text-[10px] text-[#7A8A82]">
+          <div className="p-3 rounded-2xl bg-[#EDF3F0] border border-[#D1E2D9] space-y-2">
+            <div className="flex items-center justify-between text-[10px] text-[#4B6358]">
               <span className="flex items-center gap-1">
                 <ShieldCheck size={12} className="text-emerald-600" />
                 <span>Cloud Firestore Active</span>
               </span>
-              <span className="font-mono text-emerald-700">● Live sync</span>
+              <span className="font-mono text-emerald-700 font-semibold">● Live sync</span>
             </div>
 
-            <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#2D3732]/5">
-              <span className="text-[11px] font-mono text-[#55635C] truncate">
+            <div className="flex items-center justify-between gap-2 pt-1 border-t border-[#D1E2D9]">
+              <span className="text-[11px] font-mono text-[#022C22] truncate">
                 {typeof window !== 'undefined' && window.location.hostname && !window.location.hostname.includes('localhost')
                   ? window.location.hostname
                   : 'sodanox.ai.studio'}
@@ -362,7 +362,7 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
               <button
                 type="button"
                 onClick={handleCopyProfileUrl}
-                className="p-1 px-2 rounded-lg bg-white border border-[#2D3732]/10 text-[10px] font-medium text-[#2D3732] hover:bg-[#FAFAF9] flex items-center gap-1 shrink-0 cursor-pointer"
+                className="p-1 px-2 rounded-lg bg-white border border-[#D1E2D9] text-[10px] font-medium text-[#022C22] hover:bg-[#F8FAF9] flex items-center gap-1 shrink-0 cursor-pointer"
               >
                 {copiedLink ? <Check size={11} className="text-emerald-600" /> : <Copy size={11} />}
                 <span>{copiedLink ? 'Copied' : 'Copy'}</span>
@@ -371,9 +371,9 @@ export const AuraLogo: React.FC<AuraLogoProps> = ({
           </div>
 
           {/* Developer Attribution Footer */}
-          <div className="mt-3 pt-2 text-center border-t border-[#2D3732]/5">
-            <p className="text-[10px] text-[#7A8A82] font-mono">
-              developed by reponsekdz · Aura Social
+          <div className="mt-3 pt-2 text-center border-t border-[#D1E2D9]">
+            <p className="text-[10px] text-[#4B6358] font-mono">
+              developed by reponsekdz · Ducate
             </p>
           </div>
         </div>

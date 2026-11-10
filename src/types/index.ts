@@ -42,6 +42,17 @@ export interface User {
   notificationPreferences?: NotificationPreferences;
   mediaPreferences?: MediaPreferences;
   blockedUsers?: string[];
+  verifiedBadgeType?: 'blue' | 'gold' | 'none';
+  verifiedSince?: number;
+  isAdmin?: boolean;
+  isSuspended?: boolean;
+  detectedLocation?: {
+    lat: number;
+    lng: number;
+    city?: string;
+    country?: string;
+    enabledAt: number;
+  };
 }
 
 export type StoryFilter = 'none' | 'vintage' | 'nordic' | 'noir' | 'golden' | 'sepia' | 'emerald';
@@ -221,7 +232,7 @@ export interface MessageReplyInfo {
   senderId: string;
   senderName?: string;
   text?: string;
-  type?: 'text' | 'file' | 'voice' | 'image' | 'call' | 'post';
+  type?: 'text' | 'file' | 'voice' | 'image' | 'video' | 'call' | 'post' | 'reel' | 'story';
 }
 
 export interface CallMeta {
@@ -240,18 +251,41 @@ export interface SharedPostMeta {
   timestamp?: string;
 }
 
+export interface SharedReelMeta {
+  reelId: string;
+  authorName: string;
+  authorUsername: string;
+  authorAvatar: string;
+  caption: string;
+  videoUrl: string;
+  posterUrl: string;
+  timestamp?: string;
+}
+
+export interface SharedStoryMeta {
+  storyId: string;
+  authorName: string;
+  authorUsername: string;
+  authorAvatar: string;
+  mediaUrl: string;
+  caption?: string;
+  timestamp?: string;
+}
+
 export interface Message {
   id: string;
   senderId: string;
   senderName?: string;
   senderAvatar?: string;
   timestamp: string;
-  type: 'text' | 'file' | 'voice' | 'image' | 'call' | 'post';
+  type: 'text' | 'file' | 'voice' | 'image' | 'video' | 'call' | 'post' | 'reel' | 'story';
   text?: string;
   file?: FileAttachment;
   voice?: VoiceNoteMeta;
   callMeta?: CallMeta;
   sharedPost?: SharedPostMeta;
+  sharedReel?: SharedReelMeta;
+  sharedStory?: SharedStoryMeta;
   status: 'sent' | 'delivered' | 'read';
   reaction?: string;
   replyTo?: MessageReplyInfo;
@@ -306,4 +340,57 @@ export interface NotificationItem {
   read: boolean;
   createdAt?: any;
   recipientId?: string;
+}
+
+export interface MarketplaceItem {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  currency: 'RWF' | 'USD' | 'EUR';
+  category: 'Tech' | 'Fashion' | 'Home' | 'Vehicles' | 'Services' | 'Books' | 'Digital' | 'Other';
+  condition: 'Brand New' | 'Like New' | 'Gently Used' | 'Refurbished';
+  images: string[];
+  seller: User;
+  location: string;
+  createdAt: number;
+  isSold: boolean;
+  tags: string[];
+  contactPhone?: string;
+  viewsCount?: number;
+}
+
+export interface SponsoredAd {
+  id: string;
+  type: 'feed_post' | 'story_ad';
+  title: string;
+  description: string;
+  mediaUrl: string;
+  mediaType: 'image' | 'video';
+  ctaText: string;
+  ctaUrl?: string;
+  sellerId: string;
+  sellerName: string;
+  sellerAvatar: string;
+  sellerUsername: string;
+  budget: number;
+  impressions: number;
+  clicks: number;
+  status: 'active' | 'pending' | 'ended';
+  createdAt: number;
+  targetCategory?: string;
+}
+
+export interface VerificationPayment {
+  id: string;
+  userId: string;
+  username: string;
+  userEmail: string;
+  provider: 'flutterwave' | 'stripe' | 'mtn_momo';
+  amount: number;
+  currency: string;
+  status: 'pending' | 'completed' | 'failed';
+  transactionRef: string;
+  phoneNumber?: string;
+  createdAt: number;
 }
