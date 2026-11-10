@@ -70,7 +70,7 @@ class SecurityRuleSimulator {
     // Case 1: Owner update
     if (request.auth.uid === targetUserId) {
       // Disallow immutable field tampering
-      const immutable = ['id', 'createdAt', 'role', 'isAdmin', 'verified'];
+      const immutable = ['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince'];
       for (const key of immutable) {
         if (key in incoming && incoming[key] !== existing.data[key]) {
           return false;
@@ -385,5 +385,38 @@ describe('Firestore Rules Security Invariants Verification', () => {
 
       expect(sim.canUpdateUser(ownerRequest, 'user_123', existingUser, validUpdate)).toBe(true);
     });
+
+    // 13. Paid verification cannot be self-assigned
+    it('#13: Profile owners cannot create or change paid verification fields', () => {
+      const ownerRequest: RequestContext = { auth: { uid: 'user_123' } };
+      const existingUser: ResourceContext = {
+        data: { id: 'user_123', name: 'Member', verified: false, verifiedBadgeType: 'none', verifiedSince: null },
+      };
+      expect(sim.canUpdateUser(ownerRequest, 'user_123', existingUser, {
+        ...existingUser.data, verified: true,
+      })).toBe(false);
+      expect(sim.canUpdateUser(ownerRequest, 'user_123', existingUser, {
+        ...existingUser.data, verifiedBadgeType: 'gold',
+      })).toBe(false);
+      expect(sim.canUpdateUser(ownerRequest, 'user_123', existingUser, {
+        ...existingUser.data, verifiedSince: Date.now(),
+      })).toBe(false);
+    });
+
+    // 14. Payment ledger is server-write only
+    it('#14: Verification payment records cannot be forged by browser clients', () => {
+      const content = sim.getRulesText();
+      expect(content).toContain('allow create, update, delete: if false;');
+      expect(content).toContain("!incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince'])");
+    });
+
+    // 15. Story item changes use authenticated interaction endpoints
+    it('#15: Non-owners cannot directly replace story items in Firestore', () => {
+      const content = sim.getRulesText();
+      expect(content).not.toContain("incoming().diff(existing()).affectedKeys().hasOnly(['items'])");
+      expect(content).toContain("existing().userId == request.auth.uid");
+    });
+
+
   });
 });

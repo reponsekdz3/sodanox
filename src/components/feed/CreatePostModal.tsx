@@ -91,6 +91,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
 
   // Detailed Progress Bar States
   const [isCompressing, setIsCompressing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState('Compressing & uploading media...');
   const [bytesTransferred, setBytesTransferred] = useState<number | undefined>(undefined);
@@ -112,83 +113,65 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
+    const fileList = Array.from(files).slice(0, Math.max(0, 4 - mediaUrls.length));
+    if (fileList.length === 0) {
+      setUploadError('You can attach up to four images to a post.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
     setIsCompressing(true);
-    setUploadPercent(5);
-    setUploadStatusText(`Preparing ${files.length} photo${files.length > 1 ? 's' : ''}...`);
-
+    setUploadPercent(1);
+    setUploadError(null);
+    setBytesTransferred(undefined);
+    setTotalBytes(undefined);
+    setUploadStatusText('Preparing ' + fileList.length + ' image(s)...');
     let totalOriginal = 0;
     let totalCompressed = 0;
-
-    // Determine target dimension & quality based on selected resolution
     const maxDimension = resolution === '4k' ? 3840 : resolution === '1080p' ? 1920 : resolution === '720p' ? 1280 : 6000;
     const quality = resolution === '4k' ? 0.92 : resolution === '1080p' ? 0.85 : resolution === '720p' ? 0.78 : 0.95;
-
+    const perFileProgress = 100 / fileList.length;
     try {
-      const fileList = Array.from(files).slice(0, 4 - mediaUrls.length);
-
       for (let i = 0; i < fileList.length; i++) {
         const file = fileList[i];
         totalOriginal += file.size;
-
-        const baseProgress = Math.round((i / fileList.length) * 100);
-        setUploadPercent(baseProgress + 8);
-        setUploadStatusText(`Compressing photo ${i + 1} of ${fileList.length} (${resolution.toUpperCase()})...`);
-
-        // 1. Client-Side Image Compression with live progress & aspect ratio framing
+        const fileStart = i * perFileProgress;
+        setUploadPercent(Math.max(1, Math.round(fileStart + 1)));
+        setUploadStatusText('Optimizing image ' + (i + 1) + ' of ' + fileList.length + '...');
         const compressed = await compressImage(file, {
-          maxDimension,
-          quality,
-          preferWebp: true,
-          aspectRatio,
+          maxDimension, quality, preferWebp: true, aspectRatio,
           onProgress: (pct, status) => {
-            const stepPct = Math.round(baseProgress + (pct * 0.45));
-            setUploadPercent(Math.min(95, stepPct));
-            setUploadStatusText(`Photo ${i + 1}: ${status} (${pct}%)`);
+            const progress = fileStart + (pct / 100) * perFileProgress * 0.45;
+            setUploadPercent(Math.max(1, Math.min(99, Math.round(progress))));
+            setUploadStatusText('Image ' + (i + 1) + '/' + fileList.length + ': ' + status);
           },
         });
         totalCompressed += compressed.compressedSize;
-
-        setUploadPercent(baseProgress + 40);
-        setUploadStatusText(`Storing photo ${i + 1} into Firebase Storage...`);
-
-        // 2. Upload to Firebase Storage with real-time percentage progress
-        const storagePath = `posts/${currentUser.id}/${Date.now()}_${i}.webp`;
-        const uploadRes = await uploadMediaToFirebase(
-          compressed.blob,
-          storagePath,
-          (pct, transferred, total) => {
-            const stepPct = Math.round(baseProgress + 40 + (pct * 0.5));
-            setUploadPercent(Math.min(98, stepPct));
-            setBytesTransferred(transferred);
-            setTotalBytes(total);
-          }
-        );
-
+        setUploadStatusText('Uploading image ' + (i + 1) + ' of ' + fileList.length + ' to Firebase Storage...');
+        const extension = compressed.mimeType === 'image/webp' ? 'webp' : compressed.mimeType === 'image/png' ? 'png' : 'jpg';
+        const storagePath = 'posts/' + currentUser.id + '/' + Date.now() + '_' + i + '.' + extension;
+        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath, (pct, transferred, total) => {
+          const progress = fileStart + perFileProgress * (0.45 + (pct / 100) * 0.54);
+          setUploadPercent(Math.max(1, Math.min(99, Math.round(progress))));
+          setBytesTransferred(transferred);
+          setTotalBytes(total);
+        });
         setMediaUrls((prev) => [...prev, uploadRes.url]);
       }
-
       setUploadPercent(100);
-      setUploadStatusText('Media optimized & stored successfully!');
-
+      setUploadStatusText('All images are optimized and stored securely.');
       if (totalOriginal > 0) {
         const savingsPercent = Math.max(0, Math.round(((totalOriginal - totalCompressed) / totalOriginal) * 100));
-        setCompressionSavings({
-          original: totalOriginal,
-          compressed: totalCompressed,
-          savingsPercent,
-        });
+        setCompressionSavings({ original: totalOriginal, compressed: totalCompressed, savingsPercent });
       }
     } catch (err) {
-      console.warn('Media upload note:', err);
+      const message = err instanceof Error ? err.message : 'Media upload failed. Please try again.';
+      setUploadError(message);
+      setUploadStatusText('Upload failed. Your post has not been published.');
     } finally {
-      setTimeout(() => {
-        setIsCompressing(false);
-      }, 400);
+      window.setTimeout(() => setIsCompressing(false), 450);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
-
   const handleRemoveMedia = (index: number) => {
     setMediaUrls((prev) => prev.filter((_, i) => i !== index));
   };
@@ -432,7 +415,13 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               totalBytes={totalBytes}
               savingsPercent={compressionSavings?.savingsPercent}
               isComplete={uploadPercent === 100}
+              errorText={uploadError || undefined}
             />
+          )}
+          {uploadError && !isCompressing && (
+            <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+              {uploadError}
+            </div>
           )}
 
           {/* Media Attachments Preview (Grid up to 4 with Filter & Aspect Ratio applied) */}

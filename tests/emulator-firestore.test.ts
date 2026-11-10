@@ -94,7 +94,18 @@ describe('Firestore Security Rules (Firebase Emulator Suite)', () => {
           createdAt: new Date(),
         });
 
-        // 3. Conversation between Alice and Bob
+        // 3. Story by Alice
+        await setDoc(doc(db, 'stories', 'alice_story'), {
+          id: 'alice_story',
+          userId: 'alice_uid',
+          userName: 'Alice Waters',
+          userUsername: 'alice',
+          items: [{ id: 'story_item_1', mediaUrl: 'https://example.com/story.jpg', type: 'image', timestamp: 'Just now' }],
+          viewers: [],
+          createdAt: new Date(),
+        });
+
+        // 4. Conversation between Alice and Bob
         await setDoc(doc(db, 'conversations', 'conv_alice_bob'), {
           id: 'conv_alice_bob',
           participantIds: ['alice_uid', 'bob_uid'],
@@ -190,5 +201,43 @@ describe('Firestore Security Rules (Firebase Emulator Suite)', () => {
         verified: true,
       })
     );
+  });
+
+  it('8. Profile owner cannot set paid verification fields', async () => {
+    if (!testEnv) return;
+    const aliceDb = testEnv.authenticatedContext('alice_uid').firestore();
+    const aliceDoc = doc(aliceDb, 'users', 'alice_uid');
+    await assertFails(updateDoc(aliceDoc, { verifiedBadgeType: 'blue' }));
+    await assertFails(updateDoc(aliceDoc, { verifiedSince: Date.now() }));
+  });
+
+  it('9. Client cannot forge verification payment ledger entries', async () => {
+    if (!testEnv) return;
+    const aliceDb = testEnv.authenticatedContext('alice_uid').firestore();
+    const paymentDoc = doc(aliceDb, 'verification_payments', 'fake_payment');
+    await assertFails(setDoc(paymentDoc, {
+      userId: 'alice_uid',
+      amount: 10000,
+      currency: 'RWF',
+      status: 'completed',
+    }));
+  });
+
+  it('10. Non-owner cannot replace a story item array', async () => {
+    if (!testEnv) return;
+    const bobDb = testEnv.authenticatedContext('bob_uid').firestore();
+    const storyRef = doc(bobDb, 'stories', 'alice_story');
+    await assertFails(updateDoc(storyRef, {
+      items: [{ id: 'forged', mediaUrl: 'https://example.com/forged.jpg', type: 'image', timestamp: 'Now' }],
+    }));
+  });
+
+  it('11. Story owner can edit their own story item', async () => {
+    if (!testEnv) return;
+    const aliceDb = testEnv.authenticatedContext('alice_uid').firestore();
+    const storyRef = doc(aliceDb, 'stories', 'alice_story');
+    await assertSucceeds(updateDoc(storyRef, {
+      items: [{ id: 'story_item_1', mediaUrl: 'https://example.com/story.jpg', type: 'image', timestamp: 'Just now', caption: 'Updated caption' }],
+    }));
   });
 });

@@ -9,6 +9,7 @@ interface UploadProgressBarProps {
   totalBytes?: number;
   savingsPercent?: number;
   isComplete?: boolean;
+  errorText?: string;
   className?: string;
 }
 
@@ -19,6 +20,7 @@ export const UploadProgressBar: React.FC<UploadProgressBarProps> = ({
   totalBytes,
   savingsPercent,
   isComplete = false,
+  errorText,
   className = '',
 }) => {
   const safeProgress = Math.min(100, Math.max(0, Math.round(progress)));
@@ -57,6 +59,12 @@ export const UploadProgressBar: React.FC<UploadProgressBarProps> = ({
           />
         )}
       </div>
+
+      {errorText && (
+        <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+          {errorText}
+        </div>
+      )}
 
       {/* Bottom Byte Info / Savings */}
       <div className="flex items-center justify-between text-[11px] text-[#3D5A4C]">

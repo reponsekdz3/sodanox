@@ -68,18 +68,19 @@ service cloud.firestore {
         incoming().id == userId &&
         // Prevent new users from self-assigning admin or verified roles
         !incoming().keys().hasAny(['role', 'isAdmin']) &&
-        incoming().get('verified', false) == false;
+        incoming().get('verified', false) == false &&
+        !incoming().keys().hasAny(['verifiedBadgeType', 'verifiedSince']);
 
       // Profile updates:
       // Either: Owner updates their profile (cannot modify role, verified, id, or email)
       // Profile updates:
       // Case 1: Super admin management
-      // Case 2: Owner updates their profile (including verified badge activation via 10K payment or bio/location)
+      // Case 2: Owner updates ordinary profile fields; verified status is server-controlled after gateway confirmation.
       // Case 3: Mutual social graph update (follow / unfollow by another user)
       allow update: if (
         isAdmin() ||
         (isOwner(userId) &&
-         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin'])) ||
+         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince'])) ||
         (isSignedIn() &&
          request.auth.uid != userId &&
          incoming().diff(existing()).affectedKeys().hasOnly(['followers', 'followersCount', 'updatedAt']) &&
@@ -204,10 +205,7 @@ service cloud.firestore {
         (incoming().diff(existing()).affectedKeys().hasOnly(['viewers', 'viewersList']) && (
           incoming().viewers.hasAll(existing().viewers) &&
           incoming().viewers.removeAll(existing().viewers).hasOnly([request.auth.uid])
-        )) ||
-
-        // Case C: Story Item interaction (interactive stickers, polls, questions)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['items']))
+        ))
       );
 
       // Only story owner can delete story
@@ -366,8 +364,8 @@ service cloud.firestore {
     // -------------------------------------------------------------
     match /verification_payments/{paymentId} {
       allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isSignedIn() && incoming().userId == request.auth.uid;
-      allow update, delete: if isAdmin();
+      // Only trusted server code (Firebase Admin SDK) writes payment status and audit records.
+      allow create, update, delete: if false;
     }
 
     // -------------------------------------------------------------

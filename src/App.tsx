@@ -67,6 +67,7 @@ import {
   recordStoryView,
   deleteStory,
   toggleLikeStory,
+  updateStoryItem as persistStoryItemUpdate,
 } from './services/storyService';
 import {
   subscribeToReels,
@@ -146,7 +147,7 @@ export default function App() {
   const [isEditProfileOpen, setIsEditProfileOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
-  const [isPayVerifiedOpen, setIsPayVerifiedOpen] = useState(false);
+  const [isPayVerifiedOpen, setIsPayVerifiedOpen] = useState(() => new URLSearchParams(window.location.search).has('verification_ref'));
   const [isSuperAdminOpen, setIsSuperAdminOpen] = useState<boolean>(() => isSuperAdminUrl());
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
 
@@ -470,43 +471,43 @@ export default function App() {
   };
 
   const handleAddStory = async (newItem: StoryItem) => {
-    if (!currentUser) return;
-    const itemWithTimestamp: StoryItem = {
-      ...newItem,
-      createdAtMs: newItem.createdAtMs || Date.now(),
-    };
-
-    // Optimistically update stories state for instant UI reaction
+    if (!currentUser) throw new Error('You must be signed in to publish a story.');
+    const itemWithTimestamp: StoryItem = { ...newItem, createdAtMs: newItem.createdAtMs || Date.now() };
+    await createStoryInFirestore(currentUser, itemWithTimestamp);
     setStories((prev) => {
       const myStoryIndex = prev.findIndex((s) => s.userId === currentUser.id);
       if (myStoryIndex !== -1) {
         const copy = [...prev];
-        copy[myStoryIndex] = {
-          ...copy[myStoryIndex],
-          items: [...copy[myStoryIndex].items, itemWithTimestamp],
-        };
+        copy[myStoryIndex] = { ...copy[myStoryIndex], items: [...copy[myStoryIndex].items, itemWithTimestamp] };
         return copy;
-      } else {
-        const newStory: Story = {
-          id: `story_${currentUser.id}_${Date.now()}`,
-          userId: currentUser.id,
-          userName: currentUser.name,
-          userUsername: currentUser.username,
-          userAvatar: currentUser.avatar,
-          hasUnseen: false,
-          items: [itemWithTimestamp],
-          viewers: [currentUser.id],
-          createdAt: { toMillis: () => Date.now() },
-        };
-        return [newStory, ...prev];
       }
+      const newStory: Story = {
+        id: 'story_' + currentUser.id,
+        userId: currentUser.id,
+        userName: currentUser.name,
+        userUsername: currentUser.username,
+        userAvatar: currentUser.avatar,
+        hasUnseen: false,
+        items: [itemWithTimestamp],
+        viewers: [currentUser.id],
+        createdAt: { toMillis: () => Date.now() },
+      };
+      return [newStory, ...prev];
     });
+  };
 
-    try {
-      await createStoryInFirestore(currentUser, itemWithTimestamp);
-    } catch (err) {
-      console.error('Error adding story to Firestore:', err);
-    }
+  const handleUpdateStoryItem = async (
+    storyId: string,
+    itemIndex: number,
+    updates: Partial<Pick<StoryItem, 'caption' | 'moodTag' | 'filter' | 'textOverlay'>>
+  ) => {
+    if (!currentUser) throw new Error('You must be signed in to edit a story.');
+    const updatedItem = await persistStoryItemUpdate(storyId, currentUser.id, itemIndex, updates);
+    const applyUpdate = (items: Story[]) => items.map((story) => story.id === storyId
+      ? { ...story, items: story.items.map((item, index) => index === itemIndex ? updatedItem : item) }
+      : story);
+    setStories(applyUpdate);
+    setViewerStories(applyUpdate);
   };
 
   const handleRecordStoryView = async (storyId: string) => {
@@ -1438,6 +1439,7 @@ export default function App() {
           onRecordStoryView={handleRecordStoryView}
           onLikeStory={handleLikeStory}
           onDeleteStory={handleDeleteStory}
+          onUpdateStoryItem={handleUpdateStoryItem}
           onOpenUserProfile={handleOpenUserProfile}
         />
       )}

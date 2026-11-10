@@ -11,10 +11,13 @@ import {
   onSnapshot,
   serverTimestamp,
   getDocs,
+  getDoc,
+  runTransaction,
   arrayUnion,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, functions } from '../firebase/config';
+import { httpsCallable } from 'firebase/functions';
 import { Story, StoryItem, User, StoryHighlight } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
@@ -171,19 +174,51 @@ export async function createStoryInFirestore(
     ...newItem,
     createdAtMs: newItem.createdAtMs || Date.now(),
   };
+  const storyDocId = 'story_' + currentUser.id;
+  const storyDocRef = doc(db, STORIES_COLLECTION, storyDocId);
 
-  const storyDocId = `story_${currentUser.id}`;
+  // Cloud persistence is authoritative. A transaction creates the document once
+  // and appends later items without rewriting the immutable createdAt field.
+  try {
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(storyDocRef);
+      if (snapshot.exists()) {
+        const existing = snapshot.data();
+        if (existing.userId !== currentUser.id) {
+          throw new Error('This story belongs to another account.');
+        }
+        transaction.update(storyDocRef, {
+          items: arrayUnion(itemWithTimestamp),
+          viewers: arrayUnion(currentUser.id),
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        transaction.set(storyDocRef, {
+          id: storyDocId,
+          userId: currentUser.id,
+          userName: currentUser.name,
+          userUsername: currentUser.username,
+          userAvatar: isMockOrEmptyAvatar(currentUser.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : currentUser.avatar,
+          items: [itemWithTimestamp],
+          viewers: [currentUser.id],
+          updatedAt: serverTimestamp(),
+          createdAt: serverTimestamp(),
+          createdAtMs: Date.now(),
+        });
+      }
+    });
+  } catch (err) {
+    console.error('Story could not be persisted to Firestore:', err);
+    throw err instanceof Error ? err : new Error('Story could not be uploaded to the cloud. Please try again.');
+  }
 
-  // 1. Immediately update local persistent cache so story NEVER disappears on refresh
   const currentStories = getStoredStories();
-  const existingIndex = currentStories.findIndex((s) => s.userId === currentUser.id);
-
+  const existingIndex = currentStories.findIndex((item) => item.userId === currentUser.id);
   if (existingIndex !== -1) {
     const updated = [...currentStories];
     updated[existingIndex] = {
       ...updated[existingIndex],
       items: [...updated[existingIndex].items, itemWithTimestamp],
-      createdAt: { toMillis: () => Date.now() } as any,
     };
     saveStoredStories(updated);
   } else {
@@ -200,31 +235,46 @@ export async function createStoryInFirestore(
     };
     saveStoredStories([newStory, ...currentStories]);
   }
-
-  // 2. Persist to Firestore
-  try {
-    const storyDocRef = doc(db, STORIES_COLLECTION, storyDocId);
-    await setDoc(
-      storyDocRef,
-      {
-        id: storyDocId,
-        userId: currentUser.id,
-        userName: currentUser.name,
-        userUsername: currentUser.username,
-        userAvatar: isMockOrEmptyAvatar(currentUser.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : currentUser.avatar,
-        items: arrayUnion(itemWithTimestamp),
-        viewers: arrayUnion(currentUser.id),
-        updatedAt: serverTimestamp(),
-        createdAt: serverTimestamp(),
-        createdAtMs: Date.now(),
-      },
-      { merge: true }
-    );
-  } catch (err) {
-    console.warn('Firestore story sync notice (stored safely in local persistent cache):', err);
-  }
 }
 
+/**
+ * Update a story item owned by the authenticated user.
+ * Only the editor-supported fields are accepted; media and ownership stay immutable.
+ */
+export async function updateStoryItem(
+  storyId: string,
+  userId: string,
+  itemIndex: number,
+  updates: Partial<Pick<StoryItem, 'caption' | 'moodTag' | 'filter' | 'textOverlay'>>
+): Promise<StoryItem> {
+  if (!storyId || !userId || !Number.isInteger(itemIndex) || itemIndex < 0) {
+    throw new Error('A valid story and item are required.');
+  }
+  const storyRef = doc(db, STORIES_COLLECTION, storyId);
+  const snapshot = await getDoc(storyRef);
+  if (!snapshot.exists()) throw new Error('This story no longer exists.');
+  const data = snapshot.data();
+  if (data.userId !== userId) throw new Error('You can only edit your own stories.');
+  const items: StoryItem[] = Array.isArray(data.items) ? [...data.items] : [];
+  if (!items[itemIndex]) throw new Error('The story item could not be found.');
+  const currentItem = items[itemIndex];
+  const updatedItem: StoryItem = { ...currentItem };
+  const editableFields = ['caption', 'moodTag', 'filter', 'textOverlay'] as const;
+  for (const field of editableFields) {
+    if (Object.prototype.hasOwnProperty.call(updates, field)) {
+      const value = updates[field];
+      if (value === undefined) delete (updatedItem as any)[field];
+      else (updatedItem as any)[field] = value;
+    }
+  }
+  items[itemIndex] = updatedItem;
+  await updateDoc(storyRef, { items, updatedAt: serverTimestamp() });
+  const cached = getStoredStories();
+  saveStoredStories(cached.map((story) => story.id === storyId
+    ? { ...story, items: story.items.map((item, index) => index === itemIndex ? updatedItem : item) }
+    : story));
+  return updatedItem;
+}
 /**
  * Record a story view for the current user with detailed viewer info
  */
@@ -262,39 +312,15 @@ export async function toggleLikeStory(
   userId: string,
   user: User
 ): Promise<void> {
-  try {
-    const storyRef = doc(db, STORIES_COLLECTION, storyId);
-    const snap = await getDocs(query(collection(db, STORIES_COLLECTION)));
-    const docSnap = snap.docs.find((d) => d.id === storyId);
-    if (!docSnap) return;
-
-    const data = docSnap.data();
-    const items = [...(data.items || [])];
-    if (!items[itemIndex]) return;
-
-    const item = { ...items[itemIndex] };
-    const likedBy: string[] = item.likedBy || [];
-    const hasLiked = likedBy.includes(userId);
-
-    const updatedLikedBy = hasLiked
-      ? likedBy.filter((id) => id !== userId)
-      : [...likedBy, userId];
-
-    item.likedBy = updatedLikedBy;
-    item.likesCount = updatedLikedBy.length;
-    items[itemIndex] = item;
-
-    await updateDoc(storyRef, { items });
-
-    // Notify story author if not self and liked
-    if (!hasLiked && data.userId && data.userId !== userId) {
-      await createNotification(data.userId, user, 'like', 'liked your story', storyId);
-    }
-  } catch (err) {
-    console.warn('Error toggling story like:', err);
+  const mutate = httpsCallable<{ storyId: string; itemIndex: number; action: 'like' }, { liked: boolean; authorId: string }>(
+    functions, 'updateStoryInteraction'
+  );
+  const response = await mutate({ storyId, itemIndex, action: 'like' });
+  const result = response.data;
+  if (result.liked && result.authorId && result.authorId !== userId) {
+    await createNotification(result.authorId, user, 'like', 'liked your story', storyId);
   }
 }
-
 /**
  * Delete a story document
  */
@@ -318,49 +344,12 @@ export async function voteStoryPoll(
   optionId: string,
   userId: string
 ): Promise<void> {
-  try {
-    const storyRef = doc(db, STORIES_COLLECTION, storyId);
-    const snap = await getDocs(query(collection(db, STORIES_COLLECTION)));
-    const docSnap = snap.docs.find((d) => d.id === storyId);
-    if (!docSnap) return;
-
-    const data = docSnap.data();
-    const items = [...(data.items || [])];
-    if (!items[itemIndex]) return;
-
-    const item = { ...items[itemIndex] };
-    const stickers = [...(item.stickers || [])];
-    const pollIndex = stickers.findIndex((s) => s.type === 'poll');
-
-    if (pollIndex !== -1) {
-      const pollSticker = { ...stickers[pollIndex] };
-      const pollData = { ...pollSticker.data };
-      const currentVotes: Record<string, string> = pollData.userVotes || {};
-
-      if (currentVotes[userId] === optionId) return; // already voted same
-
-      currentVotes[userId] = optionId;
-      pollData.userVotes = currentVotes;
-
-      if (pollData.options) {
-        pollData.options = pollData.options.map((opt: { id: string; text: string; votes: number }) => {
-          const count = Object.values(currentVotes).filter((v) => v === opt.id).length;
-          return { ...opt, votes: count };
-        });
-      }
-
-      pollSticker.data = pollData;
-      stickers[pollIndex] = pollSticker;
-      item.stickers = stickers;
-      items[itemIndex] = item;
-
-      await updateDoc(storyRef, { items });
-    }
-  } catch (err) {
-    console.warn('Error voting on story poll:', err);
-  }
+  if (!userId) throw new Error('Sign in to vote in this poll.');
+  const mutate = httpsCallable<{ storyId: string; itemIndex: number; action: 'vote_poll'; optionId: string }, { voted: boolean }>(
+    functions, 'updateStoryInteraction'
+  );
+  await mutate({ storyId, itemIndex, action: 'vote_poll', optionId });
 }
-
 /**
  * Answer a Story Question sticker
  */
@@ -370,46 +359,13 @@ export async function answerStoryQuestion(
   answer: string,
   user: User
 ): Promise<void> {
-  try {
-    const storyRef = doc(db, STORIES_COLLECTION, storyId);
-    const snap = await getDocs(query(collection(db, STORIES_COLLECTION)));
-    const docSnap = snap.docs.find((d) => d.id === storyId);
-    if (!docSnap) return;
-
-    const data = docSnap.data();
-    const items = [...(data.items || [])];
-    if (!items[itemIndex]) return;
-
-    const item = { ...items[itemIndex] };
-    const stickers = [...(item.stickers || [])];
-    const questionIndex = stickers.findIndex((s) => s.type === 'question');
-
-    if (questionIndex !== -1) {
-      const qSticker = { ...stickers[questionIndex] };
-      const qData = { ...qSticker.data };
-      const answers = qData.answers || [];
-
-      answers.push({
-        userId: user.id,
-        userName: user.name,
-        userAvatar: user.avatar,
-        answer: answer.trim(),
-        timestamp: 'Just now',
-      });
-
-      qData.answers = answers;
-      qSticker.data = qData;
-      stickers[questionIndex] = qSticker;
-      item.stickers = stickers;
-      items[itemIndex] = item;
-
-      await updateDoc(storyRef, { items });
-    }
-  } catch (err) {
-    console.warn('Error answering story question:', err);
-  }
+  const cleanAnswer = answer.trim();
+  if (!cleanAnswer) throw new Error('Write an answer before sending.');
+  const mutate = httpsCallable<{ storyId: string; itemIndex: number; action: 'answer_question'; answer: string }, { answered: boolean }>(
+    functions, 'updateStoryInteraction'
+  );
+  await mutate({ storyId, itemIndex, action: 'answer_question', answer: cleanAnswer });
 }
-
 /**
  * Highlights: Create a Story Highlight
  */

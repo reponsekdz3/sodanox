@@ -18,6 +18,8 @@ import {
   Heart,
   Share2,
   Copy,
+  Pencil,
+  Save,
 } from 'lucide-react';
 import { Story, StoryItem, User, StoryFilter, StorySticker } from '../../types';
 import { voteStoryPoll, answerStoryQuestion, createStoryHighlight } from '../../services/storyService';
@@ -34,6 +36,7 @@ interface StoryViewerModalProps {
   onRecordStoryView?: (storyId: string) => void;
   onLikeStory?: (storyId: string, itemIndex: number) => void;
   onDeleteStory?: (storyId: string) => void;
+  onUpdateStoryItem?: (storyId: string, itemIndex: number, updates: Partial<Pick<StoryItem, 'caption' | 'moodTag' | 'filter' | 'textOverlay'>>) => Promise<void>;
   onOpenUserProfile?: (user: User) => void;
 }
 
@@ -58,6 +61,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   onRecordStoryView,
   onLikeStory,
   onDeleteStory,
+  onUpdateStoryItem,
   onOpenUserProfile,
 }) => {
   const [currentStoryIdx, setCurrentStoryIdx] = useState(initialStoryIndex);
@@ -86,11 +90,28 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
   const [isSavingHighlight, setIsSavingHighlight] = useState(false);
   const [highlightSavedNotice, setHighlightSavedNotice] = useState(false);
 
+  // Owner-only story editor
+  const [isEditingStory, setIsEditingStory] = useState(false);
+  const [isSavingStoryEdit, setIsSavingStoryEdit] = useState(false);
+  const [storyEditError, setStoryEditError] = useState<string | null>(null);
+  const [editCaption, setEditCaption] = useState('');
+  const [editMoodTag, setEditMoodTag] = useState('');
+  const [editFilter, setEditFilter] = useState<StoryFilter>('none');
+  const [editOverlayText, setEditOverlayText] = useState('');
+
   const currentStory = stories[currentStoryIdx];
   const currentItem = currentStory?.items[currentItemIdx];
   const STORY_DURATION = 6000; // 6 seconds
 
   const currentItemKey = `${currentStory?.id}_${currentItemIdx}`;
+
+  useEffect(() => {
+    setEditCaption(currentItem?.caption || '');
+    setEditMoodTag(currentItem?.moodTag || '');
+    setEditFilter(currentItem?.filter || 'none');
+    setEditOverlayText(currentItem?.textOverlay?.text || '');
+    setStoryEditError(null);
+  }, [currentItemKey]);
   const isItemLiked = Boolean(
     localLikes[currentItemKey] ??
     currentItem?.likedBy?.includes(currentUser.id)
@@ -156,7 +177,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
 
   // Story Timer
   useEffect(() => {
-    if (isPaused || !currentItem || showViewersModal || showHighlightModal) return;
+    if (isPaused || !currentItem || currentItem.type === 'video' || showViewersModal || showHighlightModal) return;
 
     const intervalTime = 50;
     const increment = (intervalTime / STORY_DURATION) * 100;
@@ -263,6 +284,32 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
     setTimeout(() => setReplySentNotice(false), 2000);
   };
 
+  const handleSaveStoryEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentStory || !currentItem || !onUpdateStoryItem || isSavingStoryEdit) return;
+    setIsSavingStoryEdit(true);
+    setStoryEditError(null);
+    const nextOverlay = editOverlayText.trim()
+      ? {
+          ...(currentItem.textOverlay || { font: 'serif' as const, color: '#FFFFFF', hasBackground: true, align: 'center' as const }),
+          text: editOverlayText.trim(),
+        }
+      : undefined;
+    try {
+      await onUpdateStoryItem(currentStory.id, currentItemIdx, {
+        caption: editCaption.trim() || undefined,
+        moodTag: editMoodTag.trim() || undefined,
+        filter: editFilter === 'none' ? undefined : editFilter,
+        textOverlay: nextOverlay,
+      });
+      setIsEditingStory(false);
+      setIsPaused(false);
+    } catch (err) {
+      setStoryEditError(err instanceof Error ? err.message : 'Could not save your story edits.');
+    } finally {
+      setIsSavingStoryEdit(false);
+    }
+  };
   const handleSaveToHighlight = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!highlightTitle.trim() || !currentItem) return;
@@ -365,6 +412,17 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {isMyStory && onUpdateStoryItem && currentStory.id === 'story_' + currentUser.id && (
+              <button
+                type="button"
+                onClick={() => { setIsPaused(true); setIsEditingStory(true); }}
+                className="p-1.5 rounded-full bg-black/40 text-white/90 hover:text-white hover:bg-black/60 transition-colors"
+                title="Edit story"
+                aria-label="Edit story"
+              >
+                <Pencil size={16} />
+              </button>
+            )}
             {/* Highlight story action */}
             {isMyStory && (
               <button
@@ -413,13 +471,24 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
           onTouchStart={() => setIsPaused(true)}
           onTouchEnd={() => setIsPaused(false)}
         >
-          <img
-            src={currentItem.mediaUrl}
-            alt="Story content"
-            className={`w-full h-full object-cover ${
-              currentItem.filter ? FILTER_CLASSES[currentItem.filter] : ''
-            }`}
-          />
+          {currentItem.type === 'video' ? (
+            <video
+              src={currentItem.mediaUrl}
+              autoPlay
+              playsInline
+              controls
+              onEnded={nextItem}
+              className="w-full h-full object-contain"
+            />
+          ) : (
+            <img
+              src={currentItem.mediaUrl}
+              alt="Story content"
+              className={`w-full h-full object-cover ${
+                currentItem.filter ? FILTER_CLASSES[currentItem.filter] : ''
+              }`}
+            />
+          )}
 
           {/* Mood tag badge if present */}
           {currentItem.moodTag && (
@@ -837,6 +906,55 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Story Modal */}
+      {isEditingStory && currentStory && currentItem && (
+        <div className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg max-h-[88vh] overflow-y-auto bg-[#FAFAF9] text-[#2D3732] rounded-3xl p-5 sm:p-6 shadow-2xl border border-white/30">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h4 className="font-serif text-lg font-semibold">Edit your story</h4>
+                <p className="text-[11px] text-[#7A8A82]">Changes are saved to your cloud story.</p>
+              </div>
+              <button type="button" onClick={() => { setIsEditingStory(false); setIsPaused(false); }} className="p-2 rounded-full hover:bg-black/5" aria-label="Close editor">
+                <X size={18} />
+              </button>
+            </div>
+            <form onSubmit={handleSaveStoryEdit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5">Caption</label>
+                <textarea value={editCaption} onChange={(e) => setEditCaption(e.target.value)} rows={3} maxLength={500} placeholder="Write a caption..." className="w-full rounded-xl border border-[#D1E2D9] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#059669]" />
+                <div className="text-right text-[10px] text-[#7A8A82]">{editCaption.length}/500</div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5">Mood or topic</label>
+                <input value={editMoodTag} onChange={(e) => setEditMoodTag(e.target.value)} maxLength={40} placeholder="Add a mood tag" className="w-full rounded-xl border border-[#D1E2D9] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#059669]" />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5">Color treatment</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {(['none', 'vintage', 'nordic', 'noir', 'golden', 'sepia', 'emerald'] as StoryFilter[]).map((filter) => (
+                    <button key={filter} type="button" onClick={() => setEditFilter(filter)} className={`rounded-full border px-3 py-1.5 text-[11px] capitalize ${editFilter === filter ? 'bg-[#2D3732] text-white border-[#2D3732]' : 'bg-white border-[#D1E2D9] text-[#52645A]'}`}>
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5">Text overlay</label>
+                <textarea value={editOverlayText} onChange={(e) => setEditOverlayText(e.target.value)} rows={2} maxLength={180} placeholder="Edit or add text on the story..." className="w-full rounded-xl border border-[#D1E2D9] bg-white px-3 py-2.5 text-sm outline-none focus:border-[#059669]" />
+              </div>
+              {storyEditError && <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">{storyEditError}</div>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button type="button" onClick={() => { setIsEditingStory(false); setIsPaused(false); }} className="rounded-xl px-4 py-2.5 text-xs font-medium text-[#68776F] hover:bg-black/5">Cancel</button>
+                <button type="submit" disabled={isSavingStoryEdit} className="rounded-xl bg-[#064E3B] hover:bg-[#047857] px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50 flex items-center gap-2">
+                  <Save size={14} /> {isSavingStoryEdit ? 'Saving...' : 'Save changes'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

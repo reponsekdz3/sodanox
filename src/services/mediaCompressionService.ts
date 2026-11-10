@@ -4,7 +4,7 @@ import { storage } from '../firebase/config';
 export interface CompressionResult {
   file: File;
   blob: Blob;
-  dataUrl: string;
+  dataUrl?: string;
   originalSize: number;
   compressedSize: number;
   savingsPercent: number;
@@ -198,42 +198,26 @@ export async function compressImage(
         canvas.toBlob(
           async (blob) => {
             if (!blob) {
-              const fallbackData = canvas.toDataURL('image/jpeg', quality);
-              const fallbackBlob = dataUrlToBlob(fallbackData);
-              const compressedSize = fallbackBlob.size;
-              const savingsPercent = Math.max(0, Math.round(((originalSize - compressedSize) / originalSize) * 100));
-              const file = new File([fallbackBlob], fileName.replace(/\.[^/.]+$/, '.jpg'), { type: 'image/jpeg' });
-              onProgress?.(100, 'Compression completed!');
-              return resolve({
-                file,
-                blob: fallbackBlob,
-                dataUrl: fallbackData,
-                originalSize,
-                compressedSize,
-                savingsPercent,
-                mimeType: 'image/jpeg',
-                width: outputWidth,
-                height: outputHeight,
-              });
+              reject(new Error('The browser could not encode this image. Try another image format.'));
+              return;
             }
 
             const compressedSize = blob.size;
             const savingsPercent = Math.max(0, Math.round(((originalSize - compressedSize) / originalSize) * 100));
-            const extension = targetMime === 'image/webp' ? '.webp' : '.jpg';
+            const actualMimeType = blob.type || targetMime;
+            const extension = actualMimeType === 'image/webp' ? '.webp' : actualMimeType === 'image/png' ? '.png' : '.jpg';
             const cleanName = fileName.replace(/\.[^/.]+$/, extension);
-            const file = new File([blob], cleanName, { type: targetMime });
-            const dataUrl = await blobToDataUrl(blob);
+            const file = new File([blob], cleanName, { type: actualMimeType });
 
             onProgress?.(100, 'Compression completed!');
 
             resolve({
               file,
               blob,
-              dataUrl,
               originalSize,
               compressedSize,
               savingsPercent,
-              mimeType: targetMime,
+              mimeType: actualMimeType,
               width: outputWidth,
               height: outputHeight,
             });
@@ -549,66 +533,42 @@ export async function uploadMediaToFirebase(
   storagePath: string,
   onProgress?: UploadProgressCallback
 ): Promise<UploadResult> {
-  let blobToUpload: Blob;
-  let originalSize = 0;
-
-  if (typeof mediaPayload === 'string') {
-    blobToUpload = dataUrlToBlob(mediaPayload);
-    originalSize = blobToUpload.size;
-  } else {
-    blobToUpload = mediaPayload;
-    originalSize = mediaPayload.size;
-  }
-
-  // Attempt upload to Firebase Storage
-  try {
-    const storageRef = ref(storage, storagePath);
-    const uploadTask = uploadBytesResumable(storageRef, blobToUpload, {
-      contentType: blobToUpload.type || 'application/octet-stream',
-    });
-
-    return await new Promise<UploadResult>((resolve, reject) => {
-      uploadTask.on(
-        'state_changed',
-        (snapshot) => {
-          const progress = Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100);
-          if (onProgress) {
-            onProgress(progress, snapshot.bytesTransferred, snapshot.totalBytes);
-          }
-        },
-        (error) => {
-          console.warn('Firebase Storage upload error, invoking reliable local fallback:', error?.message);
-          reject(error);
-        },
-        async () => {
-          try {
-            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            resolve({
-              url: downloadUrl,
-              path: storagePath,
-              size: blobToUpload.size,
-              isFirebaseStorage: true,
-              savingsPercent: 0,
-              originalSize,
-            });
-          } catch (urlErr) {
-            reject(urlErr);
-          }
+  const blobToUpload = typeof mediaPayload === 'string' ? dataUrlToBlob(mediaPayload) : mediaPayload;
+  const originalSize = blobToUpload.size;
+  if (!storagePath.trim()) throw new Error('A valid Firebase Storage path is required.');
+  if (blobToUpload.size <= 0) throw new Error('The selected media file is empty.');
+  const storageRef = ref(storage, storagePath);
+  const uploadTask = uploadBytesResumable(storageRef, blobToUpload, {
+    contentType: blobToUpload.type || 'application/octet-stream',
+  });
+  return new Promise<UploadResult>((resolve, reject) => {
+    uploadTask.on(
+      'state_changed',
+      (snapshot) => {
+        const total = snapshot.totalBytes;
+        const percentage = total > 0 ? Math.round((snapshot.bytesTransferred / total) * 100) : 0;
+        onProgress?.(Math.max(1, Math.min(99, percentage)), snapshot.bytesTransferred, total);
+      },
+      (error) => {
+        console.error('Firebase Storage upload failed:', error);
+        reject(new Error(error.message || 'Firebase Storage could not upload this media. Check your connection and try again.'));
+      },
+      async () => {
+        try {
+          const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
+          onProgress?.(100, blobToUpload.size, blobToUpload.size);
+          resolve({
+            url: downloadUrl,
+            path: storagePath,
+            size: blobToUpload.size,
+            isFirebaseStorage: true,
+            savingsPercent: 0,
+            originalSize,
+          });
+        } catch (error) {
+          reject(error instanceof Error ? error : new Error('The upload completed but its download URL could not be created.'));
         }
-      );
-    });
-  } catch (err) {
-    // Graceful reliable fallback: return high-efficiency data URL
-    console.info('Falling back to optimized data URL storage for path:', storagePath);
-    if (onProgress) onProgress(100, blobToUpload.size, blobToUpload.size);
-    const dataUrl = await blobToDataUrl(blobToUpload);
-    return {
-      url: dataUrl,
-      path: storagePath,
-      size: blobToUpload.size,
-      isFirebaseStorage: false,
-      savingsPercent: 0,
-      originalSize,
-    };
-  }
+      }
+    );
+  });
 }

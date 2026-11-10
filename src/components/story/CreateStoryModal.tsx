@@ -28,16 +28,16 @@ import { UploadProgressBar } from '../common/UploadProgressBar';
 interface CreateStoryModalProps {
   currentUser: User;
   onClose: () => void;
-  onAddStory: (newItem: StoryItem) => void;
+  onAddStory: (newItem: StoryItem) => Promise<void>;
 }
 
 const CANVAS_BACKGROUNDS = [
-  { name: 'Quiet Slate', gradient: 'from-[#2D3732] to-[#1C2420]' },
-  { name: 'Warm Linen', gradient: 'from-[#EFECE6] to-[#DDD7CD]' },
-  { name: 'Nordic Sage', gradient: 'from-[#8FA89B] to-[#5C7567]' },
-  { name: 'Terracotta Ash', gradient: 'from-[#C27D60] to-[#8C4E35]' },
-  { name: 'Obsidian Noir', gradient: 'from-[#191919] to-[#0A0A0A]' },
-  { name: 'Dusk Lavender', gradient: 'from-[#888DA7] to-[#575C75]' },
+  { name: 'Quiet Slate', gradient: 'from-[#2D3732] to-[#1C2420]', colors: ['#2D3732', '#1C2420'] },
+  { name: 'Warm Linen', gradient: 'from-[#EFECE6] to-[#DDD7CD]', colors: ['#EFECE6', '#DDD7CD'] },
+  { name: 'Nordic Sage', gradient: 'from-[#8FA89B] to-[#5C7567]', colors: ['#8FA89B', '#5C7567'] },
+  { name: 'Terracotta Ash', gradient: 'from-[#C27D60] to-[#8C4E35]', colors: ['#C27D60', '#8C4E35'] },
+  { name: 'Obsidian Noir', gradient: 'from-[#191919] to-[#0A0A0A]', colors: ['#191919', '#0A0A0A'] },
+  { name: 'Dusk Lavender', gradient: 'from-[#888DA7] to-[#575C75]', colors: ['#888DA7', '#575C75'] },
 ];
 
 const FILTER_CLASSES: Record<StoryFilter, string> = {
@@ -64,10 +64,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   onAddStory,
 }) => {
   // Media source state
-  const [mediaType, setMediaType] = useState<'image' | 'canvas'>('image');
+  const [mediaType, setMediaType] = useState<'image' | 'video' | 'canvas'>('canvas');
   const [mediaUrl, setMediaUrl] = useState<string>('');
   const [selectedBgGradient, setSelectedBgGradient] = useState(CANVAS_BACKGROUNDS[0].gradient);
   const [isProcessingMedia, setIsProcessingMedia] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
   const [uploadPercent, setUploadPercent] = useState(0);
   const [uploadStatusText, setUploadStatusText] = useState('Compressing story...');
   const [bytesTransferred, setBytesTransferred] = useState<number | undefined>(undefined);
@@ -137,36 +139,43 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     canvas.width = videoRef.current.videoWidth || 720;
     canvas.height = videoRef.current.videoHeight || 1280;
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const rawDataUrl = canvas.toDataURL('image/jpeg', 0.88);
-      stopCamera();
-      setIsProcessingMedia(true);
-      try {
-        const compressed = await compressImage(rawDataUrl, {
-          maxDimension: 1440,
-          quality: 0.84,
-          preferWebp: true,
-        });
-        const storagePath = `stories/${currentUser.id}/${Date.now()}.webp`;
-        const res = await uploadMediaToFirebase(compressed.blob, storagePath);
-        setMediaUrl(res.url);
-        setMediaType('image');
-        setMediaSavings({
-          original: compressed.originalSize,
-          compressed: compressed.compressedSize,
-          percent: compressed.savingsPercent,
-        });
-      } catch (err) {
-        console.warn('Camera snapshot upload note:', err);
-        setMediaUrl(rawDataUrl);
-        setMediaType('image');
-      } finally {
-        setIsProcessingMedia(false);
-      }
+    if (!ctx) return;
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    stopCamera();
+    setIsProcessingMedia(true);
+    setUploadError(null);
+    setUploadPercent(1);
+    try {
+      const frameBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not capture the camera frame.')), 'image/jpeg', 0.88);
+      });
+      const compressed = await compressImage(frameBlob, {
+        maxDimension: 1440, quality: 0.84, preferWebp: true,
+        onProgress: (pct, status) => {
+          setUploadPercent(Math.max(1, Math.min(54, Math.round(pct * 0.54))));
+          setUploadStatusText(status);
+        },
+      });
+      const ext = compressed.mimeType === 'image/webp' ? 'webp' : 'jpg';
+      const storagePath = 'stories/' + currentUser.id + '/' + Date.now() + '.' + ext;
+      setUploadStatusText('Uploading camera capture to Firebase Storage...');
+      const res = await uploadMediaToFirebase(compressed.blob, storagePath, (pct, transferred, total) => {
+        setUploadPercent(Math.max(1, Math.min(99, Math.round(55 + pct * 0.44))));
+        setBytesTransferred(transferred);
+        setTotalBytes(total);
+      });
+      setUploadPercent(100);
+      setUploadStatusText('Camera capture is ready to share.');
+      setMediaUrl(res.url);
+      setMediaType('image');
+      setMediaSavings({ original: compressed.originalSize, compressed: compressed.compressedSize, percent: compressed.savingsPercent });
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Camera image upload failed.');
+      setUploadStatusText('Camera upload failed.');
+    } finally {
+      window.setTimeout(() => setIsProcessingMedia(false), 350);
     }
   };
-
   const stopCamera = () => {
     if (mediaStreamRef.current) {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -185,75 +194,75 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsProcessingMedia(true);
-    setUploadPercent(10);
-    setUploadStatusText('Starting high-efficiency WebP compression...');
-
+    setUploadPercent(1);
+    setUploadError(null);
+    setBytesTransferred(undefined);
+    setTotalBytes(undefined);
     try {
-      const compressed = await compressImage(file, {
-        maxDimension: 1440,
-        quality: 0.86,
-        preferWebp: true,
-        onProgress: (pct, status) => {
-          setUploadPercent(Math.min(50, Math.round(pct * 0.5)));
-          setUploadStatusText(status);
-        },
-      });
-
-      setUploadPercent(55);
-      setUploadStatusText('Saving story to cloud storage...');
-
-      const storagePath = `stories/${currentUser.id}/${Date.now()}.webp`;
-      const res = await uploadMediaToFirebase(
-        compressed.blob,
-        storagePath,
-        (pct, trans, tot) => {
-          setUploadPercent(Math.min(99, Math.round(55 + pct * 0.44)));
-          setBytesTransferred(trans);
-          setTotalBytes(tot);
-        }
-      );
-
+      if (file.type.startsWith('video/')) {
+        if (file.size >= 20 * 1024 * 1024) throw new Error('Story videos must be smaller than 20 MB. Choose a shorter or smaller video.');
+        const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+        const storagePath = 'stories/' + currentUser.id + '/' + Date.now() + '.' + extension;
+        setUploadStatusText('Uploading original video with audio preserved...');
+        const res = await uploadMediaToFirebase(file, storagePath, (pct, transferred, total) => {
+          setUploadPercent(Math.max(1, Math.min(99, pct)));
+          setBytesTransferred(transferred);
+          setTotalBytes(total);
+        });
+        setMediaUrl(res.url);
+        setMediaType('video');
+        setMediaSavings({ original: file.size, compressed: file.size, percent: 0 });
+      } else if (file.type.startsWith('image/')) {
+        setUploadStatusText('Optimizing story image...');
+        const compressed = await compressImage(file, {
+          maxDimension: 1440, quality: 0.86, preferWebp: true,
+          onProgress: (pct, status) => {
+            setUploadPercent(Math.max(1, Math.min(54, Math.round(pct * 0.54))));
+            setUploadStatusText(status);
+          },
+        });
+        if (compressed.compressedSize >= 20 * 1024 * 1024) throw new Error('The optimized image is still too large for a story. Select a smaller image.');
+        const extension = compressed.mimeType === 'image/webp' ? 'webp' : compressed.mimeType === 'image/png' ? 'png' : 'jpg';
+        const storagePath = 'stories/' + currentUser.id + '/' + Date.now() + '.' + extension;
+        setUploadStatusText('Uploading optimized story image...');
+        const res = await uploadMediaToFirebase(compressed.blob, storagePath, (pct, transferred, total) => {
+          setUploadPercent(Math.max(1, Math.min(99, Math.round(55 + pct * 0.44))));
+          setBytesTransferred(transferred);
+          setTotalBytes(total);
+        });
+        setMediaUrl(res.url);
+        setMediaType('image');
+        setMediaSavings({ original: compressed.originalSize, compressed: compressed.compressedSize, percent: compressed.savingsPercent });
+      } else {
+        throw new Error('Choose an image or video file supported by your browser.');
+      }
       setUploadPercent(100);
-      setUploadStatusText('Story ready to share!');
-      setMediaUrl(res.url);
-      setMediaType('image');
-      setMediaSavings({
-        original: compressed.originalSize,
-        compressed: compressed.compressedSize,
-        percent: compressed.savingsPercent,
-      });
+      setUploadStatusText('Story media is securely stored and ready to share.');
     } catch (err) {
-      console.warn('Story image upload fallback:', err);
+      setUploadError(err instanceof Error ? err.message : 'Story media upload failed.');
+      setUploadStatusText('Story upload failed.');
     } finally {
-      setTimeout(() => {
-        setIsProcessingMedia(false);
-      }, 350);
+      window.setTimeout(() => setIsProcessingMedia(false), 350);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
-
-  const generateCanvasMedia = (): string => {
-    if (mediaType === 'image' && mediaUrl) {
-      return mediaUrl;
-    }
-    // Render solid or gradient canvas as a dataUrl
+  const generateCanvasMedia = async (): Promise<Blob> => {
     const canvas = document.createElement('canvas');
     canvas.width = 1080;
     canvas.height = 1920;
     const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const gradient = ctx.createLinearGradient(0, 0, 0, 1920);
-      gradient.addColorStop(0, '#2D3732');
-      gradient.addColorStop(1, '#1C2420');
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, 1080, 1920);
-      return canvas.toDataURL('image/jpeg', 0.9);
-    }
-    return '';
+    if (!ctx) throw new Error('Canvas rendering is not supported in this browser.');
+    const background = CANVAS_BACKGROUNDS.find((item) => item.gradient === selectedBgGradient) || CANVAS_BACKGROUNDS[0];
+    const gradient = ctx.createLinearGradient(0, 0, 0, 1920);
+    gradient.addColorStop(0, background.colors[0]);
+    gradient.addColorStop(1, background.colors[1]);
+    ctx.fillStyle = gradient;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not render the story background.')), 'image/jpeg', 0.9);
+    });
   };
-
   // Sticker creation handlers
   const handleAddPoll = () => {
     if (!pollQuestion.trim()) return;
@@ -349,37 +358,55 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     setStickers((prev) => prev.filter((s) => s.id !== id));
   };
 
-  const handlePublishStory = () => {
-    const finalMediaUrl = mediaUrl || generateCanvasMedia();
-    if (!finalMediaUrl) return;
-
-    let textOverlayObj: StoryTextOverlay | undefined;
-    if (overlayText.trim()) {
-      textOverlayObj = {
-        text: overlayText.trim(),
-        font: textFont,
-        color: textColor,
-        hasBackground: textHasBg,
-        align: 'center',
+  const handlePublishStory = async () => {
+    if (isPublishing || isProcessingMedia) return;
+    setIsPublishing(true);
+    setUploadError(null);
+    let finalMediaUrl = mediaUrl;
+    const finalType = mediaType === 'video' ? 'video' : 'image';
+    try {
+      if (!finalMediaUrl && mediaType === 'canvas') {
+        setIsProcessingMedia(true);
+        setUploadPercent(1);
+        setUploadStatusText('Rendering your story design...');
+        const canvasBlob = await generateCanvasMedia();
+        setUploadStatusText('Uploading your story design...');
+        const uploadResult = await uploadMediaToFirebase(canvasBlob, 'stories/' + currentUser.id + '/' + Date.now() + '.jpg', (pct, transferred, total) => {
+          setUploadPercent(Math.max(1, Math.min(99, pct)));
+          setBytesTransferred(transferred);
+          setTotalBytes(total);
+        });
+        finalMediaUrl = uploadResult.url;
+        setMediaUrl(finalMediaUrl);
+        setUploadPercent(100);
+        setUploadStatusText('Story design uploaded.');
+      }
+      if (!finalMediaUrl) throw new Error('Add an image, video, or background design before publishing.');
+      let textOverlayObj: StoryTextOverlay | undefined;
+      if (overlayText.trim()) {
+        textOverlayObj = { text: overlayText.trim(), font: textFont, color: textColor, hasBackground: textHasBg, align: 'center' };
+      }
+      const newItem: StoryItem = {
+        id: 'story_item_' + Date.now(),
+        mediaUrl: finalMediaUrl,
+        type: finalType,
+        timestamp: 'Just now',
+        createdAtMs: Date.now(),
+        caption: caption.trim() || undefined,
+        moodTag: moodTag.trim() || undefined,
+        filter: activeFilter !== 'none' ? activeFilter : undefined,
+        stickers: stickers.length > 0 ? stickers : undefined,
+        textOverlay: textOverlayObj,
       };
+      await onAddStory(newItem);
+      onClose();
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : 'Your story could not be published. Please try again.');
+    } finally {
+      setIsPublishing(false);
+      setIsProcessingMedia(false);
     }
-
-    const newItem: StoryItem = {
-      id: `story_item_${Date.now()}`,
-      mediaUrl: finalMediaUrl,
-      type: 'image',
-      timestamp: 'Just now',
-      caption: caption.trim() || undefined,
-      moodTag,
-      filter: activeFilter !== 'none' ? activeFilter : undefined,
-      stickers: stickers.length > 0 ? stickers : undefined,
-      textOverlay: textOverlayObj,
-    };
-
-    onAddStory(newItem);
-    onClose();
   };
-
   return (
     <div className="fixed inset-0 z-50 bg-[#2D3732]/85 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 select-none">
       <div className="relative w-full max-w-lg h-[92vh] max-h-[850px] bg-[#1C2420] text-white rounded-3xl overflow-hidden shadow-2xl flex flex-col border border-white/10">
@@ -461,16 +488,20 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             </div>
           ) : mediaUrl ? (
             <div className="relative w-full h-full flex items-center justify-center">
-              <img
-                src={mediaUrl}
-                alt="Story preview"
-                className={`w-full h-full object-cover transition-all ${FILTER_CLASSES[activeFilter]}`}
-              />
+              {mediaType === 'video' ? (
+                <video src={mediaUrl} controls playsInline className="w-full h-full object-contain" />
+              ) : (
+                <img
+                  src={mediaUrl}
+                  alt="Story preview"
+                  className={`w-full h-full object-cover transition-all ${FILTER_CLASSES[activeFilter]}`}
+                />
+              )}
             </div>
           ) : (
             /* Solid / Gradient Canvas fallback */
             <div
-              className={`w-full h-full bg-gradient-to-br ${selectedBgGradient} flex flex-col items-center justify-center p-8 text-center`}
+              className={`w-full h-full bg-gradient-to-br ${selectedBgGradient} flex flex-col items-center justify-center p-8 text-center transition-all ${FILTER_CLASSES[activeFilter]}`}
             >
               <div className="max-w-xs space-y-4">
                 <div className="w-16 h-16 mx-auto rounded-3xl bg-white/10 border border-white/20 flex items-center justify-center text-white/80">
@@ -478,8 +509,20 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 </div>
                 <h3 className="font-serif text-xl font-light text-white">Create Your Story</h3>
                 <p className="text-xs text-white/70 leading-relaxed">
-                  Upload high-res photography, open your camera, or design a minimalist quote slide.
+                  Upload a photo or video, capture a camera frame, or publish a designed background story.
                 </p>
+                <div className="flex flex-wrap justify-center gap-1.5 pt-1">
+                  {CANVAS_BACKGROUNDS.map((background) => (
+                    <button
+                      key={background.name}
+                      type="button"
+                      onClick={() => setSelectedBgGradient(background.gradient)}
+                      className={`rounded-full border px-2.5 py-1 text-[10px] transition-colors ${selectedBgGradient === background.gradient ? 'border-white bg-white/20 text-white' : 'border-white/20 text-white/65'}`}
+                    >
+                      {background.name}
+                    </button>
+                  ))}
+                </div>
 
                 <div className="flex flex-col gap-2.5 pt-2">
                   <button
@@ -684,7 +727,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         )}
 
         {/* Filter Pills row */}
-        {mediaUrl && (
+        {(mediaUrl || mediaType === 'canvas') && (
           <div className="px-4 py-2 bg-[#1C2420] border-t border-white/10 flex items-center gap-2 overflow-x-auto z-20">
             {(['none', 'vintage', 'nordic', 'noir', 'golden', 'sepia', 'emerald'] as StoryFilter[]).map(
               (f) => (
@@ -707,6 +750,22 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
 
         {/* Bottom Publish & Caption Bar */}
         <div className="p-4 bg-[#232B26] border-t border-white/10 space-y-3 z-30">
+          {isProcessingMedia && (
+            <UploadProgressBar
+              progress={uploadPercent}
+              statusText={uploadStatusText}
+              bytesTransferred={bytesTransferred}
+              totalBytes={totalBytes}
+              savingsPercent={mediaSavings?.percent}
+              isComplete={uploadPercent === 100}
+              errorText={uploadError || undefined}
+            />
+          )}
+          {uploadError && !isProcessingMedia && (
+            <div role="alert" className="rounded-xl border border-rose-300 bg-rose-950/70 px-3 py-2 text-xs text-rose-100">
+              {uploadError}
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <input
               type="text"
@@ -718,10 +777,10 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
             <button
               type="button"
               onClick={handlePublishStory}
-              disabled={!mediaUrl && mediaType !== 'canvas'}
+              disabled={isPublishing || isProcessingMedia}
               className="py-2.5 px-5 rounded-xl bg-[#8FA89B] hover:bg-[#7e9689] text-white text-xs sm:text-sm font-medium transition-all shadow-md flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
             >
-              <span>Share Story</span>
+              <span>{isPublishing ? 'Publishing...' : 'Share Story'}</span>
               <Check size={16} />
             </button>
           </div>
