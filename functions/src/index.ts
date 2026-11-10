@@ -1,7 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { getFirestore } from 'firebase-admin/firestore';
-import { logger } from 'firebase-functions/logger';
+import * as logger from 'firebase-functions/logger';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
 import { defineSecret, defineString } from 'firebase-functions/params';
@@ -71,7 +71,7 @@ function toResult(record: PaymentRecord, message?: string) {
 }
 
 async function responseJson(response: Response): Promise<any> {
-  const payload = await response.json().catch(() => ({}));
+  const payload: any = await response.json().catch(() => ({}));
   if (!response.ok) {
     const detail = typeof payload?.message === 'string' ? payload.message : 'The payment provider returned an error.';
     throw new Error(detail);
@@ -188,7 +188,7 @@ export const createVerifiedBadgePayment = onCall(
     const userSnap = await userRef.get();
     if (!userSnap.exists) throw new HttpsError('failed-precondition', 'Your profile must be created before you can request a badge.');
     const profile = userSnap.data() || {};
-    const claims = request.auth?.token || {};
+    const claims = (request.auth?.token || {}) as Record<string, unknown>;
     const email = String(profile.email || claims.email || '');
     const displayName = String(profile.name || claims.name || profile.username || 'Sodanox member');
     const username = String(profile.username || '');
