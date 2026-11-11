@@ -1,6 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import type { DocumentReference } from 'firebase-admin/firestore';
 import * as logger from 'firebase-functions/logger';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
@@ -1008,7 +1009,7 @@ export const adminUpdateMember = onCall(async (request) => {
     const snapshot = await transaction.get(userRef);
     if (!snapshot.exists) throw new HttpsError('not-found', 'The selected user does not exist.');
     const data = snapshot.data() || {};
-    const patch: Record<string, unknown> = { adminUpdatedAt: now };
+    const patch: Record<string, any> = { adminUpdatedAt: now };
     if (action === 'suspend') patch.isSuspended = true;
     if (action === 'restore') patch.isSuspended = false;
     if (action === 'grant_badge') {
@@ -1448,7 +1449,7 @@ async function verifySubscriptionWithProvider(
 
 async function activateSubscription(
   db: ReturnType<typeof database>,
-  paymentRef: any,
+  paymentRef: DocumentReference,
   record: PaymentRecord,
   providerTransactionId?: string,
 ) {

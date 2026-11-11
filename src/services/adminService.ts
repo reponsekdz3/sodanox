@@ -28,5 +28,5 @@ export interface SubscriptionPlan { id: string; name: string; amount: number; cu
 export async function getActiveSubscriptionPlans(): Promise<SubscriptionPlan[]> {
   const q = query(collection(db, 'subscription_plans'), where('active', '==', true));
   const snapshot = await getDocs(q);
-  return snapshot.docs.map((entry) => ({ id: entry.id, name: String(entry.data().name || 'Membership'), amount: Number(entry.data().amount || 0), currency: entry.data().currency === 'USD' ? 'USD' : 'RWF', durationDays: Number(entry.data().durationDays || 30), active: entry.data().active === true, features: Array.isArray(entry.data().features) ? entry.data().features : [], billingMode: 'manual_renewal' })).sort((a, b) => a.amount - b.amount);
+  return snapshot.docs.map((entry) => ({ id: entry.id, name: String(entry.data().name || 'Membership'), amount: Number(entry.data().amount || 0), currency: (entry.data().currency === 'USD' ? 'USD' : 'RWF') as 'RWF' | 'USD', durationDays: Number(entry.data().durationDays || 30), active: entry.data().active === true, features: Array.isArray(entry.data().features) ? entry.data().features : [], billingMode: 'manual_renewal' })).sort((a, b) => a.amount - b.amount);
 }

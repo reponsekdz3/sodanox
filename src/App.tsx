@@ -105,7 +105,7 @@ import { useOnlineStatus } from './hooks/usePWAInstall';
 export default function App() {
   const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
   const isOnline = useOnlineStatus();
-  const [, setMlModelRevision] = useState(0);
+  const [mlModelRevision, setMlModelRevision] = useState(0);
 
   // Keep feed ranking synchronized with the server-published model and recompute visible recommendations.
   useEffect(() => subscribeToServerMLModel(() => setMlModelRevision((revision) => revision + 1)), []);

@@ -464,7 +464,7 @@ export async function compressVideo(
       if (processingStarted || settled) return;
       processingStarted = true;
       const poster = extractPoster();
-      if (duration > 45 || originalSize < 3.5 * 1024 * 1024 || typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
+      if (video.duration > 45 || originalSize < 3.5 * 1024 * 1024 || typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
         finish(originalResult(poster, video.duration), 'Original video retained; transcoding skipped.');
         return;
       }
