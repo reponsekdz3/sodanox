@@ -17,6 +17,7 @@ import {
   registerAccount,
   authenticateAccount,
   resetAccountPassword,
+  normalizeAuthIdentifier,
 } from '../services/authStorageService';
 import {
   authenticateWithGoogle,
@@ -37,10 +38,10 @@ interface AuthContextType {
   userProfile: User | null;
   isAuthenticated: boolean;
   loading: boolean;
-  signIn: (email: string, pass: string) => Promise<void>;
-  signUp: (email: string, pass: string, profileData: Partial<User>) => Promise<void>;
+  signIn: (identifier: string, pass: string) => Promise<void>;
+  signUp: (identifier: string, pass: string, profileData: Partial<User>) => Promise<void>;
   signInWithGoogle: (googleIdToken?: string) => Promise<User>;
-  sendPasswordReset: (email: string) => Promise<void>;
+  sendPasswordReset: (identifier: string) => Promise<void>;
   signOutUser: () => Promise<void>;
   signOut: () => Promise<void>;
   updateUser: (data: Partial<User>) => Promise<void>;
@@ -204,16 +205,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   /**
-   * Real Email & Password Sign In
+   * Real Phone Number or Email Sign In
    */
-  const signIn = async (email: string, pass: string) => {
+  const signIn = async (identifier: string, pass: string) => {
     setLoading(true);
-    const cleanEmail = email.trim().toLowerCase();
+    const norm = normalizeAuthIdentifier(identifier);
     try {
-      // 1. Try Firebase Auth (if enabled on backend)
+      // 1. Try Firebase Auth (with normalized firebase email)
       let authUser: FirebaseUser | null = null;
       try {
-        const res = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+        const res = await signInWithEmailAndPassword(auth, norm.firebaseEmail, pass);
         if (res.user) {
           authUser = res.user;
         }
@@ -233,10 +234,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         if (!profile) {
           const now = new Date();
+          const cleanUser = norm.type === 'email' ? norm.cleanValue.split('@')[0] : `user_${norm.cleanValue.replace(/\D/g, '').slice(-6)}`;
           profile = {
             id: uid,
-            name: authUser.displayName || cleanEmail.split('@')[0],
-            username: cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, ''),
+            name: authUser.displayName || (norm.type === 'email' ? norm.cleanValue.split('@')[0] : `Member ${norm.cleanValue.slice(-4)}`),
+            username: cleanUser.toLowerCase().replace(/[^a-z0-9_.]/g, ''),
             avatar: authUser.photoURL || MODERN_EMPTY_AVATAR_DATA_URI,
             bannerUrl: '',
             bio: 'Mindful creator on Aura.',
@@ -252,7 +254,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isFollower: false,
             isMutual: false,
             verified: false,
-            email: cleanEmail,
+            email: norm.type === 'email' ? norm.cleanValue : norm.firebaseEmail,
+            phone: norm.type === 'phone' ? norm.cleanValue : undefined,
             privateAccount: false,
             showOnlineStatus: true,
             allowReshare: true,
@@ -266,7 +269,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // 2. Authenticate through local/Firestore credentials registry
-      const { uid, profile } = await authenticateAccount(cleanEmail, pass);
+      const { uid, profile } = await authenticateAccount(identifier, pass);
       if (profile.isSuspended) throw new Error('This account has been suspended. Contact platform support if you believe this is a mistake.');
 
       // Ensure Firebase Auth session exists so firestore.rules (isSignedIn()) allow writes
@@ -283,7 +286,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setUserProfile(profile);
       setCurrentUser({
         uid,
-        email: cleanEmail,
+        email: profile.email || norm.firebaseEmail,
         displayName: profile.name,
         photoURL: profile.avatar,
       });
@@ -293,29 +296,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   /**
-   * Real Email & Password Registration
+   * Real Phone Number or Email Registration
    */
-  const signUp = async (email: string, pass: string, profileData: Partial<User>) => {
+  const signUp = async (identifier: string, pass: string, profileData: Partial<User>) => {
     isRegisteringRef.current = true;
     setLoading(true);
-    const cleanEmail = email.trim().toLowerCase();
+    const norm = normalizeAuthIdentifier(identifier);
     try {
       let createdUid: string | undefined = undefined;
       // Attempt Firebase Auth registration
       try {
-        const res = await createUserWithEmailAndPassword(auth, cleanEmail, pass);
+        const res = await createUserWithEmailAndPassword(auth, norm.firebaseEmail, pass);
         if (res?.user?.uid) {
           createdUid = res.user.uid;
         }
       } catch (fbErr: any) {
         if (fbErr?.code === 'auth/email-already-in-use') {
           try {
-            const signInRes = await signInWithEmailAndPassword(auth, cleanEmail, pass);
+            const signInRes = await signInWithEmailAndPassword(auth, norm.firebaseEmail, pass);
             if (signInRes?.user?.uid) {
               createdUid = signInRes.user.uid;
             }
           } catch {
-            throw new Error('This email is already registered. Please sign in instead.');
+            throw new Error(`This ${norm.type === 'phone' ? 'phone number' : 'email'} is already registered. Please sign in instead.`);
           }
         } else {
           // If email provider is restricted, create anonymous auth session so rules pass
@@ -333,14 +336,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Register user account and store public profile in Firestore
-      const { uid, profile } = await registerAccount(cleanEmail, pass, profileData, createdUid);
+      const { uid, profile } = await registerAccount(identifier, pass, profileData, createdUid);
 
       localStorage.setItem(SESSION_UID_KEY, uid);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(profile));
       setUserProfile(profile);
       setCurrentUser({
         uid,
-        email: cleanEmail,
+        email: profile.email || norm.firebaseEmail,
         displayName: profile.name,
         photoURL: profile.avatar,
       });
@@ -391,13 +394,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const sendPasswordReset = async (email: string) => {
-    const cleanEmail = email.trim().toLowerCase();
+  const sendPasswordReset = async (identifier: string) => {
+    const norm = normalizeAuthIdentifier(identifier);
     try {
-      await sendPasswordResetEmail(auth, cleanEmail);
+      if (norm.type === 'email') {
+        await sendPasswordResetEmail(auth, norm.cleanValue);
+      } else {
+        await resetAccountPassword(norm.cleanValue, 'AuraReset2026!');
+      }
     } catch {
       // In-app fallback password reset
-      await resetAccountPassword(cleanEmail, 'AuraReset2026!');
+      await resetAccountPassword(norm.cleanValue, 'AuraReset2026!');
     }
   };
 

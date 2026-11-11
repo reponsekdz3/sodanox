@@ -10,6 +10,7 @@ import { UploadProgressBar } from '../common/UploadProgressBar';
 import {
   Lock,
   Mail,
+  Phone,
   User as UserIcon,
   ArrowRight,
   Eye,
@@ -32,7 +33,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   const { signIn, signUp, signInWithGoogle, sendPasswordReset } = useAuth();
 
   const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [name, setName] = useState('');
@@ -40,6 +41,13 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [avatar, setAvatar] = useState(MODERN_EMPTY_AVATAR_DATA_URI);
   const [agreedToManifesto, setAgreedToManifesto] = useState(true);
+
+  // Dynamic phone vs email detection
+  const isPhoneInput = React.useMemo(() => {
+    const trimmed = identifier.trim();
+    if (trimmed.includes('@')) return false;
+    return /^[+]?[0-9\s\-().]+$/.test(trimmed) && trimmed.replace(/\D/g, '').length >= 3;
+  }, [identifier]);
 
   // Avatar upload progress
   const [avatarProgress, setAvatarProgress] = useState<number | null>(null);
@@ -131,10 +139,10 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
 
     try {
       if (mode === 'signin') {
-        if (!email.trim() || !password) {
-          throw new Error('Please enter your email and password');
+        if (!identifier.trim() || !password) {
+          throw new Error('Please enter your email or phone number and password');
         }
-        await signIn(email.trim(), password);
+        await signIn(identifier.trim(), password);
         auraAudio.playChime();
         onSuccess?.();
       } else {
@@ -145,6 +153,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
         if (usernameStatus === 'taken') {
           throw new Error('This username is already taken. Please choose another.');
         }
+        if (!identifier.trim()) {
+          throw new Error('Please enter your email or phone number');
+        }
         if (password.length < 6) {
           throw new Error('Password must be at least 6 characters');
         }
@@ -152,7 +163,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           throw new Error('Please agree to the slow social manifesto to join');
         }
 
-        await signUp(email.trim(), password, {
+        await signUp(identifier.trim(), password, {
           name: name.trim(),
           username: username.trim(),
           avatar,
@@ -163,9 +174,9 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
     } catch (err: unknown) {
       const e = err as { message?: string; code?: string };
       if (e.code === 'auth/invalid-credential' || e.code === 'auth/wrong-password' || e.code === 'auth/user-not-found') {
-        setError('Invalid email or password. Please verify your credentials.');
+        setError('Invalid phone, email, or password. Please verify your credentials.');
       } else if (e.code === 'auth/email-already-in-use') {
-        setError('This email is already registered. Please sign in instead.');
+        setError('This email or phone number is already registered. Please sign in instead.');
       } else if (e.code === 'auth/weak-password') {
         setError('Password should be at least 6 characters.');
       } else {
@@ -337,16 +348,17 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   onClick={() => {
                     setMode('signup');
                     setError(null);
-                    if (!name && email) {
-                      setName(email.split('@')[0]);
+                    if (!name && identifier) {
+                      setName(identifier.includes('@') ? identifier.split('@')[0] : `Member ${identifier.slice(-4)}`);
                     }
-                    if (!username && email) {
-                      setUsername(email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, ''));
+                    if (!username && identifier) {
+                      const userSeed = identifier.includes('@') ? identifier.split('@')[0] : `user_${identifier.replace(/\D/g, '').slice(-6)}`;
+                      setUsername(userSeed.toLowerCase().replace(/[^a-z0-9_.]/g, ''));
                     }
                   }}
                   className="self-start text-xs font-semibold px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white transition-colors shadow-sm ml-7 cursor-pointer"
                 >
-                  Create account with {email || 'this email'} →
+                  Create account with {identifier || 'this credential'} →
                 </button>
               )}
             </div>
@@ -398,7 +410,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
           <div className="relative flex py-2 items-center mb-6">
             <div className="flex-grow border-t border-[#D1E2D9]"></div>
             <span className="flex-shrink mx-4 text-[11px] uppercase tracking-wider text-[#4B6358] font-mono font-medium">
-              Or with email & password
+              Or with phone, email & password
             </span>
             <div className="flex-grow border-t border-[#D1E2D9]"></div>
           </div>
@@ -522,23 +534,38 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
               </>
             )}
 
-            {/* Email Address */}
+            {/* Phone Number or Email Address */}
             <div>
               <div className="flex items-center justify-between mb-1">
                 <label className="block text-xs font-semibold text-[#022C22]">
-                  Email Address *
+                  Email or Phone Number *
                 </label>
+                {isPhoneInput ? (
+                  <span className="text-[10px] text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full font-medium border border-emerald-200 flex items-center gap-1">
+                    <Phone size={10} />
+                    Phone Number
+                  </span>
+                ) : identifier.includes('@') ? (
+                  <span className="text-[10px] text-teal-800 bg-teal-50 px-2 py-0.5 rounded-full font-medium border border-teal-200 flex items-center gap-1">
+                    <Mail size={10} />
+                    Email Address
+                  </span>
+                ) : null}
               </div>
 
               <div className="relative">
-                <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B6358]" />
+                {isPhoneInput ? (
+                  <Phone size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-700 transition-colors" />
+                ) : (
+                  <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#4B6358] transition-colors" />
+                )}
                 <input
-                  type="email"
-                  autoComplete="email"
+                  type={isPhoneInput ? 'tel' : 'text'}
+                  autoComplete="username email tel"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
+                  placeholder="name@example.com or +250 788 123 456"
                   className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs sm:text-sm text-[#022C22] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669]"
                 />
               </div>
@@ -554,7 +581,7 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                   <button
                     type="button"
                     onClick={() => {
-                      setResetEmail(email);
+                      setResetEmail(identifier);
                       setIsForgotModalOpen(true);
                     }}
                     className="text-[11px] text-[#059669] hover:underline font-semibold cursor-pointer"
@@ -710,14 +737,14 @@ export const AuthPage: React.FC<AuthPageProps> = ({ onSuccess }) => {
                 )}
                 <div>
                   <label className="block text-xs font-semibold text-[#022C22] mb-1">
-                    Your Registered Email
+                    Your Registered Email or Phone Number
                   </label>
                   <input
-                    type="email"
+                    type="text"
                     required
                     value={resetEmail}
                     onChange={(e) => setResetEmail(e.target.value)}
-                    placeholder="you@domain.com"
+                    placeholder="you@domain.com or +250 788 123 456"
                     className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs text-[#022C22] focus:outline-none focus:border-[#059669] focus:ring-1 focus:ring-[#059669]"
                   />
                 </div>

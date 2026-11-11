@@ -87,12 +87,13 @@ function calculateTimeDecay(val: any, halfLifeHours = 36.0): number {
     if (!isNaN(parsed)) createdMs = parsed;
   }
 
-  if (createdMs <= 0) return 0.95;
+  if (createdMs <= 0) return 1.0;
 
   const nowMs = Date.now();
   const ageHours = Math.max(0, (nowMs - createdMs) / (1000 * 3600));
+  if (ageHours < 0.25) return 1.0; // brand new post gets full 100% recency
   const decay = Math.exp(-Math.log(2) * (ageHours / halfLifeHours));
-  return Math.max(0.05, Math.min(1.0, decay));
+  return Math.max(0.1, Math.min(1.0, decay));
 }
 
 function sigmoid(x: number): number {
@@ -167,7 +168,7 @@ export function rankFeedWithML(
     const isSelf = authorId === currentUser.id;
     let socialWeight = 1.0;
     if (isSelf) {
-      socialWeight = 0.6;
+      socialWeight = 2.4; // creator's own posts prominently displayed in their personal feed
     } else if (isFollowing) {
       socialWeight = 1.85;
     }

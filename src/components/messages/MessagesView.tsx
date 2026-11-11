@@ -368,6 +368,11 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     return messages.filter((m) => m.type === 'file' && m.file?.url);
   }, [messages]);
 
+  // Detected URLs in input for real-time link preview
+  const detectedInputUrls = useMemo(() => {
+    return extractUrls(inputText);
+  }, [inputText]);
+
   // -------------------------------------------------------------
   // Handlers
   // -------------------------------------------------------------
@@ -1681,7 +1686,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                 <span className="text-[10px] text-emerald-200 ml-2 shrink-0">{msg.file.size}</span>
                               </div>
                               {msg.text && msg.text !== msg.file.name && (
-                                <p className="p-2 text-xs bg-[#022C22] text-emerald-100">{msg.text}</p>
+                                <div className="p-2 bg-[#022C22] text-emerald-100">
+                                  <p className="text-xs">{msg.text}</p>
+                                  {extractUrls(msg.text).map((url, idx) => (
+                                    <LinkPreviewCard key={idx} url={url} isSelf={isSelf} />
+                                  ))}
+                                </div>
                               )}
                             </div>
                           )}
@@ -1696,14 +1706,29 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                                 className="w-full max-h-72 object-cover rounded-2xl cursor-pointer hover:opacity-95 transition-opacity"
                               />
                               {msg.text && msg.text !== msg.file.name && (
-                                <p className="p-2 text-xs opacity-90">{msg.text}</p>
+                                <div className="p-2">
+                                  <p className="text-xs opacity-90">{msg.text}</p>
+                                  {extractUrls(msg.text).map((url, idx) => (
+                                    <LinkPreviewCard key={idx} url={url} isSelf={isSelf} />
+                                  ))}
+                                </div>
                               )}
                             </div>
                           )}
 
                           {/* File Attachment Message */}
                           {msg.type === 'file' && msg.file && (
-                            <FileAttachmentCard file={msg.file} isSelf={isSelf} />
+                            <div>
+                              <FileAttachmentCard file={msg.file} isSelf={isSelf} />
+                              {msg.text && msg.text !== msg.file.name && (
+                                <div className="mt-1 px-1">
+                                  <p className="text-xs opacity-90">{msg.text}</p>
+                                  {extractUrls(msg.text).map((url, idx) => (
+                                    <LinkPreviewCard key={idx} url={url} isSelf={isSelf} />
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           )}
 
                           {/* Voice Note Message */}
@@ -1940,6 +1965,31 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                     >
                       <X size={15} />
                     </button>
+                  </div>
+                )}
+
+                {/* Live URL Link Preview Banner when user types/pastes links */}
+                {detectedInputUrls.length > 0 && !stagedAttachment && (
+                  <div className="mb-2 p-2.5 bg-gradient-to-r from-[#F0F5F2] to-emerald-50/60 border border-[#C6D8CE] rounded-2xl flex items-center justify-between gap-3 shadow-xs animate-in slide-in-from-bottom-2 duration-150">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-white border border-[#DCE4DF] flex items-center justify-center text-[#064E3B] shadow-2xs shrink-0">
+                        <Globe size={16} />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-[11px] font-bold text-[#064E3B] truncate flex items-center gap-1.5">
+                          <span>Link Preview</span>
+                          <span className="text-[10px] font-medium text-[#4A6757] font-mono truncate max-w-[200px] sm:max-w-xs">
+                            {detectedInputUrls[0]}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-[#62736B] truncate">
+                          Interactive link card with favicon will render when sent
+                        </p>
+                      </div>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-[#064E3B] text-[10px] font-semibold shrink-0">
+                      Auto-Preview
+                    </span>
                   </div>
                 )}
 

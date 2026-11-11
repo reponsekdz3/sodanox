@@ -17,6 +17,7 @@ export interface User {
   name: string;
   username: string;
   email?: string;
+  phone?: string;
   avatar: string;
   bannerUrl?: string;
   bio: string;
@@ -355,7 +356,7 @@ export interface MarketplaceItem {
   description: string;
   price: number;
   currency: 'RWF' | 'USD' | 'EUR';
-  category: 'Tech' | 'Fashion' | 'Home' | 'Vehicles' | 'Services' | 'Books' | 'Digital' | 'Other';
+  category: 'Tech' | 'Fashion' | 'Home' | 'Art' | 'Photography' | 'Vehicles' | 'Services' | 'Books' | 'Digital' | 'Other';
   condition: 'Brand New' | 'Like New' | 'Gently Used' | 'Refurbished';
   images: string[];
   seller: User;
@@ -392,9 +393,11 @@ export interface SponsoredAd {
   budget: number;
   impressions: number;
   clicks: number;
-  status: 'active' | 'pending' | 'ended';
+  status: 'active' | 'pending' | 'paused' | 'ended';
   createdAt: number;
   targetCategory?: string;
+  spent?: number;
+  ctr?: number;
 }
 
 export interface VerificationPayment {

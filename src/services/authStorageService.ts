@@ -6,10 +6,75 @@ import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from '../components
 export interface UserCredentialRecord {
   uid: string;
   email: string;
+  phone?: string;
   passwordHash: string;
   salt: string;
   createdAt?: unknown;
   updatedAt?: unknown;
+}
+
+export interface AuthIdentifier {
+  type: 'email' | 'phone';
+  cleanValue: string;
+  firebaseEmail: string;
+  phone?: string;
+  email?: string;
+}
+
+/**
+ * Normalizes input credential identifier as either a verified phone number or standard email address.
+ * If phone number, formats with international standard prefix and maps to an internal Firebase Auth email.
+ */
+export function normalizeAuthIdentifier(input: string): AuthIdentifier {
+  const trimmed = (input || '').trim();
+  if (!trimmed) {
+    throw new Error('Please enter your email or phone number.');
+  }
+
+  if (trimmed.includes('@')) {
+    const cleanEmail = trimmed.toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      throw new Error('Please enter a valid email address (e.g. name@example.com).');
+    }
+    return {
+      type: 'email',
+      cleanValue: cleanEmail,
+      firebaseEmail: cleanEmail,
+      email: cleanEmail,
+    };
+  }
+
+  // Handle Phone Number
+  const hasPlus = trimmed.startsWith('+');
+  const digitsOnly = trimmed.replace(/\D/g, '');
+
+  if (digitsOnly.length < 7) {
+    throw new Error('Please enter a valid phone number (at least 7 digits) or email address.');
+  }
+
+  // Handle local formats (e.g. 0788... in Rwanda or standard international prefix)
+  let normalizedPhone = '';
+  if (hasPlus) {
+    normalizedPhone = `+${digitsOnly}`;
+  } else if (digitsOnly.startsWith('0') && digitsOnly.length === 10) {
+    normalizedPhone = `+250${digitsOnly.slice(1)}`;
+  } else if (digitsOnly.length === 9 && (digitsOnly.startsWith('7') || digitsOnly.startsWith('8'))) {
+    normalizedPhone = `+250${digitsOnly}`;
+  } else {
+    normalizedPhone = `+${digitsOnly}`;
+  }
+
+  // Map to deterministic email for Firebase Auth provider compatibility
+  const firebaseEmail = `phone_${digitsOnly}@phone.aurasocial.internal`;
+
+  return {
+    type: 'phone',
+    cleanValue: normalizedPhone,
+    firebaseEmail,
+    phone: normalizedPhone,
+    email: firebaseEmail,
+  };
 }
 
 const LOCAL_REGISTRY_KEY = 'aura_auth_credentials_registry';
@@ -54,7 +119,8 @@ function getLocalCredentials(): Record<string, UserCredentialRecord> {
 function saveLocalCredential(cred: UserCredentialRecord) {
   try {
     const current = getLocalCredentials();
-    current[cred.email.toLowerCase()] = cred;
+    if (cred.email) current[cred.email.toLowerCase()] = cred;
+    if (cred.phone) current[cred.phone.toLowerCase()] = cred;
     localStorage.setItem(LOCAL_REGISTRY_KEY, JSON.stringify(current));
   } catch {
     // Local storage quota safe
@@ -63,32 +129,51 @@ function saveLocalCredential(cred: UserCredentialRecord) {
 
 /**
  * Register account and initialize user profile in Firestore.
+ * Supports registration using either a verified Phone Number or standard Email.
  * NOTE: In accordance with Firestore security rules, client-side writes to
  * /user_credentials are completely forbidden (allow read, write: if false;).
  * Credential storage is handled securely by Firebase Auth.
  */
 export async function registerAccount(
-  email: string,
+  identifier: string,
   pass: string,
   profileData: Partial<User>,
   explicitUid?: string
 ): Promise<{ uid: string; profile: User }> {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail || !cleanEmail.includes('@')) {
-    throw new Error('Please enter a valid email address');
-  }
+  const norm = normalizeAuthIdentifier(identifier);
   if (!pass || pass.length < 6) {
     throw new Error('Password must be at least 6 characters');
   }
 
   // Check local credentials registry as backup
   const localCreds = getLocalCredentials();
-  if (localCreds[cleanEmail]) {
-    throw new Error('An account with this email already exists. Please sign in instead.');
+  if (localCreds[norm.cleanValue.toLowerCase()] || localCreds[norm.firebaseEmail.toLowerCase()]) {
+    throw new Error(`An account with this ${norm.type === 'phone' ? 'phone number' : 'email'} already exists. Please sign in instead.`);
+  }
+
+  // Check if identifier is already in users collection
+  try {
+    const usersRef = collection(db, 'users');
+    let qExisting;
+    if (norm.type === 'phone') {
+      qExisting = query(usersRef, where('phone', '==', norm.cleanValue));
+    } else {
+      qExisting = query(usersRef, where('email', '==', norm.cleanValue));
+    }
+    const snapExisting = await getDocs(qExisting);
+    if (!snapExisting.empty) {
+      throw new Error(`An account with this ${norm.type === 'phone' ? 'phone number' : 'email'} already exists. Please sign in instead.`);
+    }
+  } catch (err: unknown) {
+    const msg = (err as { message?: string })?.message || '';
+    if (msg.includes('already exists')) throw err;
   }
 
   // Check if username is taken in users collection
-  const rawUsername = profileData.username || cleanEmail.split('@')[0];
+  const defaultUserFromId = norm.type === 'phone'
+    ? `user_${norm.cleanValue.replace(/\D/g, '').slice(-6)}`
+    : norm.cleanValue.split('@')[0];
+  const rawUsername = profileData.username || defaultUserFromId;
   const cleanUsername = rawUsername.toLowerCase().replace(/[^a-z0-9_.]/g, '');
 
   if (cleanUsername.length < 3) {
@@ -112,9 +197,13 @@ export async function registerAccount(
   const salt = generateSalt();
   const passwordHash = await hashPassword(pass, salt);
 
+  const finalEmail = norm.type === 'email' ? norm.cleanValue : (profileData.email || norm.firebaseEmail);
+  const finalPhone = norm.type === 'phone' ? norm.cleanValue : (profileData.phone || '');
+
   const credRecord: UserCredentialRecord = {
     uid,
-    email: cleanEmail,
+    email: finalEmail,
+    phone: finalPhone || undefined,
     passwordHash,
     salt,
   };
@@ -131,7 +220,7 @@ export async function registerAccount(
 
   const fullProfile: User = {
     id: uid,
-    name: profileData.name?.trim() || cleanEmail.split('@')[0],
+    name: profileData.name?.trim() || (norm.type === 'email' ? norm.cleanValue.split('@')[0] : `Member ${norm.cleanValue.slice(-4)}`),
     username: cleanUsername,
     avatar: cleanAvatar,
     bannerUrl: profileData.bannerUrl || '',
@@ -148,7 +237,8 @@ export async function registerAccount(
     isFollower: false,
     isMutual: false,
     verified: false,
-    email: cleanEmail,
+    email: finalEmail,
+    phone: finalPhone,
     privateAccount: false,
     showOnlineStatus: true,
     allowReshare: true,
@@ -187,7 +277,8 @@ export async function registerAccount(
       followers: [],
       following: [],
       verified: false,
-      email: cleanEmail,
+      email: finalEmail,
+      phone: finalPhone,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -199,7 +290,8 @@ export async function registerAccount(
   try {
     const privateSettingsRef = doc(db, 'users', uid, 'private', 'settings');
     await setDoc(privateSettingsRef, {
-      email: cleanEmail,
+      email: finalEmail,
+      phone: finalPhone,
       blockedUsers: [],
       privateAccount: false,
       showOnlineStatus: true,
@@ -217,24 +309,24 @@ export async function registerAccount(
 }
 
 /**
- * Authenticate account using local registry or user profile lookup.
+ * Authenticate account using phone number or email address with local registry or user profile lookup.
  * Production auth is performed through Firebase Auth.
  */
 export async function authenticateAccount(
-  email: string,
+  identifier: string,
   pass: string
 ): Promise<{ uid: string; profile: User }> {
-  const cleanEmail = email.trim().toLowerCase();
-  if (!cleanEmail) {
-    throw new Error('Please enter your email address');
-  }
+  const norm = normalizeAuthIdentifier(identifier);
   if (!pass) {
     throw new Error('Please enter your password');
   }
 
-  // Check local registry
+  // 1. Check local registry by clean value, phone, or mapped firebase email
   const localCreds = getLocalCredentials();
-  const credRecord = localCreds[cleanEmail];
+  const credRecord =
+    localCreds[norm.cleanValue.toLowerCase()] ||
+    localCreds[norm.firebaseEmail.toLowerCase()] ||
+    (norm.phone ? localCreds[norm.phone.toLowerCase()] : undefined);
 
   if (credRecord) {
     const computedHash = await hashPassword(pass, credRecord.salt);
@@ -255,11 +347,12 @@ export async function authenticateAccount(
 
     const fallbackProfile: User = {
       id: credRecord.uid,
-      name: cleanEmail.split('@')[0],
-      username: cleanEmail.split('@')[0].toLowerCase().replace(/[^a-z0-9_.]/g, ''),
-      email: cleanEmail,
-      avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80',
-      bannerUrl: 'https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=1200&q=80',
+      name: norm.type === 'email' ? norm.cleanValue.split('@')[0] : `Member ${norm.cleanValue.slice(-4)}`,
+      username: (norm.type === 'email' ? norm.cleanValue.split('@')[0] : `user_${norm.cleanValue.replace(/\D/g, '').slice(-6)}`).toLowerCase().replace(/[^a-z0-9_.]/g, ''),
+      email: credRecord.email,
+      phone: credRecord.phone || (norm.type === 'phone' ? norm.cleanValue : undefined),
+      avatar: MODERN_EMPTY_AVATAR_DATA_URI,
+      bannerUrl: '',
       bio: 'Mindful creator on Aura.',
       joinedDate: 'Joined Recently',
       followersCount: 0,
@@ -292,19 +385,38 @@ export async function authenticateAccount(
     return { uid: credRecord.uid, profile: fallbackProfile };
   }
 
-  // 2. Fallback: Query by email in users collection
+  // 2. Query in Firestore users collection
   try {
     const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('email', '==', cleanEmail));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
+    let snap;
+    if (norm.type === 'phone') {
+      const qPhone = query(usersRef, where('phone', '==', norm.cleanValue));
+      snap = await getDocs(qPhone);
+      if (snap.empty) {
+        // Fallback check by raw digits
+        const digitsOnly = norm.cleanValue.replace(/\D/g, '');
+        const qDigits = query(usersRef, where('phone', '==', digitsOnly));
+        snap = await getDocs(qDigits);
+      }
+      if (snap.empty) {
+        // Fallback check by mapped email
+        const qEmail = query(usersRef, where('email', '==', norm.firebaseEmail));
+        snap = await getDocs(qEmail);
+      }
+    } else {
+      const qEmail = query(usersRef, where('email', '==', norm.cleanValue));
+      snap = await getDocs(qEmail);
+    }
+
+    if (snap && !snap.empty) {
       const docData = snap.docs[0];
       const profile = { ...docData.data(), id: docData.id } as User;
       const salt = generateSalt();
       const passwordHash = await hashPassword(pass, salt);
       saveLocalCredential({
         uid: docData.id,
-        email: cleanEmail,
+        email: profile.email || norm.firebaseEmail,
+        phone: profile.phone || (norm.type === 'phone' ? norm.cleanValue : undefined),
         passwordHash,
         salt,
       });
@@ -314,19 +426,23 @@ export async function authenticateAccount(
     console.warn('Firestore fallback user query note:', err);
   }
 
-  throw new Error(`No account found for "${cleanEmail}". Click "Create one now" below to register in 1 click!`);
+  throw new Error(`No account found for "${norm.cleanValue}". Click "Create one now" below to register in 1 click!`);
 }
 
 /**
- * Reset password for a registered account locally
+ * Reset password for a registered account locally or in Firestore
  */
-export async function resetAccountPassword(email: string, newPass: string): Promise<void> {
-  const cleanEmail = email.trim().toLowerCase();
+export async function resetAccountPassword(identifier: string, newPass: string): Promise<void> {
+  const norm = normalizeAuthIdentifier(identifier);
   const salt = generateSalt();
   const passwordHash = await hashPassword(newPass, salt);
 
   const localCreds = getLocalCredentials();
-  const existing = localCreds[cleanEmail];
+  const existing =
+    localCreds[norm.cleanValue.toLowerCase()] ||
+    localCreds[norm.firebaseEmail.toLowerCase()] ||
+    (norm.phone ? localCreds[norm.phone.toLowerCase()] : undefined);
+
   if (existing) {
     const updated: UserCredentialRecord = {
       ...existing,
@@ -341,12 +457,21 @@ export async function resetAccountPassword(email: string, newPass: string): Prom
   // Check Firestore users collection
   try {
     const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('email', '==', cleanEmail));
-    const snap = await getDocs(q);
-    if (!snap.empty) {
+    let snap;
+    if (norm.type === 'phone') {
+      snap = await getDocs(query(usersRef, where('phone', '==', norm.cleanValue)));
+      if (snap.empty) {
+        snap = await getDocs(query(usersRef, where('email', '==', norm.firebaseEmail)));
+      }
+    } else {
+      snap = await getDocs(query(usersRef, where('email', '==', norm.cleanValue)));
+    }
+
+    if (snap && !snap.empty) {
       saveLocalCredential({
         uid: snap.docs[0].id,
-        email: cleanEmail,
+        email: snap.docs[0].data().email || norm.firebaseEmail,
+        phone: snap.docs[0].data().phone || norm.phone,
         passwordHash,
         salt,
         updatedAt: Date.now(),
@@ -357,5 +482,5 @@ export async function resetAccountPassword(email: string, newPass: string): Prom
     console.warn('Reset password user query note:', err);
   }
 
-  throw new Error(`No account found with email "${cleanEmail}"`);
+  throw new Error(`No account found with ${norm.type === 'phone' ? 'phone number' : 'email'} "${norm.cleanValue}"`);
 }

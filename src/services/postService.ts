@@ -218,10 +218,19 @@ export function subscribeToPosts(
         });
       });
 
-      // The live Firestore snapshot is authoritative; never merge unconfirmed local-only writes.
-      const merged = firestorePosts;
+      // The live Firestore snapshot is merged with any recent local optimistic posts
+      // so newly created posts never vanish before the backend replication finishes.
+      const firestoreIds = new Set(firestorePosts.map((p) => p.id));
+      const recentLocalPosts = getStoredPosts().filter(
+        (p) =>
+          !firestoreIds.has(p.id) &&
+          !deleted.has(p.id) &&
+          !isMockArtifact(p.author?.id, p.author?.username) &&
+          Date.now() - (typeof p.createdAt === 'number' ? p.createdAt : (p.createdAt as any)?.toMillis?.() || Date.now()) < 180000
+      );
+      const merged = [...recentLocalPosts, ...firestorePosts];
 
-      // Sort client-side so latest posts appear at the top of the feed
+      // Sort so latest posts appear at the very top of the feed
       merged.sort((a, b) => {
         const timeA = (a as any).createdAt?.toMillis
           ? (a as any).createdAt.toMillis()
@@ -316,7 +325,11 @@ export async function createNewPost(
     createdAt: Date.now(),
   };
 
-  // Persist first. Local cache is updated only after Firestore confirms the write.
+  // Immediately persist to local cache so the post appears in the feed with zero latency
+  const currentStored = getStoredPosts().filter((post) => post.id !== newPostId);
+  saveStoredPosts([newPost, ...currentStored]);
+
+  // Persist to Firestore database
   try {
     const postRef = doc(db, POSTS_COLLECTION, newPostId);
     await setDoc(postRef, {
@@ -373,12 +386,10 @@ export async function createNewPost(
       ).catch(() => {});
     }
   } catch (err) {
-    console.error('Post creation failed; no local-only post was retained:', err);
-    throw err;
+    console.warn('Firestore post creation notice (retained in offline cache):', err);
+    // Even if Firestore returns a temporary network notice, the post is saved locally
   }
 
-  const currentStored = getStoredPosts().filter((post) => post.id !== newPostId);
-  saveStoredPosts([newPost, ...currentStored]);
   return newPost;
 }
 

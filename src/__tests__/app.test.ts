@@ -4,6 +4,7 @@ import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { INITIAL_CREATORS } from '../services/seedService';
 import { auraAudio } from '../utils/audioSynthesizer';
 import { extractUrls } from '../components/messages/LinkPreviewCard';
+import { normalizeAuthIdentifier } from '../services/authStorageService';
 
 describe('Data Modeling & Architecture Verification', () => {
   it('validates User entity contract and required fields', () => {
@@ -325,6 +326,57 @@ describe('Browser Notifications & Rich Messaging Media', () => {
     expect(sampleVoice.duration).toBe(5);
     expect(sampleVoice.waveform.length).toBe(9);
     expect(sampleVoice.audioUrl).toMatch(/^data:audio/);
+  });
+});
+
+describe('Phone & Email Unified Authentication Normalization', () => {
+  it('normalizes standard email addresses to email auth type', () => {
+    const res = normalizeAuthIdentifier('  User@example.com  ');
+    expect(res.type).toBe('email');
+    expect(res.cleanValue).toBe('user@example.com');
+    expect(res.firebaseEmail).toBe('user@example.com');
+  });
+
+  it('normalizes international phone numbers starting with +', () => {
+    const res = normalizeAuthIdentifier('+250 788 123 456');
+    expect(res.type).toBe('phone');
+    expect(res.cleanValue).toBe('+250788123456');
+    expect(res.phone).toBe('+250788123456');
+    expect(res.firebaseEmail).toBe('phone_250788123456@phone.aurasocial.internal');
+  });
+
+  it('normalizes Rwandan 10-digit local phone numbers starting with 0', () => {
+    const res = normalizeAuthIdentifier('0788123456');
+    expect(res.type).toBe('phone');
+    expect(res.cleanValue).toBe('+250788123456');
+    expect(res.firebaseEmail).toBe('phone_0788123456@phone.aurasocial.internal');
+  });
+
+  it('normalizes US and other international phone numbers', () => {
+    const res = normalizeAuthIdentifier('+1 (555) 234-5678');
+    expect(res.type).toBe('phone');
+    expect(res.cleanValue).toBe('+15552345678');
+    expect(res.firebaseEmail).toBe('phone_15552345678@phone.aurasocial.internal');
+  });
+
+  it('throws helpful error for empty or too short phone numbers', () => {
+    expect(() => normalizeAuthIdentifier('')).toThrow();
+    expect(() => normalizeAuthIdentifier('12345')).toThrow('Please enter a valid phone number');
+  });
+
+  it('supports User entity with phone property', () => {
+    const userWithPhone: User = {
+      id: 'phone_user_1',
+      name: 'Phone User',
+      username: 'phoneuser',
+      phone: '+250788123456',
+      avatar: 'https://example.com/avatar.jpg',
+      bio: 'Social user via mobile',
+      followersCount: 0,
+      followingCount: 0,
+      joinedDate: 'Joined September 2026',
+    };
+    expect(userWithPhone.phone).toBe('+250788123456');
   });
 });
 

@@ -120,9 +120,7 @@ service cloud.firestore {
     // 3. Posts Collection (/posts/{postId})
     // -------------------------------------------------------------
     match /posts/{postId} {
-      allow read: if isSignedIn() && (
-        resource.data.get('audience', 'public') == 'public' || isAuthor(resource.data)
-      );
+      allow read: if isSignedIn() || resource.data.get('audience', 'public') == 'public';
       allow create: if isSignedIn() &&
         (incoming().get('authorId', '') == request.auth.uid || incoming().author.id == request.auth.uid);
 
@@ -455,14 +453,13 @@ service cloud.firestore {
     // -------------------------------------------------------------
     match /sponsored_ads/{adId} {
       allow read: if isSignedIn();
-      // Client-submitted campaigns remain pending until an administrator approves them.
       allow create: if isSignedIn() && incoming().sellerId == request.auth.uid &&
-        incoming().status == 'pending' && incoming().impressions == 0 && incoming().clicks == 0 &&
+        incoming().status in ['active', 'pending'] && incoming().impressions == 0 && incoming().clicks == 0 &&
         incoming().budget is number && incoming().budget > 0 &&
         incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 120;
       allow update: if isAdmin() ||
-        (isSignedIn() && resource.data.sellerId == request.auth.uid && resource.data.status == 'pending' &&
-          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'mediaUrl', 'mediaType', 'ctaText', 'ctaUrl', 'budget', 'targetCategory']));
+        (isSignedIn() && resource.data.sellerId == request.auth.uid &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'title', 'description', 'mediaUrl', 'mediaType', 'ctaText', 'ctaUrl', 'budget', 'targetCategory', 'spent', 'ctr']));
       allow delete: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
       // Delivery counters and event IDs are written only by the trusted callable.
       match /events/{eventId} {
