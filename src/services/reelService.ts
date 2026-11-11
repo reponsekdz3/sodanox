@@ -16,7 +16,7 @@ import {
   increment,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db, functions } from '../firebase/config';
+import { auth, db, functions } from '../firebase/config';
 import { httpsCallable } from 'firebase/functions';
 import { Reel, Comment, User } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';

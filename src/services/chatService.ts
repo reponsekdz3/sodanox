@@ -10,6 +10,7 @@ import {
   getDoc,
   getDocs,
   writeBatch,
+  updateDoc,
   increment,
   Unsubscribe,
 } from 'firebase/firestore';
@@ -470,9 +471,7 @@ export async function sendChatMessage(
   const convRef = doc(db, 'conversations', conversationId);
   const batch = writeBatch(db);
   batch.set(msgDocRef, payload);
-  batch.set(convRef, {
-    id: conversationId,
-    participantIds: [currentUser.id, recipientId],
+  batch.update(convRef, {
     lastMessage: {
       id: messageId, senderId: currentUser.id, timestamp: timeFormatted,
       type: fullMessage.type, text: lastMessageSnippet, status: 'sent',
@@ -480,7 +479,7 @@ export async function sendChatMessage(
     updatedAt: serverTimestamp(),
     [`unreadCounts.${recipientId}`]: increment(1),
     [`typing.${currentUser.id}`]: false,
-  }, { merge: true });
+  });
   // Message and conversation preview commit together. If either fails, nothing is
   // retained as a successful local-only message.
   await batch.commit();
@@ -556,13 +555,9 @@ export async function setTypingIndicator(
   if (!conversationId || !currentUid) return;
   try {
     const convRef = doc(db, 'conversations', conversationId);
-    await setDoc(
-      convRef,
-      {
-        [`typing.${currentUid}`]: isTyping,
-      },
-      { merge: true }
-    );
+    await updateDoc(convRef, {
+      [`typing.${currentUid}`]: isTyping,
+    });
   } catch {
     // Non-fatal
   }

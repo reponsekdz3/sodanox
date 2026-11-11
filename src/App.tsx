@@ -1535,7 +1535,6 @@ export default function App() {
         <ActiveCallModal
           call={activeCall}
           currentUser={currentUser}
-          isMinimized={activeCall.isMinimized}
           onEndCall={handleEndCall}
           onDurationChange={(durationSeconds) =>
             setActiveCall((prev) => prev ? { ...prev, durationSeconds } : null)

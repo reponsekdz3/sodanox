@@ -5,7 +5,6 @@ import { ModernAvatar } from '../common/ModernAvatar';
 import { recordAdImpression, recordAdClick } from '../../services/marketplaceService';
 import { getUserProfile } from '../../services/userService';
 import { auraAudio } from '../../utils/audioSynthesizer';
-import { getUserProfile } from '../../services/userService';
 
 interface SponsoredFeedAdCardProps {
   ad: SponsoredAd;

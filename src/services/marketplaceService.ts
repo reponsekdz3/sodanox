@@ -6,8 +6,8 @@ import {
   updateDoc,
   query,
   where,
-  increment,
 } from 'firebase/firestore';
+import { httpsCallable } from 'firebase/functions';
 import { auth, db, functions } from '../firebase/config';
 import { MarketplaceItem, SponsoredAd, User } from '../types';
 

@@ -95,6 +95,16 @@ export async function compressImage(
   const preferWebp = options?.preferWebp !== false;
   const aspectRatio = options?.aspectRatio || 'original';
   const onProgress = options?.onProgress;
+  let lastReportedProgress = 0;
+  const report = (value: number, status: string) => {
+    const progress = Math.max(lastReportedProgress, Math.max(1, Math.min(100, Math.round(value))));
+    lastReportedProgress = progress;
+    onProgress?.(progress, status);
+  };
+  let originalSize = 0;
+  let sourceUrl = '';
+  let fileName = options?.fileName || 'image.jpg';
+  if (typeof input !== 'string' && 'name' in input) fileName = input.name;
   // Fast path: decode File/Blob inputs through createImageBitmap and use
   // OffscreenCanvas when available. This avoids the Image element's extra
   // layout lifecycle and keeps large-file encoding asynchronous.
@@ -174,18 +184,7 @@ export async function compressImage(
       console.warn('Fast image bitmap path failed; retrying with the compatible decoder:', error);
     }
   }
-  let lastReportedProgress = 0;
-  const report = (value: number, status: string) => {
-    const progress = Math.max(lastReportedProgress, Math.max(1, Math.min(100, Math.round(value))));
-    lastReportedProgress = progress;
-    onProgress?.(progress, status);
-  };
-
   report(1, 'Preparing image decoder...');
-
-  let originalSize = 0;
-  let sourceUrl = '';
-  let fileName = options?.fileName || 'image.jpg';
 
   if (typeof input === 'string') {
     sourceUrl = input;
