@@ -1,6 +1,7 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
 import { FieldValue, getFirestore } from 'firebase-admin/firestore';
+import type { DocumentReference } from 'firebase-admin/firestore';
 import * as logger from 'firebase-functions/logger';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
@@ -21,7 +22,7 @@ const FIRESTORE_DATABASE_ID = defineString('FIRESTORE_DATABASE_ID', {
 });
 const MTN_API_BASE_URL = defineString('MTN_API_BASE_URL', { default: 'https://sandbox.momodeveloper.mtn.com' });
 const MTN_TARGET_ENVIRONMENT = defineString('MTN_TARGET_ENVIRONMENT', { default: 'sandbox' });
-const APP_BASE_URL = defineString('APP_BASE_URL');
+const APP_BASE_URL = defineString('APP_BASE_URL', { default: 'https://ducate.ai.studio' });
 
 type Provider = 'flutterwave' | 'mtn_momo';
 type PaymentStatus = 'pending' | 'completed' | 'failed';
@@ -40,6 +41,10 @@ interface PaymentRecord {
   completedAt?: number;
   failureReason?: string;
   providerTransactionId?: string;
+  purpose?: 'verified_badge' | 'subscription';
+  planId?: string;
+  planName?: string;
+  durationDays?: number;
 }
 
 const adminApp = getApps().length ? getApp() : initializeApp();
@@ -140,7 +145,7 @@ async function startMtnPayment(record: PaymentRecord, phoneNumber: unknown): Pro
   return referenceId;
 }
 
-async function startFlutterwavePayment(record: PaymentRecord, email: string, name: string, origin: string): Promise<string> {
+async function startFlutterwavePayment(record: PaymentRecord, email: string, name: string, origin: string, purpose: 'verified_badge' | 'subscription' = 'verified_badge'): Promise<string> {
   const secret = FLW_SECRET_KEY.value();
   if (!secret) throw new HttpsError('failed-precondition', 'Flutterwave is not configured on the server yet.');
   let appOrigin: URL;
@@ -149,7 +154,7 @@ async function startFlutterwavePayment(record: PaymentRecord, email: string, nam
     throw new HttpsError('failed-precondition', 'The checkout return URL must use HTTPS.');
   }
   const redirect = new URL(appOrigin.origin + '/');
-  redirect.searchParams.set('verification_ref', record.transactionRef);
+  redirect.searchParams.set(purpose === 'subscription' ? 'subscription_ref' : 'verification_ref', record.transactionRef);
   const response = await fetch('https://api.flutterwave.com/v3/payments', {
     method: 'POST',
     headers: { Authorization: 'Bearer ' + secret, 'Content-Type': 'application/json', Accept: 'application/json' },
@@ -160,8 +165,11 @@ async function startFlutterwavePayment(record: PaymentRecord, email: string, nam
       redirect_url: redirect.toString(),
       customer: { email, name },
       payment_options: record.currency === 'RWF' ? 'card,mobilemoneyrwanda' : 'card',
-      customizations: { title: 'Sodanox Verified Badge', description: 'One-time paid profile badge' },
-      meta: { userId: record.userId, purpose: 'verified_badge' },
+      customizations: {
+        title: purpose === 'subscription' ? 'Sodanox Membership' : 'Sodanox Verified Badge',
+        description: purpose === 'subscription' ? (record.planName || 'Sodanox membership plan') : 'One-time paid profile badge',
+      },
+      meta: { userId: record.userId, purpose, planId: record.planId || null },
     }),
     signal: AbortSignal.timeout(20000),
   });
@@ -455,7 +463,41 @@ export const flutterwaveVerificationWebhook = onRequest(
     const webhookData = request.body?.data;
     const transactionRef = String(webhookData?.tx_ref || '');
     const providerTransactionId = String(webhookData?.id || '');
-    if (!/^SODANOX_VER_[A-Z0-9_]+$/.test(transactionRef) || !/^\d+$/.test(providerTransactionId)) {
+    if (!/^\d+$/.test(providerTransactionId)) {
+      response.status(200).send('ignored');
+      return;
+    }
+
+    // A single Flutterwave webhook endpoint handles both verified-badge and
+    // membership references; provider callbacks are re-verified server-side.
+    if (/^SODANOX_SUB_[A-Z0-9_]+$/.test(transactionRef)) {
+      const db = database();
+      const paymentRef = db.collection('subscription_payments').doc(transactionRef);
+      try {
+        const snapshot = await paymentRef.get();
+        if (!snapshot.exists) { response.status(200).send('unknown membership payment'); return; }
+        const record = snapshot.data() as PaymentRecord;
+        if (record.provider !== 'flutterwave' || record.status === 'completed' || record.status === 'failed') {
+          response.status(200).send('already handled');
+          return;
+        }
+        const outcome = await verifySubscriptionWithProvider(record, providerTransactionId);
+        if (outcome.failed) {
+          await paymentRef.update({ status: 'failed', failureReason: outcome.note, providerTransactionId });
+          response.status(200).send('membership payment failed');
+          return;
+        }
+        if (!outcome.paid) { response.status(200).send('membership payment not confirmed'); return; }
+        await activateSubscription(db, paymentRef, record, providerTransactionId);
+        response.status(200).send('membership activated');
+      } catch (error) {
+        logger.error('Flutterwave membership webhook failed', { transactionRef, providerTransactionId, error });
+        response.status(500).send('temporary processing error');
+      }
+      return;
+    }
+
+    if (!/^SODANOX_VER_[A-Z0-9_]+$/.test(transactionRef)) {
       response.status(200).send('ignored');
       return;
     }
@@ -828,3 +870,683 @@ export const recordContentShare = onCall(async (request) => {
     return { success: true, recorded: true, sharesCount: next.length };
   });
 });
+
+
+/** Privileged operations require a Firebase custom claim set out-of-band. */
+function requireSuperAdmin(request: any): string {
+  const uid = requireAuth(request.auth?.uid);
+  if (request.auth?.token?.superAdmin !== true) {
+    throw new HttpsError('permission-denied', 'This operation requires the super-admin custom claim.');
+  }
+  return uid;
+}
+
+function safeAdminReason(value: unknown): string {
+  const reason = String(value || '').trim();
+  if (reason.length < 8 || reason.length > 500) {
+    throw new HttpsError('invalid-argument', 'Provide an audit reason between 8 and 500 characters.');
+  }
+  return reason;
+}
+
+async function writeAdminAudit(
+  db: ReturnType<typeof database>,
+  actorId: string,
+  action: string,
+  targetId: string,
+  reason: string,
+  metadata: Record<string, unknown> = {},
+) {
+  await db.collection('admin_audit_logs').add({
+    actorId, action, targetId, reason, metadata,
+    createdAt: Date.now(),
+  });
+}
+
+/** Real platform status and operating metrics; no client-side status labels. */
+export const getSuperAdminOverview = onCall(
+  { secrets: [FLW_SECRET_KEY, FLW_WEBHOOK_SECRET, MTN_MOMO_API_USER, MTN_MOMO_API_KEY, MTN_COLLECTION_SUBSCRIPTION_KEY] },
+  async (request) => {
+    requireSuperAdmin(request);
+    const db = database();
+    const count = async (collectionName: string): Promise<number | null> => {
+      try {
+        const result = await db.collection(collectionName).count().get();
+        return Number(result.data().count || 0);
+      } catch (error) {
+        logger.warn('Admin metric count unavailable', { collectionName, error });
+        return null;
+      }
+    };
+    const [
+      users, posts, reels, stories, marketplaceItems, sponsoredAds,
+      verificationPayments, subscriptionPayments, conversations, plans,
+      verifiedUsers, suspendedUsers, activeSubscriptions,
+      recentVerification, recentSubscriptions, recentAudit, pendingCampaignSnapshot, modelSnapshot, marketplaceModelSnapshot,
+    ] = await Promise.all([
+      count('users'), count('posts'), count('reels'), count('stories'),
+      count('marketplace_items'), count('sponsored_ads'),
+      count('verification_payments'), count('subscription_payments'),
+      count('conversations'), count('subscription_plans'),
+      db.collection('users').where('verified', '==', true).count().get().then((x) => Number(x.data().count || 0)).catch(() => null),
+      db.collection('users').where('isSuspended', '==', true).count().get().then((x) => Number(x.data().count || 0)).catch(() => null),
+      db.collection('users').where('subscription.status', '==', 'active').count().get().then((x) => Number(x.data().count || 0)).catch(() => null),
+      db.collection('verification_payments').orderBy('createdAt', 'desc').limit(12).get().catch(() => null),
+      db.collection('subscription_payments').orderBy('createdAt', 'desc').limit(12).get().catch(() => null),
+      db.collection('admin_audit_logs').orderBy('createdAt', 'desc').limit(15).get().catch(() => null),
+      db.collection('sponsored_ads').where('status', '==', 'pending').limit(30).get().catch(() => null),
+      db.collection('ml_models').doc('feed_ranker').get().catch(() => null),
+      db.collection('ml_models').doc('marketplace_conversion').get().catch(() => null),
+    ]);
+    const safePayment = (doc: any) => {
+      const p = doc.data();
+      return {
+        id: doc.id, userId: p.userId || '', username: p.username || '',
+        provider: p.provider || '', amount: Number(p.amount || 0), currency: p.currency || 'RWF',
+        status: p.status || 'pending', transactionRef: p.transactionRef || doc.id,
+        purpose: p.purpose || 'verified_badge', planName: p.planName || null,
+        createdAt: Number(p.createdAt || 0), completedAt: Number(p.completedAt || 0) || null,
+        failureReason: p.failureReason || null,
+      };
+    };
+    const model = modelSnapshot?.exists ? modelSnapshot.data() || {} : null;
+    return {
+      generatedAt: Date.now(),
+      counts: {
+        users, posts, reels, stories, marketplaceItems, sponsoredAds,
+        verificationPayments, subscriptionPayments, conversations, plans,
+        verifiedUsers, suspendedUsers, activeSubscriptions,
+      },
+      health: {
+        firestore: users !== null && posts !== null,
+        mlModel: Boolean(model?.weights),
+        modelVersion: model?.version || null,
+        modelTrainedAt: model?.trainedAt || null,
+        flutterwaveConfigured: Boolean(FLW_SECRET_KEY.value() && FLW_WEBHOOK_SECRET.value()),
+        mtnMomoConfigured: Boolean(MTN_MOMO_API_USER.value() && MTN_MOMO_API_KEY.value() && MTN_COLLECTION_SUBSCRIPTION_KEY.value()),
+      },
+      model: model ? {
+        version: model.version || null,
+        weights: model.weights || null,
+        trainedAt: model.trainedAt || null,
+        metrics: model.metrics || null,
+        trainingData: model.trainingData || null,
+      } : null,
+      marketplaceModel: marketplaceModelSnapshot?.exists ? {
+        version: marketplaceModelSnapshot.data()?.version || null,
+        weights: marketplaceModelSnapshot.data()?.weights || null,
+        trainedAt: marketplaceModelSnapshot.data()?.trainedAt || null,
+        metrics: marketplaceModelSnapshot.data()?.metrics || null,
+        trainingData: marketplaceModelSnapshot.data()?.trainingData || null,
+      } : null,
+      verificationPayments: recentVerification ? recentVerification.docs.map(safePayment) : [],
+      subscriptionPayments: recentSubscriptions ? recentSubscriptions.docs.map(safePayment) : [],
+      pendingCampaigns: pendingCampaignSnapshot ? pendingCampaignSnapshot.docs.map((d) => {
+        const item = d.data();
+        return { id: d.id, sellerId: item.sellerId || '', title: item.title || '', description: item.description || '', budget: Number(item.budget || 0), mediaUrl: item.mediaUrl || '', createdAt: Number(item.createdAt || 0) };
+      }) : [],
+      auditLogs: recentAudit ? recentAudit.docs.map((d) => ({ id: d.id, ...d.data() })) : [],
+    };
+  },
+);
+
+/** Audited member actions; client profile writes never grant privileged state. */
+export const adminUpdateMember = onCall(async (request) => {
+  const actorId = requireSuperAdmin(request);
+  const targetId = String(request.data?.targetUserId || '');
+  const action = request.data?.action;
+  const reason = safeAdminReason(request.data?.reason);
+  if (!/^[A-Za-z0-9_-]{1,180}$/.test(targetId)) {
+    throw new HttpsError('invalid-argument', 'A valid user ID is required.');
+  }
+  if (!['suspend', 'restore', 'grant_badge', 'revoke_badge'].includes(action)) {
+    throw new HttpsError('invalid-argument', 'Unsupported member action.');
+  }
+  const db = database();
+  const userRef = db.collection('users').doc(targetId);
+  const now = Date.now();
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(userRef);
+    if (!snapshot.exists) throw new HttpsError('not-found', 'The selected user does not exist.');
+    const data = snapshot.data() || {};
+    const patch: Record<string, any> = { adminUpdatedAt: now };
+    if (action === 'suspend') patch.isSuspended = true;
+    if (action === 'restore') patch.isSuspended = false;
+    if (action === 'grant_badge') {
+      patch.verified = true; patch.verifiedBadgeType = 'blue'; patch.verifiedSince = data.verifiedSince || now;
+      patch.verifiedAdminOverride = true;
+    }
+    if (action === 'revoke_badge') {
+      patch.verified = false; patch.verifiedBadgeType = 'none'; patch.verifiedSince = null;
+      patch.verifiedAdminOverride = false;
+    }
+    transaction.update(userRef, patch);
+  });
+  await writeAdminAudit(db, actorId, action, targetId, reason);
+  return { success: true, action, targetUserId: targetId, updatedAt: now };
+});
+
+/** Create or update a real subscription plan. Payment amount is always read server-side. */
+/** Review a pending sponsored campaign with an audited administrator decision. */
+export const adminReviewSponsoredCampaign = onCall(async (request) => {
+  const actorId = requireSuperAdmin(request);
+  const campaignId = String(request.data?.campaignId || '');
+  const decision = request.data?.decision;
+  const reason = safeAdminReason(request.data?.reason);
+  if (!/^[A-Za-z0-9_-]{1,180}$/.test(campaignId) || !['approve', 'reject'].includes(decision)) throw new HttpsError('invalid-argument', 'Choose a valid campaign and review decision.');
+  const db = database();
+  const ref = db.collection('sponsored_ads').doc(campaignId);
+  const status = decision === 'approve' ? 'active' : 'rejected';
+  await db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw new HttpsError('not-found', 'The campaign no longer exists.');
+    if (snapshot.data()?.status !== 'pending') throw new HttpsError('failed-precondition', 'Only pending campaigns can be reviewed.');
+    transaction.update(ref, { status, reviewedAt: Date.now(), reviewedBy: actorId, reviewReason: reason, updatedAt: Date.now() });
+  });
+  await writeAdminAudit(db, actorId, 'review_sponsored_campaign', campaignId, reason, { decision, status });
+  return { success: true, campaignId, status };
+});
+
+export const adminUpsertSubscriptionPlan = onCall(async (request) => {
+  const actorId = requireSuperAdmin(request);
+  const reason = safeAdminReason(request.data?.reason);
+  const planId = String(request.data?.planId || randomUUID()).trim();
+  const name = String(request.data?.name || '').trim();
+  const amount = Number(request.data?.amount);
+  const currency = String(request.data?.currency || 'RWF').toUpperCase();
+  const durationDays = Number(request.data?.durationDays);
+  const active = request.data?.active !== false;
+  const features = Array.isArray(request.data?.features)
+    ? request.data.features.map((x: unknown) => String(x).trim()).filter((x: string) => x.length > 0 && x.length <= 120).slice(0, 20)
+    : [];
+  if (!/^[A-Za-z0-9_-]{3,64}$/.test(planId) || name.length < 2 || name.length > 80) {
+    throw new HttpsError('invalid-argument', 'Enter a valid plan ID and plan name.');
+  }
+  if (!Number.isSafeInteger(amount) || amount < 100 || amount > 100000000 ||
+      !['RWF', 'USD'].includes(currency) ||
+      !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 730) {
+    throw new HttpsError('invalid-argument', 'Enter a valid amount, currency and duration (1–730 days).');
+  }
+  const db = database();
+  const planRef = db.collection('subscription_plans').doc(planId);
+  const now = Date.now();
+  await planRef.set({
+    id: planId, name, amount, currency, durationDays, active, features,
+    billingMode: 'manual_renewal', updatedAt: now,
+    createdAt: FieldValue.serverTimestamp(),
+  }, { merge: true });
+  await writeAdminAudit(db, actorId, 'upsert_subscription_plan', planId, reason, { name, amount, currency, durationDays, active });
+  return { success: true, planId, updatedAt: now };
+});
+
+/** Train from real, observed platform content only; insufficient data is an explicit result. */
+export const trainPlatformModels = onCall(async (request) => {
+  const actorId = requireSuperAdmin(request);
+  const reason = safeAdminReason(request.data?.reason);
+  const db = database();
+  const [postSnap, reelSnap, storySnap, creatorSnap, listingSnap] = await Promise.all([
+    db.collection('posts').limit(500).get(),
+    db.collection('reels').limit(500).get(),
+    db.collection('stories').limit(500).get(),
+    db.collection('users').select('followersCount', 'verified').limit(1000).get(),
+    db.collection('marketplace_items').limit(500).get(),
+  ]);
+  const rawRows: Array<{ features: number[]; engagement: number; authorId: string }> = [];
+  const creatorProfiles = new Map(creatorSnap.docs.map((d) => [d.id, d.data()]));
+  const now = Date.now();
+  const addRow = (data: Record<string, any>) => {
+    const likes = Math.max(0, Number(data.likesCount || 0));
+    const comments = Math.max(0, Number(data.commentsCount || (Array.isArray(data.comments) ? data.comments.length : 0)));
+    const shares = Math.max(0, Number(data.sharesCount || 0));
+    const views = Math.max(1, Number(data.viewsCount || 1));
+    const createdRaw = data.createdAt || data.createdAtMs || data.timestamp;
+    const createdAt = typeof createdRaw === 'number'
+      ? (createdRaw < 100000000000 ? createdRaw * 1000 : createdRaw)
+      : typeof createdRaw?.toMillis === 'function'
+        ? createdRaw.toMillis()
+        : typeof createdRaw === 'string' ? Date.parse(createdRaw) : now;
+    const ageHours = Math.max(1, (now - (Number.isFinite(createdAt) ? createdAt : now)) / 3600000);
+    const author = data.author || creatorProfiles.get(String(data.authorId || data.userId || '')) || {};
+    const authorFollowers = Math.max(0, Number(author.followersCount || data.authorFollowersCount || 0));
+    const hasMedia = Boolean(data.mediaUrl || data.videoUrl || (Array.isArray(data.mediaUrls) && data.mediaUrls.length));
+    const content = String(data.content || data.caption || '');
+    const tagCount = Array.isArray(data.tags) ? data.tags.length : 0;
+    const engagement = (likes + comments * 2 + shares * 3) / views;
+    const authorId = String(data.authorId || author.id || data.userId || 'unknown');
+    const features = [
+      Math.min(1, (Math.min(500, content.length) / 500) * 0.6 + Math.min(10, tagCount) / 25),
+      0,
+      Math.max(0.02, Math.exp(-Math.log(2) * ageHours / 72)),
+      Math.min(1, Math.log1p(authorFollowers) / 15),
+      author.verified === true ? 1 : 0,
+      hasMedia ? 1 : 0,
+    ];
+    rawRows.push({ features, engagement, authorId });
+  };
+  postSnap.docs.forEach((d) => {
+    const data = d.data() as Record<string, any>;
+    const authorId = String(data.author?.id || data.authorId || data.userId || 'unknown');
+    addRow({ ...data, authorId, author: data.author || creatorProfiles.get(authorId) });
+  });
+  reelSnap.docs.forEach((d) => {
+    const data = d.data() as Record<string, any>;
+    const authorId = String(data.author?.id || data.authorId || data.userId || 'unknown');
+    addRow({ ...data, authorId, author: data.author || creatorProfiles.get(authorId) });
+  });
+  storySnap.docs.forEach((storyDoc) => {
+    const story = storyDoc.data() as Record<string, any>;
+    const authorId = String(story.userId || story.authorId || 'unknown');
+    const author = creatorProfiles.get(authorId) || {};
+    const viewers = Array.isArray(story.viewersList) ? story.viewersList.length : Array.isArray(story.viewers) ? story.viewers.length : 1;
+    for (const item of (Array.isArray(story.items) ? story.items : [])) {
+      addRow({ ...item, authorId, author, viewsCount: viewers, content: item.caption || '', createdAt: item.createdAtMs || item.timestamp });
+    }
+  });
+  // Creator history excludes the row being predicted to avoid training-label leakage.
+  const creatorHistory = new Map<string, { total: number; count: number }>();
+  for (const row of rawRows) {
+    const previous = creatorHistory.get(row.authorId) || { total: 0, count: 0 };
+    creatorHistory.set(row.authorId, { total: previous.total + row.engagement, count: previous.count + 1 });
+  }
+  for (const row of rawRows) {
+    const history = creatorHistory.get(row.authorId);
+    const otherContentAverage = history && history.count > 1 ? (history.total - row.engagement) / (history.count - 1) : 0;
+    row.features[1] = Math.min(1, Math.log1p(Math.max(0, otherContentAverage)) / 8);
+  }
+  // A second model estimates observed listing conversion from real sold/unsold inventory.
+  // It deliberately excludes seller private contact details and payment information.
+  const listingRows = listingSnap.docs.map((listingDoc) => {
+    const item = listingDoc.data() as Record<string, any>;
+    const created = typeof item.createdAt === 'number' ? item.createdAt
+      : typeof item.createdAt?.toMillis === 'function' ? item.createdAt.toMillis() : now;
+    const ageHours = Math.max(1, (now - created) / 3600000);
+    const price = Math.max(0, Number(item.price || 0));
+    const views = Math.max(0, Number(item.viewsCount || 0));
+    const likes = Math.max(0, Number(item.likesCount || 0));
+    const images = Array.isArray(item.images) ? item.images.length : 0;
+    const description = String(item.description || '');
+    const features = [
+      1 / (1 + Math.log1p(price)),
+      Math.min(1, Math.log1p(views) / 12),
+      Math.min(1, Math.log1p(likes) / 8),
+      Math.min(1, description.length / 500),
+      Math.min(1, images / 5),
+      Math.max(0.02, Math.exp(-Math.log(2) * ageHours / 720)),
+    ];
+    return { features, label: item.isSold === true ? 1 : 0 };
+  });
+  let marketplaceModel: Record<string, any> = {
+    status: 'insufficient_data',
+    sampleCount: listingRows.length,
+    requiredSamples: 30,
+    message: 'At least 30 real listings with sold and unsold outcomes are required; the current marketplace model was not changed.',
+  };
+  const soldCount = listingRows.filter((row) => row.label === 1).length;
+  const unsoldCount = listingRows.length - soldCount;
+  if (listingRows.length >= 30 && soldCount >= 5 && unsoldCount >= 5) {
+    const training = listingRows.map((row, index) => ({ ...row, index })).filter((row) => row.index % 5 !== 0);
+    const validationSet = listingRows.map((row, index) => ({ ...row, index })).filter((row) => row.index % 5 === 0);
+    const previous = await db.collection('ml_models').doc('marketplace_conversion').get();
+    const old = previous.data()?.weights || {};
+    let modelWeights = [
+      Number(old.priceAffinity ?? 1.2), Number(old.viewSignal ?? 0.8),
+      Number(old.likeSignal ?? 1.0), Number(old.descriptionQuality ?? 0.4),
+      Number(old.photoQuality ?? 0.3), Number(old.freshness ?? 0.5),
+    ];
+    let modelBias = Number(old.bias ?? -1.2);
+    const logistic = (z: number) => 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, z))));
+    const modelEpochs = 80;
+    const rate = 0.05;
+    for (let epoch = 0; epoch < modelEpochs; epoch++) {
+      const gradients = [0, 0, 0, 0, 0, 0];
+      let biasGradient = 0;
+      for (const sample of training) {
+        const prediction = logistic(modelBias + modelWeights.reduce((sum, weight, i) => sum + weight * sample.features[i], 0));
+        const error = prediction - sample.label;
+        sample.features.forEach((feature, i) => { gradients[i] += error * feature; });
+        biasGradient += error;
+      }
+      modelWeights = modelWeights.map((weight, i) => weight - rate * (gradients[i] / training.length + 0.001 * weight));
+      modelBias -= rate * biasGradient / training.length;
+    }
+    let correct = 0;
+    let brier = 0;
+    for (const sample of validationSet) {
+      const prediction = logistic(modelBias + modelWeights.reduce((sum, weight, i) => sum + weight * sample.features[i], 0));
+      if ((prediction >= 0.5 ? 1 : 0) === sample.label) correct++;
+      brier += (prediction - sample.label) ** 2;
+    }
+    const version = Number(previous.data()?.version || 0) + 1;
+    const model = {
+      modelId: 'marketplace_conversion', version, trainedAt: now, trainedBy: actorId,
+      weights: {
+        priceAffinity: Number(modelWeights[0].toFixed(4)),
+        viewSignal: Number(modelWeights[1].toFixed(4)),
+        likeSignal: Number(modelWeights[2].toFixed(4)),
+        descriptionQuality: Number(modelWeights[3].toFixed(4)),
+        photoQuality: Number(modelWeights[4].toFixed(4)),
+        freshness: Number(modelWeights[5].toFixed(4)),
+        bias: Number(modelBias.toFixed(4)),
+      },
+      trainingData: { total: listingRows.length, train: training.length, validation: validationSet.length, sold: soldCount, unsold: unsoldCount, sourceCollections: ['marketplace_items'] },
+      metrics: {
+        epochs: modelEpochs, validationAccuracy: Number((correct / validationSet.length * 100).toFixed(2)),
+        validationBrierScore: Number((brier / validationSet.length).toFixed(6)),
+      },
+    };
+    await db.collection('ml_models').doc('marketplace_conversion').set(model);
+    await writeAdminAudit(db, actorId, 'train_marketplace_conversion', 'marketplace_conversion', reason, {
+      version, sampleCount: listingRows.length, validationAccuracy: model.metrics.validationAccuracy,
+    });
+    marketplaceModel = { status: 'trained', ...model };
+  } else {
+    marketplaceModel = {
+      status: 'insufficient_signal',
+      sampleCount: listingRows.length,
+      soldSamples: soldCount,
+      unsoldSamples: unsoldCount,
+      requiredSamplesPerClass: 5,
+      message: 'Real inventory must contain at least five completed sales and five unsold listings to train this model.',
+    };
+  }
+
+  
+  if (rawRows.length < 30) {
+    return {
+      status: 'insufficient_data', sampleCount: rawRows.length, requiredSamples: 30,
+      message: 'At least 30 real posts/reels are required. No synthetic samples were added and no model was changed.',
+      marketplaceModel,
+    };
+  }
+  const sortedEngagement = rawRows.map((r) => r.engagement).sort((a, b) => a - b);
+  const median = sortedEngagement[Math.floor(sortedEngagement.length / 2)] || 0;
+  const labels = rawRows.map((r) => r.engagement > median ? 1 : 0);
+  const positives = labels.filter((x) => x === 1).length;
+  const negatives = labels.length - positives;
+  if (positives < 5 || negatives < 5) {
+    return {
+      status: 'insufficient_signal', sampleCount: rawRows.length, positiveSamples: positives, negativeSamples: negatives,
+      message: 'The real dataset does not yet contain enough positive and negative outcomes for supervised training.',
+      marketplaceModel,
+    };
+  }
+  const train = rawRows.map((row, index) => ({ ...row, label: labels[index], index }))
+    .filter((row) => row.index % 5 !== 0);
+  const validation = rawRows.map((row, index) => ({ ...row, label: labels[index], index }))
+    .filter((row) => row.index % 5 === 0);
+  const currentSnapshot = await db.collection('ml_models').doc('feed_ranker').get();
+  const storedWeights = currentSnapshot.data()?.weights || {};
+  let weights = [
+    Number(storedWeights.contentSimilarity ?? 2.2),
+    Number(storedWeights.engagementVelocity ?? 1.6),
+    Number(storedWeights.recencyFactor ?? 1.4),
+    Number(storedWeights.socialAffinity ?? 1.5),
+    Number(storedWeights.verifiedMultiplier ?? 1.8),
+    Number(storedWeights.mediaRichness ?? 0.35),
+  ];
+  let bias = Number(storedWeights.bias ?? -1.8);
+  const sigmoidLocal = (z: number) => 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, z))));
+  let initialLoss = 0;
+  const epochs = Math.max(20, Math.min(120, Number(request.data?.epochs) || 60));
+  const learningRate = 0.06;
+  for (let epoch = 0; epoch < epochs; epoch++) {
+    const gradient = [0, 0, 0, 0, 0, 0];
+    let biasGradient = 0;
+    let loss = 0;
+    for (const sample of train) {
+      const prediction = sigmoidLocal(bias + weights.reduce((sum, weight, i) => sum + weight * sample.features[i], 0));
+      loss += -(sample.label * Math.log(prediction + 1e-12) + (1 - sample.label) * Math.log(1 - prediction + 1e-12));
+      const error = prediction - sample.label;
+      sample.features.forEach((feature, i) => { gradient[i] += error * feature; });
+      biasGradient += error;
+    }
+    if (epoch === 0) initialLoss = loss / train.length;
+    weights = weights.map((weight, i) => weight - learningRate * (gradient[i] / train.length + 0.001 * weight));
+    bias -= learningRate * biasGradient / train.length;
+  }
+  let correct = 0;
+  let brier = 0;
+  let validationLoss = 0;
+  for (const sample of validation) {
+    const prediction = sigmoidLocal(bias + weights.reduce((sum, weight, i) => sum + weight * sample.features[i], 0));
+    const classified = prediction >= 0.5 ? 1 : 0;
+    if (classified === sample.label) correct++;
+    brier += (prediction - sample.label) ** 2;
+    validationLoss += -(sample.label * Math.log(prediction + 1e-12) + (1 - sample.label) * Math.log(1 - prediction + 1e-12));
+  }
+  const learnedWeights = {
+    contentSimilarity: Number(weights[0].toFixed(4)),
+    engagementVelocity: Number(weights[1].toFixed(4)),
+    recencyFactor: Number(weights[2].toFixed(4)),
+    socialAffinity: Number(weights[3].toFixed(4)),
+    verifiedMultiplier: Number(weights[4].toFixed(4)),
+    mediaRichness: Number(weights[5].toFixed(4)),
+    bias: Number(bias.toFixed(4)),
+  };
+  const previousVersion = Number(currentSnapshot.data()?.version || 0);
+  const version = previousVersion + 1;
+  const model = {
+    modelId: 'feed_ranker', version, weights: learnedWeights,
+    trainedAt: now, trainedBy: actorId,
+    trainingData: { total: rawRows.length, train: train.length, validation: validation.length, positives, negatives, sourceCollections: { posts: postSnap.size, reels: reelSnap.size, stories: storySnap.size } },
+    metrics: {
+      epochs, learningRate, trainingInitialLoss: Number(initialLoss.toFixed(6)),
+      validationLoss: Number((validationLoss / validation.length).toFixed(6)),
+      validationAccuracy: Number((correct / validation.length * 100).toFixed(2)),
+      validationBrierScore: Number((brier / validation.length).toFixed(6)),
+      labelThreshold: median,
+    },
+  };
+  await db.collection('ml_models').doc('feed_ranker').set(model);
+  await writeAdminAudit(db, actorId, 'train_feed_ranker', 'feed_ranker', reason, {
+    version, sampleCount: rawRows.length, validationAccuracy: model.metrics.validationAccuracy,
+  });
+  logger.info('Platform feed model trained from observed content', { version, sampleCount: rawRows.length, metrics: model.metrics });
+
+return { status: 'trained', ...model, marketplaceModel };
+});
+
+/** Subscription payment creation uses an admin-published plan and server-owned price. */
+export const createSubscriptionPayment = onCall(
+  { secrets: [FLW_SECRET_KEY, MTN_MOMO_API_USER, MTN_MOMO_API_KEY, MTN_COLLECTION_SUBSCRIPTION_KEY], timeoutSeconds: 60 },
+  async (request) => {
+    const uid = requireAuth(request.auth?.uid);
+    const provider = request.data?.provider as Provider;
+    const planId = String(request.data?.planId || '');
+    if (provider !== 'flutterwave' && provider !== 'mtn_momo') throw new HttpsError('invalid-argument', 'Choose a supported payment provider.');
+    if (!/^[A-Za-z0-9_-]{3,64}$/.test(planId)) throw new HttpsError('invalid-argument', 'Choose a valid membership plan.');
+    const db = database();
+    const planSnap = await db.collection('subscription_plans').doc(planId).get();
+    if (!planSnap.exists || planSnap.data()?.active !== true) throw new HttpsError('not-found', 'This membership plan is not currently available.');
+    const plan = planSnap.data() || {};
+    const currency = String(plan.currency || 'RWF').toUpperCase();
+    const amount = Number(plan.amount);
+    const durationDays = Number(plan.durationDays);
+    if (!Number.isSafeInteger(amount) || amount <= 0 || !['RWF', 'USD'].includes(currency) ||
+        !Number.isInteger(durationDays) || durationDays < 1 || durationDays > 730) {
+      throw new HttpsError('failed-precondition', 'The selected membership plan is not configured correctly.');
+    }
+    if (provider === 'mtn_momo' && currency !== 'RWF') throw new HttpsError('failed-precondition', 'MTN MoMo checkout requires a plan priced in RWF.');
+    const userSnap = await db.collection('users').doc(uid).get();
+    if (!userSnap.exists) throw new HttpsError('failed-precondition', 'Create your profile before purchasing membership.');
+    const user = userSnap.data() || {};
+    const email = String(user.email || request.auth?.token?.email || '');
+    const displayName = String(user.name || request.auth?.token?.name || user.username || 'Sodanox member');
+    if (provider === 'flutterwave' && !email) throw new HttpsError('failed-precondition', 'Add an email address before using Flutterwave checkout.');
+    const transactionRef = 'SODANOX_SUB_' + Date.now() + '_' + randomUUID().replace(/-/g, '').slice(0, 10).toUpperCase();
+    const record: PaymentRecord = {
+      userId: uid, username: String(user.username || ''), userEmail: email, provider,
+      amount, currency: currency as 'RWF' | 'USD', status: 'pending',
+      transactionRef, createdAt: Date.now(), purpose: 'subscription',
+      planId, planName: String(plan.name || 'Membership'), durationDays,
+    };
+    const paymentRef = db.collection('subscription_payments').doc(transactionRef);
+    await paymentRef.create(record);
+    try {
+      if (provider === 'mtn_momo') {
+        const providerReference = await startMtnPayment(record, request.data?.phoneNumber);
+        await paymentRef.update({ providerReference });
+        return toResult({ ...record, providerReference }, 'Approve the MTN MoMo prompt. Membership activates only after server confirmation.');
+      }
+      const checkoutUrl = await startFlutterwavePayment(record, email, displayName, APP_BASE_URL.value(), 'subscription');
+      await paymentRef.update({ checkoutUrl });
+      return toResult({ ...record, checkoutUrl }, 'Complete the secure checkout. Membership activates only after the payment is verified by the server.');
+    } catch (error) {
+      await paymentRef.update({ status: 'failed', failureReason: error instanceof Error ? error.message.slice(0, 300) : 'Provider request failed' });
+      logger.error('Could not initiate membership payment', { uid, planId, transactionRef, error });
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError('unavailable', error instanceof Error ? error.message : 'The payment provider could not start the transaction.');
+    }
+  },
+);
+
+async function verifySubscriptionWithProvider(
+  record: PaymentRecord,
+  providerTransactionId: string,
+): Promise<{ paid: boolean; failed: boolean; note: string; providerTransactionId?: string }> {
+  if (record.provider === 'flutterwave') {
+    if (!providerTransactionId || !/^\d+$/.test(providerTransactionId)) {
+      return { paid: false, failed: false, note: 'Complete Flutterwave checkout to receive a transaction reference.' };
+    }
+    const response = await fetch('https://api.flutterwave.com/v3/transactions/' + encodeURIComponent(providerTransactionId) + '/verify', {
+      headers: { Authorization: 'Bearer ' + FLW_SECRET_KEY.value(), Accept: 'application/json' },
+      signal: AbortSignal.timeout(20000),
+    });
+    const payload = await responseJson(response);
+    const data = payload?.data || {};
+    const matches = data.tx_ref === record.transactionRef
+      && Number(data.amount) >= record.amount
+      && String(data.currency || '').toUpperCase() === record.currency;
+    const paid = payload?.status === 'success' && data.status === 'successful' && matches;
+    if (data.status === 'successful' && !matches) throw new HttpsError('failed-precondition', 'The provider amount, currency or reference does not match this membership payment.');
+    return {
+      paid, failed: ['failed', 'cancelled'].includes(String(data.status || '').toLowerCase()),
+      note: paid ? 'Flutterwave confirmed the membership payment.' : 'Flutterwave has not confirmed the payment yet.',
+      providerTransactionId,
+    };
+  }
+  if (!record.providerReference) throw new HttpsError('failed-precondition', 'The MTN payment reference is missing.');
+  const token = await getMtnAccessToken();
+  const response = await fetch(MTN_API_BASE_URL.value().replace(/\/+$/, '') + '/collection/v1_0/requesttopay/' + encodeURIComponent(record.providerReference), {
+    headers: {
+      Authorization: 'Bearer ' + token,
+      'X-Target-Environment': MTN_TARGET_ENVIRONMENT.value(),
+      'Ocp-Apim-Subscription-Key': MTN_COLLECTION_SUBSCRIPTION_KEY.value(),
+    },
+    signal: AbortSignal.timeout(20000),
+  });
+  const data = await responseJson(response);
+  const matches = data.externalId === record.transactionRef
+    && Number(data.amount) >= record.amount
+    && String(data.currency || '').toUpperCase() === record.currency;
+  const paid = data.status === 'SUCCESSFUL' && matches;
+  if (data.status === 'SUCCESSFUL' && !matches) throw new HttpsError('failed-precondition', 'The MTN amount, currency or reference does not match this membership payment.');
+  return {
+    paid, failed: ['FAILED', 'REJECTED', 'EXPIRED'].includes(String(data.status || '').toUpperCase()),
+    note: paid ? 'MTN MoMo confirmed the membership payment.' : 'Waiting for MTN MoMo payment confirmation.',
+  };
+}
+
+async function activateSubscription(
+  db: ReturnType<typeof database>,
+  paymentRef: DocumentReference,
+  record: PaymentRecord,
+  providerTransactionId?: string,
+) {
+  const userRef = db.collection('users').doc(record.userId);
+  const now = Date.now();
+  await db.runTransaction(async (transaction) => {
+    const [paymentSnap, userSnap] = await Promise.all([
+      transaction.get(paymentRef), transaction.get(userRef),
+    ]);
+    if (!paymentSnap.exists || paymentSnap.data()?.userId !== record.userId) throw new HttpsError('permission-denied', 'The membership payment record is invalid.');
+    if (paymentSnap.data()?.status === 'completed') return;
+    if (!userSnap.exists) throw new HttpsError('not-found', 'The member profile no longer exists.');
+    const current = userSnap.data()?.subscription || {};
+    const existingExpiry = Number(current.expiresAt || 0);
+    const base = existingExpiry > now && current.status === 'active' ? existingExpiry : now;
+    const expiresAt = base + Number(record.durationDays || 30) * 86400000;
+    transaction.update(userRef, {
+      subscription: {
+        planId: record.planId, planName: record.planName, status: 'active',
+        startedAt: current.startedAt && existingExpiry > now ? current.startedAt : now,
+        expiresAt, transactionRef: record.transactionRef,
+        renewedAt: now, billingMode: 'manual_renewal',
+      },
+    });
+    transaction.update(paymentRef, {
+      status: 'completed', providerTransactionId: providerTransactionId || null,
+      completedAt: now, failureReason: null,
+    });
+  });
+}
+
+export const verifySubscriptionPayment = onCall(
+  { secrets: [FLW_SECRET_KEY, MTN_MOMO_API_USER, MTN_MOMO_API_KEY, MTN_COLLECTION_SUBSCRIPTION_KEY], timeoutSeconds: 60 },
+  async (request) => {
+    const uid = requireAuth(request.auth?.uid);
+    const transactionRef = String(request.data?.transactionRef || '');
+    const requestedProviderTransactionId = String(request.data?.providerTransactionId || '');
+    if (!/^SODANOX_SUB_[A-Z0-9_]+$/.test(transactionRef)) throw new HttpsError('invalid-argument', 'The membership payment reference is invalid.');
+    const db = database();
+    const paymentRef = db.collection('subscription_payments').doc(transactionRef);
+    const paymentSnap = await paymentRef.get();
+    if (!paymentSnap.exists) throw new HttpsError('not-found', 'Membership payment not found.');
+    const record = paymentSnap.data() as PaymentRecord;
+    if (record.userId !== uid) throw new HttpsError('permission-denied', 'You cannot verify another member’s subscription.');
+    if (record.status === 'completed' || record.status === 'failed') return toResult(record);
+    try {
+      const result = await verifySubscriptionWithProvider(record, requestedProviderTransactionId || String(record.providerTransactionId || ''));
+      if (result.failed) {
+        await paymentRef.update({ status: 'failed', failureReason: result.note });
+        return toResult({ ...record, status: 'failed' }, result.note);
+      }
+      if (!result.paid) return toResult(record, result.note);
+      await activateSubscription(db, paymentRef, record, result.providerTransactionId);
+      const updated = await paymentRef.get();
+      return toResult(updated.data() as PaymentRecord, 'Payment confirmed. Your membership is now active.');
+    } catch (error) {
+      logger.error('Membership payment verification failed', { uid, transactionRef, error });
+      if (error instanceof HttpsError) throw error;
+      throw new HttpsError('unavailable', 'The payment provider could not be reached. Please retry shortly.');
+    }
+  },
+);
+
+/** Flutterwave webhook activates membership only after verifying the provider transaction. */
+export const flutterwaveSubscriptionWebhook = onRequest(
+  { secrets: [FLW_SECRET_KEY, FLW_WEBHOOK_SECRET], timeoutSeconds: 60 },
+  async (request, response) => {
+    if (request.method !== 'POST') { response.status(405).send('method not allowed'); return; }
+    if (!safeSecretMatch(String(request.get('verif-hash') || ''), FLW_WEBHOOK_SECRET.value())) {
+      response.status(401).send('unauthorized'); return;
+    }
+    const data = request.body?.data || {};
+    const transactionRef = String(data.tx_ref || '');
+    const transactionId = String(data.id || '');
+    if (!/^SODANOX_SUB_[A-Z0-9_]+$/.test(transactionRef) || !/^\d+$/.test(transactionId)) {
+      response.status(200).send('ignored'); return;
+    }
+    const db = database();
+    const paymentRef = db.collection('subscription_payments').doc(transactionRef);
+    try {
+      const snapshot = await paymentRef.get();
+      if (!snapshot.exists) { response.status(200).send('unknown payment'); return; }
+      const record = snapshot.data() as PaymentRecord;
+      if (record.provider !== 'flutterwave' || record.status === 'completed' || record.status === 'failed') {
+        response.status(200).send('already handled'); return;
+      }
+      const outcome = await verifySubscriptionWithProvider(record, transactionId);
+      if (outcome.failed) {
+        await paymentRef.update({ status: 'failed', failureReason: outcome.note, providerTransactionId: transactionId });
+        response.status(200).send('payment failed'); return;
+      }
+      if (!outcome.paid) { response.status(200).send('not confirmed'); return; }
+      await activateSubscription(db, paymentRef, record, transactionId);
+      response.status(200).send('membership activated');
+    } catch (error) {
+      logger.error('Membership webhook processing failed', { transactionRef, transactionId, error });
+      response.status(500).send('temporary processing error');
+    }
+  },
+);

@@ -98,7 +98,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const savedUid = localStorage.getItem(SESSION_UID_KEY);
     if (savedUid) {
       getUserProfile(savedUid)
-        .then((profile) => {
+        .then(async (profile) => {
+          if (profile?.isSuspended) {
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+            localStorage.removeItem(SESSION_UID_KEY);
+            setUserProfile(null);
+            setCurrentUser(null);
+            return;
+          }
           if (profile) {
             setUserProfile(profile);
             setCurrentUser({
@@ -134,6 +141,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (snap) => {
         if (snap.exists()) {
           const updated = { ...snap.data(), id: snap.id } as User;
+          if (updated.isSuspended) {
+            setUserProfile(null);
+            setCurrentUser(null);
+            try {
+              localStorage.removeItem(LOCAL_STORAGE_KEY);
+              localStorage.removeItem(SESSION_UID_KEY);
+            } catch {
+              // Browser storage may be unavailable in private mode.
+            }
+            if (auth.currentUser) void fbSignOut(auth).catch(() => {});
+            return;
+          }
           setUserProfile(updated);
           try {
             localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(updated));
@@ -207,6 +226,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         localStorage.setItem(SESSION_UID_KEY, uid);
         setCurrentUser(authUser);
         let profile = await getUserProfile(uid);
+        if (profile?.isSuspended) {
+          await fbSignOut(auth).catch(() => {});
+          setCurrentUser(null); setUserProfile(null);
+          throw new Error('This account has been suspended. Contact platform support if you believe this is a mistake.');
+        }
         if (!profile) {
           const now = new Date();
           profile = {
@@ -243,6 +267,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // 2. Authenticate through local/Firestore credentials registry
       const { uid, profile } = await authenticateAccount(cleanEmail, pass);
+      if (profile.isSuspended) throw new Error('This account has been suspended. Contact platform support if you believe this is a mistake.');
 
       // Ensure Firebase Auth session exists so firestore.rules (isSignedIn()) allow writes
       if (!auth.currentUser) {
@@ -340,6 +365,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // Sync and persist verified Google account in Firestore
       const { user } = await syncGoogleProfileWithFirestore(googleProfile);
+      if (user.isSuspended) {
+        await fbSignOut(auth).catch(() => {});
+        throw new Error('This account has been suspended. Contact platform support if you believe this is a mistake.');
+      }
 
       localStorage.setItem(SESSION_UID_KEY, user.id);
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(user));

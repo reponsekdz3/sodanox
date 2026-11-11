@@ -36,6 +36,7 @@ import { PostDetailModal } from './components/feed/PostDetailModal';
 import { MarketplaceView } from './components/marketplace/MarketplaceView';
 import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
 import { PayVerifiedModal } from './components/verification/PayVerifiedModal';
+import { SubscriptionModal } from './components/subscriptions/SubscriptionModal';
 import { useAuraRouter, isSuperAdminUrl } from './hooks/useAuraRouter';
 import {
   initiateCallSession,
@@ -95,7 +96,7 @@ import {
   getUserByUsername,
   updateUserProfile,
 } from './services/userService';
-import { rankFeedWithML, getSmartSuggestedCreatorsML } from './services/mlFeedService';
+import { rankFeedWithML, getSmartSuggestedCreatorsML, subscribeToServerMLModel } from './services/mlFeedService';
 import { PermissionsOnboardingModal } from './components/common/PermissionsOnboardingModal';
 import { sendBrowserNotification } from './services/browserNotificationService';
 import { MODERN_EMPTY_AVATAR_DATA_URI, isMockOrEmptyAvatar } from './components/common/ModernAvatar';
@@ -104,6 +105,10 @@ import { useOnlineStatus } from './hooks/usePWAInstall';
 export default function App() {
   const { currentUser: fbAuthUser, userProfile, isAuthenticated, loading, updateUser } = useAuth();
   const isOnline = useOnlineStatus();
+  const [mlModelRevision, setMlModelRevision] = useState(0);
+
+  // Keep feed ranking synchronized with the server-published model and recompute visible recommendations.
+  useEffect(() => subscribeToServerMLModel(() => setMlModelRevision((revision) => revision + 1)), []);
 
   // Powerful URL & Hash-based Routing (supports #/feed, #/post/:id, #/profile/:user, #/messages/:id, etc.)
   const {
@@ -150,6 +155,7 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isNotificationsDrawerOpen, setIsNotificationsDrawerOpen] = useState(false);
   const [isPayVerifiedOpen, setIsPayVerifiedOpen] = useState(() => new URLSearchParams(window.location.search).has('verification_ref'));
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(() => new URLSearchParams(window.location.search).has('subscription_ref'));
   const [isSuperAdminOpen, setIsSuperAdminOpen] = useState<boolean>(() => isSuperAdminUrl());
   const [isPermissionsModalOpen, setIsPermissionsModalOpen] = useState(false);
 
@@ -415,7 +421,7 @@ export default function App() {
   // ML-ranked feed & smart creator recommendations (low data usage)
   const rankedPosts = useMemo(() => {
     return rankFeedWithML(posts, currentUser);
-  }, [posts, currentUser]);
+  }, [posts, currentUser, mlModelRevision]);
 
   const smartSuggestedUsers = useMemo(() => {
     return getSmartSuggestedCreatorsML(communityUsers, currentUser, posts);
@@ -1178,7 +1184,18 @@ export default function App() {
             window.location.hash = '#/feed';
           }}
         />
-        {/* Hidden Super Administrator Portal (triggered via /.super in URL) */}
+        {isSubscriptionOpen && (
+        <SubscriptionModal
+          currentUser={currentUser}
+          onClose={() => setIsSubscriptionOpen(false)}
+          onSuccess={() => {
+            setIsSubscriptionOpen(false);
+            refreshCommunity(currentUser.id);
+          }}
+        />
+      )}
+
+      {/* Hidden Super Administrator Portal (triggered via /.super in URL) */}
         {isSuperAdminOpen && (
           <SuperAdminDashboard
             allUsers={communityUsers}
@@ -1488,6 +1505,7 @@ export default function App() {
         <SettingsModal
           currentUser={currentUser}
           onClose={() => setIsSettingsOpen(false)}
+          onOpenSubscription={() => { setIsSettingsOpen(false); setIsSubscriptionOpen(true); }}
           onOpenEditProfile={() => {
             setIsSettingsOpen(false);
             setIsEditProfileOpen(true);

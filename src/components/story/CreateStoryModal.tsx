@@ -21,7 +21,7 @@ import {
   Square,
 } from 'lucide-react';
 import { User, StoryItem, StoryFilter, StorySticker, StoryTextOverlay } from '../../types';
-import { compressImage, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
+import { compressImageWithinBudget, compressVideo, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
 import { auraAudio } from '../../utils/audioSynthesizer';
 import { UploadProgressBar } from '../common/UploadProgressBar';
 
@@ -66,6 +66,8 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   // Media source state
   const [mediaType, setMediaType] = useState<'image' | 'video' | 'canvas'>('canvas');
   const [mediaUrl, setMediaUrl] = useState<string>('');
+  const [localPreviewUrl, setLocalPreviewUrl] = useState<string>('');
+  const previewUrlRef = useRef<string | null>(null);
   const [selectedBgGradient, setSelectedBgGradient] = useState(CANVAS_BACKGROUNDS[0].gradient);
   const [isProcessingMedia, setIsProcessingMedia] = useState(false);
   const [isPublishing, setIsPublishing] = useState(false);
@@ -149,8 +151,8 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
       const frameBlob = await new Promise<Blob>((resolve, reject) => {
         canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error('Could not capture the camera frame.')), 'image/jpeg', 0.88);
       });
-      const compressed = await compressImage(frameBlob, {
-        maxDimension: 1440, quality: 0.84, preferWebp: true,
+      const compressed = await compressImageWithinBudget(frameBlob, {
+        maxDimension: 1280, quality: 0.82, preferWebp: true, maxProcessingMs: 45000,
         onProgress: (pct, status) => {
           setUploadPercent(Math.max(1, Math.min(54, Math.round(pct * 0.54))));
           setUploadStatusText(status);
@@ -187,6 +189,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   useEffect(() => {
     return () => {
       stopCamera();
+      if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
       auraAudio.setAmbient('off');
     };
   }, []);
@@ -194,6 +197,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    const localUrl = URL.createObjectURL(file);
+    previewUrlRef.current = localUrl;
+    setLocalPreviewUrl(localUrl);
+    setMediaUrl('');
+    setMediaType(file.type.startsWith('video/') ? 'video' : 'image');
     setIsProcessingMedia(true);
     setUploadPercent(1);
     setUploadError(null);
@@ -202,23 +211,33 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     try {
       if (file.type.startsWith('video/')) {
         if (file.size >= 20 * 1024 * 1024) throw new Error('Story videos must be smaller than 20 MB. Choose a shorter or smaller video.');
-        const extension = file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+        setUploadStatusText('Optimizing video within a 45-second processing budget…');
+        const optimized = await compressVideo(file, {
+          maxWidth: 720, maxHeight: 1280, bitrate: 1200000, maxProcessingMs: 45000,
+          onProgress: (pct, status) => {
+            setUploadPercent(Math.max(1, Math.min(48, Math.round(pct * 0.48))));
+            setUploadStatusText(status);
+          },
+        });
+        const uploadBlob = optimized.compressedSize < file.size ? optimized.blob : file;
+        const extension = uploadBlob.type.includes('webm') ? 'webm' : (file.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4');
         const storagePath = 'stories/' + currentUser.id + '/' + Date.now() + '.' + extension;
-        setUploadStatusText('Uploading original video with audio preserved...');
-        const res = await uploadMediaToFirebase(file, storagePath, (pct, transferred, total) => {
-          setUploadPercent(Math.max(1, Math.min(99, pct)));
+        setUploadStatusText('Uploading video with original audio track preserved…');
+        const res = await uploadMediaToFirebase(uploadBlob, storagePath, (pct, transferred, total) => {
+          setUploadPercent(Math.max(49, Math.min(99, Math.round(48 + pct * 0.51))));
           setBytesTransferred(transferred);
           setTotalBytes(total);
         });
+        if (optimized.url.startsWith('blob:')) URL.revokeObjectURL(optimized.url);
         setMediaUrl(res.url);
         setMediaType('video');
-        setMediaSavings({ original: file.size, compressed: file.size, percent: 0 });
+        setMediaSavings({ original: file.size, compressed: uploadBlob.size, percent: file.size ? Math.max(0, Math.round(((file.size - uploadBlob.size) / file.size) * 100)) : 0 });
       } else if (file.type.startsWith('image/')) {
         setUploadStatusText('Optimizing story image...');
-        const compressed = await compressImage(file, {
-          maxDimension: 1440, quality: 0.86, preferWebp: true,
+        const compressed = await compressImageWithinBudget(file, {
+          maxDimension: 1280, quality: 0.82, preferWebp: true, maxProcessingMs: 45000,
           onProgress: (pct, status) => {
-            setUploadPercent(Math.max(1, Math.min(54, Math.round(pct * 0.54))));
+            setUploadPercent(Math.max(1, Math.min(48, Math.round(pct * 0.48))));
             setUploadStatusText(status);
           },
         });
@@ -486,13 +505,13 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 />
               </div>
             </div>
-          ) : mediaUrl ? (
+          ) : (localPreviewUrl || mediaUrl) ? (
             <div className="relative w-full h-full flex items-center justify-center">
               {mediaType === 'video' ? (
-                <video src={mediaUrl} controls playsInline className="w-full h-full object-contain" />
+                <video src={localPreviewUrl || mediaUrl} controls playsInline className="w-full h-full object-contain" />
               ) : (
                 <img
-                  src={mediaUrl}
+                  src={localPreviewUrl || mediaUrl}
                   alt="Story preview"
                   className={`w-full h-full object-cover transition-all ${FILTER_CLASSES[activeFilter]}`}
                 />
