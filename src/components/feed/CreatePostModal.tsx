@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { User, Post, Poll, StoryFilter } from '../../types';
 import { ModernAvatar } from '../common/ModernAvatar';
-import { compressImage, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
+import { compressImageWithinBudget, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
 import { auraAudio } from '../../utils/audioSynthesizer';
 import { UploadProgressBar } from '../common/UploadProgressBar';
 
@@ -112,6 +112,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     };
   }, []);
 
+
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -126,41 +127,55 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setUploadError(null);
     setBytesTransferred(undefined);
     setTotalBytes(undefined);
-    setUploadStatusText('Preparing ' + fileList.length + ' image(s)...');
+    setUploadStatusText('Optimizing and uploading media with two parallel workers…');
     let totalOriginal = 0;
     let totalCompressed = 0;
-    const maxDimension = resolution === '4k' ? 3840 : resolution === '1080p' ? 1920 : resolution === '720p' ? 1280 : 6000;
-    const quality = resolution === '4k' ? 0.92 : resolution === '1080p' ? 0.85 : resolution === '720p' ? 0.78 : 0.95;
-    const perFileProgress = 100 / fileList.length;
-    try {
-      for (let i = 0; i < fileList.length; i++) {
-        const file = fileList[i];
+    let nextIndex = 0;
+    const uploadedUrls: string[] = new Array(fileList.length);
+    const fileProgress = new Array(fileList.length).fill(0);
+    const maxDimension = resolution === '4k' ? 1920 : resolution === '1080p' ? 1600 : resolution === '720p' ? 1280 : 1920;
+    const quality = resolution === '4k' ? 0.86 : resolution === '1080p' ? 0.82 : resolution === '720p' ? 0.78 : 0.84;
+    const updateProgress = () => {
+      const average = fileProgress.reduce((sum, value) => sum + value, 0) / fileProgress.length;
+      setUploadPercent(Math.max(1, Math.min(99, Math.round(average))));
+    };
+    const worker = async () => {
+      while (true) {
+        const index = nextIndex++;
+        if (index >= fileList.length) return;
+        const file = fileList[index];
         totalOriginal += file.size;
-        const fileStart = i * perFileProgress;
-        setUploadPercent(Math.max(1, Math.round(fileStart + 1)));
-        setUploadStatusText('Optimizing image ' + (i + 1) + ' of ' + fileList.length + '...');
-        const compressed = await compressImage(file, {
-          maxDimension, quality, preferWebp: true, aspectRatio,
+        const compressed = await compressImageWithinBudget(file, {
+          maxDimension, quality, preferWebp: true, aspectRatio, maxProcessingMs: 45000,
           onProgress: (pct, status) => {
-            const progress = fileStart + (pct / 100) * perFileProgress * 0.45;
-            setUploadPercent(Math.max(1, Math.min(99, Math.round(progress))));
-            setUploadStatusText('Image ' + (i + 1) + '/' + fileList.length + ': ' + status);
+            fileProgress[index] = Math.max(fileProgress[index], pct * 0.45);
+            updateProgress();
+            setUploadStatusText('Preparing image ' + (index + 1) + '/' + fileList.length + ': ' + status);
           },
         });
         totalCompressed += compressed.compressedSize;
-        setUploadStatusText('Uploading image ' + (i + 1) + ' of ' + fileList.length + ' to Firebase Storage...');
         const extension = compressed.mimeType === 'image/webp' ? 'webp' : compressed.mimeType === 'image/png' ? 'png' : 'jpg';
-        const storagePath = 'posts/' + currentUser.id + '/' + Date.now() + '_' + i + '.' + extension;
-        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath, (pct, transferred, total) => {
-          const progress = fileStart + perFileProgress * (0.45 + (pct / 100) * 0.54);
-          setUploadPercent(Math.max(1, Math.min(99, Math.round(progress))));
+        const storagePath = 'posts/' + currentUser.id + '/' + Date.now() + '_' + index + '.' + extension;
+        setUploadStatusText('Uploading image ' + (index + 1) + '/' + fileList.length + ' to secure storage…');
+        const uploaded = await uploadMediaToFirebase(compressed.blob, storagePath, (pct, transferred, total) => {
+          fileProgress[index] = Math.max(fileProgress[index], 45 + pct * 0.55);
+          updateProgress();
           setBytesTransferred(transferred);
           setTotalBytes(total);
         });
-        setMediaUrls((prev) => [...prev, uploadRes.url]);
+        uploadedUrls[index] = uploaded.url;
+        fileProgress[index] = 100;
+        updateProgress();
       }
+    };
+    try {
+      const workers = Array.from({ length: Math.min(2, fileList.length) }, () => worker());
+      const results = await Promise.allSettled(workers);
+      const failed = results.find((result) => result.status === 'rejected') as PromiseRejectedResult | undefined;
+      if (failed) throw failed.reason;
+      setMediaUrls((previous) => [...previous, ...uploadedUrls]);
       setUploadPercent(100);
-      setUploadStatusText('All images are optimized and stored securely.');
+      setUploadStatusText('All images are stored and ready to publish.');
       if (totalOriginal > 0) {
         const savingsPercent = Math.max(0, Math.round(((totalOriginal - totalCompressed) / totalOriginal) * 100));
         setCompressionSavings({ original: totalOriginal, compressed: totalCompressed, savingsPercent });
@@ -170,7 +185,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
       setUploadError(message);
       setUploadStatusText('Upload failed. Your post has not been published.');
     } finally {
-      window.setTimeout(() => setIsCompressing(false), 450);
+      window.setTimeout(() => setIsCompressing(false), 250);
       if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };

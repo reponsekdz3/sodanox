@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   X,
   User,
+  CreditCard,
   Shield,
   Bell,
   Sliders,
@@ -42,6 +43,7 @@ interface SettingsModalProps {
   currentUser: UserType;
   onClose: () => void;
   onOpenEditProfile: () => void;
+  onOpenSubscription: () => void;
 }
 
 type SettingsSection = 'account' | 'privacy' | 'notifications' | 'preferences' | 'safety' | 'data' | 'desktop';
@@ -50,6 +52,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   currentUser,
   onClose,
   onOpenEditProfile,
+  onOpenSubscription,
 }) => {
   const { signOut, sendPasswordReset, updateUser } = useAuth();
   const [activeSection, setActiveSection] = useState<SettingsSection>('account');
@@ -243,6 +246,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <X size={18} />
               </button>
             </div>
+
+            <button type="button" onClick={onOpenSubscription} className="mb-3 flex w-full items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"><CreditCard size={15} /><span>Membership plans & billing</span></button>
 
             {/* Section tabs */}
             <div className="flex md:flex-col gap-1 overflow-x-auto py-2 md:py-0">

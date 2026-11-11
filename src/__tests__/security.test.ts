@@ -70,7 +70,7 @@ class SecurityRuleSimulator {
     // Case 1: Owner update
     if (request.auth.uid === targetUserId) {
       // Disallow immutable field tampering
-      const immutable = ['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince'];
+      const immutable = ['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince', 'subscription', 'isSuspended'];
       for (const key of immutable) {
         if (key in incoming && incoming[key] !== existing.data[key]) {
           return false;
@@ -407,7 +407,7 @@ describe('Firestore Rules Security Invariants Verification', () => {
     it('#14: Verification payment records cannot be forged by browser clients', () => {
       const content = sim.getRulesText();
       expect(content).toContain('allow create, update, delete: if false;');
-      expect(content).toContain("!incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince'])");
+      expect(content).toContain("!incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince', 'subscription', 'isSuspended'])");
     });
 
     // 15. Story item changes use authenticated interaction endpoints

@@ -1,4 +1,6 @@
 import { Post, User, MarketplaceItem } from '../types';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { db } from '../firebase/config';
 
 export interface MLSearchResult {
   posts: Post[];
@@ -184,4 +186,65 @@ function extractTopTags(posts: Post[]): { tag: string; count: number }[] {
   return Object.entries(tagCounts)
     .map(([tag, count]) => ({ tag, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+/** Marketplace prediction model weights are published only by trusted server functions. */
+export interface MarketplacePredictionWeights {
+  priceAffinity: number;
+  viewSignal: number;
+  likeSignal: number;
+  descriptionQuality: number;
+  photoQuality: number;
+  freshness: number;
+  bias: number;
+}
+let marketplacePredictionWeights: MarketplacePredictionWeights | null = null;
+
+export function subscribeToServerMarketplaceModel(onUpdated?: () => void): () => void {
+  return onSnapshot(doc(db, 'ml_models', 'marketplace_conversion'), (snapshot) => {
+    const weights = snapshot.data()?.weights;
+    if (!weights || typeof weights !== 'object') return;
+    const keys: Array<keyof MarketplacePredictionWeights> = [
+      'priceAffinity', 'viewSignal', 'likeSignal', 'descriptionQuality',
+      'photoQuality', 'freshness', 'bias',
+    ];
+    if (!keys.every((key) => typeof weights[key] === 'number' && Number.isFinite(weights[key]))) return;
+    marketplacePredictionWeights = weights as MarketplacePredictionWeights;
+    onUpdated?.();
+  }, (error) => {
+    console.warn('Marketplace prediction model is unavailable; using relevance and recency ranking.', error);
+  });
+}
+
+function marketplacePredictionFeatures(item: MarketplaceItem): number[] {
+  const created = typeof item.createdAt === 'number' ? item.createdAt
+    : typeof (item.createdAt as any)?.toMillis === 'function' ? (item.createdAt as any).toMillis() : Date.now();
+  const ageHours = Math.max(1, (Date.now() - created) / 3600000);
+  return [
+    1 / (1 + Math.log1p(Math.max(0, Number(item.price || 0)))),
+    Math.min(1, Math.log1p(Math.max(0, Number(item.viewsCount || 0))) / 12),
+    Math.min(1, Math.log1p(Math.max(0, Number((item as any).likesCount || 0))) / 8),
+    Math.min(1, String(item.description || '').length / 500),
+    Math.min(1, (Array.isArray(item.images) ? item.images.length : 0) / 5),
+    Math.max(0.02, Math.exp(-Math.log(2) * ageHours / 720)),
+  ];
+}
+
+export function rankMarketplaceItemsWithML(items: MarketplaceItem[]): MarketplaceItem[] {
+  if (!marketplacePredictionWeights || items.length < 2) return items;
+  const weights = marketplacePredictionWeights;
+  const scored = items.map((item) => {
+    const features = marketplacePredictionFeatures(item);
+    const z = weights.bias + features.reduce((sum, feature, index) => {
+      const values = [weights.priceAffinity, weights.viewSignal, weights.likeSignal,
+        weights.descriptionQuality, weights.photoQuality, weights.freshness];
+      return sum + feature * values[index];
+    }, 0);
+    const probability = 1 / (1 + Math.exp(-Math.max(-20, Math.min(20, z))));
+    return { item, probability };
+  });
+  return scored.sort((a, b) => {
+    if (a.item.isSold !== b.item.isSold) return a.item.isSold ? 1 : -1;
+    return b.probability - a.probability;
+  }).map((entry) => entry.item);
 }

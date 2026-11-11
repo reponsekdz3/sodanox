@@ -323,6 +323,37 @@ export async function compressImage(
   });
 }
 
+
+/**
+ * Image optimization with a bounded CPU budget. When a slow decoder/encoder
+ * exceeds the budget, keep the original bytes and continue to the upload path.
+ * This bounds local compression wait, not network transfer time.
+ */
+export async function compressImageWithinBudget(
+  input: File | Blob,
+  options?: Parameters<typeof compressImage>[1] & { maxProcessingMs?: number },
+): Promise<CompressionResult> {
+  const maxProcessingMs = Math.max(1000, Math.min(45000, options?.maxProcessingMs ?? 45000));
+  const { maxProcessingMs: _ignored, ...compressionOptions } = options || {};
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const fallback = new Promise<CompressionResult>((resolve) => {
+    timeout = setTimeout(() => {
+      const originalName = 'name' in input ? input.name : (options?.fileName || 'upload.bin');
+      const originalFile = new File([input], originalName, { type: input.type || 'application/octet-stream' });
+      options?.onProgress?.(100, 'Compression budget reached; original media retained for fast publishing.');
+      resolve({
+        file: originalFile, blob: input, originalSize: input.size, compressedSize: input.size,
+        savingsPercent: 0, mimeType: input.type || 'application/octet-stream',
+      });
+    }, maxProcessingMs);
+  });
+  try {
+    return await Promise.race([compressImage(input, compressionOptions), fallback]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 /**
  * Powerful Video Compression & Transcoding:
  * Compresses videos client-side to standard vertical 720p/540p WebM/MP4,
@@ -335,6 +366,7 @@ export async function compressVideo(
     maxHeight?: number;
     bitrate?: number;
     maxDurationSeconds?: number;
+    maxProcessingMs?: number;
     onProgress?: (progress: number, status: string) => void;
   }
 ): Promise<VideoCompressionResult> {
@@ -349,6 +381,7 @@ export async function compressVideo(
     options?.onProgress?.(progress, status);
   };
   const videoUrl = URL.createObjectURL(videoFile);
+  const maxProcessingMs = Math.max(1000, Math.min(45000, options?.maxProcessingMs ?? 45000));
 
   return new Promise<VideoCompressionResult>((resolve, reject) => {
     const video = document.createElement('video');
@@ -359,10 +392,12 @@ export async function compressVideo(
     let recorder: MediaRecorder | null = null;
     let animationFrame = 0;
     let safetyTimer: ReturnType<typeof setTimeout> | null = null;
+    let budgetTimer: ReturnType<typeof setTimeout> | null = null;
 
     const cleanup = () => {
       if (animationFrame) cancelAnimationFrame(animationFrame);
       if (safetyTimer) clearTimeout(safetyTimer);
+      if (budgetTimer) clearTimeout(budgetTimer);
       outputStream?.getTracks().forEach((track) => track.stop());
       if (audioContext && audioContext.state !== 'closed') void audioContext.close().catch(() => {});
       video.pause();
@@ -399,6 +434,11 @@ export async function compressVideo(
       } catch { return ''; }
     };
 
+    // A hard wall-clock deadline prevents client-side transcoding from blocking the composer indefinitely.
+    budgetTimer = setTimeout(() => {
+      finish(originalResult(extractPoster(), Number.isFinite(video.duration) ? video.duration : undefined),
+        'Video optimization reached its time budget; original video and audio are retained.');
+    }, maxProcessingMs);
     report(2, 'Reading video metadata...');
     video.preload = 'auto';
     video.playsInline = true;
@@ -424,7 +464,7 @@ export async function compressVideo(
       if (processingStarted || settled) return;
       processingStarted = true;
       const poster = extractPoster();
-      if (originalSize < 3.5 * 1024 * 1024 || typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
+      if (duration > 45 || originalSize < 3.5 * 1024 * 1024 || typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
         finish(originalResult(poster, video.duration), 'Original video retained; transcoding skipped.');
         return;
       }
@@ -510,7 +550,7 @@ export async function compressVideo(
           report(96, 'Finalizing optimized video...');
           if (recorder?.state === 'recording') recorder.stop();
         };
-        safetyTimer = setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, Math.ceil(video.duration * 1000) + 10000);
+        safetyTimer = setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, Math.min(Math.ceil(video.duration * 1000) + 10000, maxProcessingMs));
       } catch (error) {
         console.warn('Audio-preserving transcode was unavailable; original file will be kept:', error);
         finish(originalResult(poster, video.duration), 'Original video retained because safe audio-preserving transcoding was unavailable.');

@@ -44,11 +44,9 @@ service cloud.firestore {
              (data.author.id == request.auth.uid);
     }
 
+    // Super-admin is provisioned out of band using Firebase Admin custom claims.
     function isAdmin() {
-      return isSignedIn() && (
-        request.auth.token.email == 'reponsekdz6@gmail.com' ||
-        request.auth.token.email == 'reponsekdz01@gmail.com'
-      );
+      return isSignedIn() && request.auth.token.get('superAdmin', false) == true;
     }
 
     // Global Catch-All: Denies any route not explicitly matched
@@ -80,7 +78,7 @@ service cloud.firestore {
       allow update: if (
         isAdmin() ||
         (isOwner(userId) &&
-         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince'])) ||
+         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt', 'role', 'isAdmin', 'verified', 'verifiedBadgeType', 'verifiedSince', 'subscription', 'isSuspended'])) ||
         (isSignedIn() &&
          request.auth.uid != userId &&
          incoming().diff(existing()).affectedKeys().hasOnly(['followers', 'followersCount', 'updatedAt']) &&
@@ -471,6 +469,19 @@ service cloud.firestore {
     }
 
     // -------------------------------------------------------------
+    // Platform model documents are readable by signed-in clients but writable only by trusted functions.
+    match /ml_models/{modelId} { allow read: if isSignedIn(); allow write: if false; }
+
+    match /subscription_plans/{planId} {
+      allow read: if isSignedIn() && (resource.data.active == true || isAdmin());
+      allow write: if false;
+    }
+    match /subscription_payments/{paymentId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow write: if false;
+    }
+    match /admin_audit_logs/{logId} { allow read: if isAdmin(); allow write: if false; }
+
     // 13. Test Collection (/test/{docId})
     // -------------------------------------------------------------
     // Completely locked down - no client reads or writes permitted

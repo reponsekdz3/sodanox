@@ -28,7 +28,7 @@ import {
 } from '../../services/marketplaceService';
 import { compressImage, uploadMediaToFirebase } from '../../services/mediaCompressionService';
 import { auraAudio } from '../../utils/audioSynthesizer';
-import { searchWithML } from '../../services/mlSearchService';
+import { searchWithML, rankMarketplaceItemsWithML, subscribeToServerMarketplaceModel } from '../../services/mlSearchService';
 
 interface MarketplaceViewProps {
   currentUser: User;
@@ -76,6 +76,10 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   const [adSuccessNotice, setAdSuccessNotice] = useState(false);
   const [adError, setAdError] = useState<string | null>(null);
 
+  const [marketplaceModelRevision, setMarketplaceModelRevision] = useState(0);
+
+  useEffect(() => subscribeToServerMarketplaceModel(() => setMarketplaceModelRevision((value) => value + 1)), []);
+
   useEffect(() => {
     let active = true;
     getMarketplaceItems()
@@ -94,10 +98,10 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
     }
     if (searchQuery.trim()) {
       const mlRes = searchWithML(searchQuery, { posts: [], creators: [], marketplace: result });
-      return mlRes.marketplace;
+      return rankMarketplaceItemsWithML(mlRes.marketplace);
     }
-    return result;
-  }, [items, selectedCategory, searchQuery]);
+    return rankMarketplaceItemsWithML(result);
+  }, [items, selectedCategory, searchQuery, marketplaceModelRevision]);
 
   const handleSellImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];

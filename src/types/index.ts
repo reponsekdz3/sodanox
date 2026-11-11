@@ -46,6 +46,7 @@ export interface User {
   verifiedSince?: number;
   isAdmin?: boolean;
   isSuspended?: boolean;
+  subscription?: { planId: string; planName: string; status: 'active' | 'expired' | 'cancelled' | 'none'; startedAt: number; expiresAt: number; transactionRef?: string; billingMode?: 'manual_renewal' };
   detectedLocation?: {
     lat: number;
     lng: number;
