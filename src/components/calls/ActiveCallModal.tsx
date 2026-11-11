@@ -43,6 +43,7 @@ interface ActiveCallModalProps {
   call: ActiveCall;
   currentUser: User;
   onEndCall: () => void;
+  onDurationChange: (durationSeconds: number) => void;
   onToggleMute: () => void;
   onToggleCamera: () => void;
   onToggleSpeaker: () => void;
@@ -65,6 +66,7 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   call,
   currentUser,
   onEndCall,
+  onDurationChange,
   onToggleMute,
   onToggleCamera,
   onToggleSpeaker,
@@ -99,6 +101,8 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const processedCandidatesRef = useRef<Set<string>>(new Set());
   const ringingTimeoutRef = useRef<any>(null);
+  const onDurationChangeRef = useRef(onDurationChange);
+  useEffect(() => { onDurationChangeRef.current = onDurationChange; }, [onDurationChange]);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -203,21 +207,12 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     if (call.status === 'ringing') {
       audioSynth.startRinging();
 
-      // If testing in sandbox or single-device, auto-connect after 4s so user experiences full calling features immediately
-      const autoAnswerTimer = setTimeout(() => {
-        if (call.status === 'ringing') {
-          audioSynth.stopRinging();
-          audioSynth.playConnectedChime();
-          onStatusConnected();
-        }
-      }, 4000);
-
+      // A call is connected only by the actual WebRTC offer/answer and ICE flow.
+      // Ring until the peer answers, then mark unanswered calls as missed.
       ringingTimeoutRef.current = setTimeout(() => {
         handleHangup('missed');
       }, 45000);
-
       return () => {
-        clearTimeout(autoAnswerTimer);
         audioSynth.stopRinging();
         if (ringingTimeoutRef.current) clearTimeout(ringingTimeoutRef.current);
       };
@@ -232,7 +227,11 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
     if (call.status !== 'connected') return;
 
     const interval = setInterval(() => {
-      setDuration((prev) => prev + 1);
+      setDuration((previous) => {
+        const next = previous + 1;
+        onDurationChangeRef.current(next);
+        return next;
+      });
     }, 1000);
 
     return () => clearInterval(interval);
@@ -575,6 +574,9 @@ export const ActiveCallModal: React.FC<ActiveCallModalProps> = ({
 
     onEndCall();
   };
+
+  // Keep this component mounted so WebRTC media/signaling effects remain active while minimized.
+  if (call.isMinimized) return null;
 
   return (
     <div

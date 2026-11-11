@@ -267,7 +267,7 @@ export function subscribeToUserConversations(
               status: 'read',
             },
             unreadCount,
-            isOnline: true,
+            isOnline: Boolean(rawParticipant?.isOnline),
             isTyping,
             messages: getStoredMessages(docSnap.id),
           });
