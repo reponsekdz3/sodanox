@@ -44,9 +44,12 @@ service cloud.firestore {
              (data.author.id == request.auth.uid);
     }
 
-    // Super-admin is provisioned out of band using Firebase Admin custom claims.
+    // Super-admin is provisioned out of band using Firebase Admin custom claims or verified owner email.
     function isAdmin() {
-      return isSignedIn() && request.auth.token.get('superAdmin', false) == true;
+      return isSignedIn() && (
+        request.auth.token.get('superAdmin', false) == true ||
+        ((request.auth.token.email == 'reponsekdz01@gmail.com' || request.auth.token.email == 'reponsekdz6@gmail.com') && request.auth.token.email_verified == true)
+      );
     }
 
     // Global Catch-All: Denies any route not explicitly matched
@@ -433,9 +436,18 @@ service cloud.firestore {
         incoming().price is number && incoming().price > 0 &&
         incoming().images is list && incoming().images.size() > 0 && incoming().images.size() <= 8 &&
         incoming().isSold == false;
-      allow update: if isSignedIn() && resource.data.seller.id == request.auth.uid &&
-        !incoming().diff(existing()).affectedKeys().hasAny(['id', 'seller', 'createdAt', 'viewsCount']) &&
-        (!incoming().diff(existing()).affectedKeys().hasAny(['isSold']) || incoming().isSold == true);
+      allow update: if isSignedIn() && (
+        isAdmin() ||
+        (resource.data.seller.id == request.auth.uid &&
+          !incoming().diff(existing()).affectedKeys().hasAny(['id', 'seller', 'createdAt', 'viewsCount']) &&
+          (!incoming().diff(existing()).affectedKeys().hasAny(['isSold']) || incoming().isSold == true)) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['savedBy']) && (
+          (incoming().savedBy.hasAll(existing().get('savedBy', [])) &&
+           incoming().savedBy.removeAll(existing().get('savedBy', [])).hasOnly([request.auth.uid])) ||
+          (existing().get('savedBy', []).hasAll(incoming().savedBy) &&
+           existing().get('savedBy', []).removeAll(incoming().savedBy).hasOnly([request.auth.uid]))
+        ))
+      );
       allow delete: if isSignedIn() && (resource.data.seller.id == request.auth.uid || isAdmin());
     }
     // -------------------------------------------------------------

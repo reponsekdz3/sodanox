@@ -11,6 +11,7 @@ import {
   Search,
   Sparkles,
   MoreHorizontal,
+  ShieldCheck,
 } from 'lucide-react';
 import { User } from '../../types';
 import { useAuth } from '../../context/AuthContext';
@@ -38,6 +39,7 @@ interface NavbarProps {
   onOpenAuth: () => void;
   onOpenSettings: () => void;
   onOpenMobileNav?: () => void;
+  onOpenSuperAdmin?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -51,6 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenAuth,
   onOpenSettings,
   onOpenMobileNav,
+  onOpenSuperAdmin,
 }) => {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -374,6 +377,20 @@ export const Navbar: React.FC<NavbarProps> = ({
                     <Settings size={15} className="text-[#5E7C6E]" />
                     <span>Settings & Privacy</span>
                   </button>
+
+                  {onOpenSuperAdmin && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsDropdownOpen(false);
+                        onOpenSuperAdmin();
+                      }}
+                      className="w-full px-4 py-2.5 text-left text-xs font-bold text-emerald-800 bg-emerald-50/80 hover:bg-emerald-100 flex items-center gap-2.5 cursor-pointer transition-colors"
+                    >
+                      <ShieldCheck size={15} className="text-emerald-600" />
+                      <span>Admin Command</span>
+                    </button>
+                  )}
 
                   <PWAInstallButton variant="menu" />
                 </div>

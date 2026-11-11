@@ -42,6 +42,7 @@ interface SidebarNavProps {
   onSelectSavedTab?: () => void;
   onSelectTrendingTab?: () => void;
   onOpenPayVerified?: () => void;
+  onOpenSuperAdmin?: () => void;
 }
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({
@@ -56,6 +57,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
   onSelectSavedTab,
   onSelectTrendingTab,
   onOpenPayVerified,
+  onOpenSuperAdmin,
 }) => {
   const { signOut } = useAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -280,6 +282,19 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({
             <Settings size={20} className="text-[#4B6358]" />
             <span className="hidden lg:inline text-[14px]">Settings & Privacy</span>
           </button>
+
+          {/* Super Administrator Platform Command */}
+          {onOpenSuperAdmin && (
+            <button
+              type="button"
+              onClick={onOpenSuperAdmin}
+              className="w-full flex items-center justify-center lg:justify-start gap-3.5 px-2.5 lg:px-3.5 py-3 rounded-2xl transition-all text-emerald-800 bg-emerald-50/90 hover:bg-emerald-100/90 hover:text-emerald-950 border border-emerald-200/80 cursor-pointer shadow-2xs"
+              title="Platform Command (Admin)"
+            >
+              <ShieldCheck size={20} className="text-[#059669] shrink-0" />
+              <span className="hidden lg:inline text-[14px] font-bold">Admin Command</span>
+            </button>
+          )}
         </nav>
 
         {/* Primary Action Button: Create Reflection */}

@@ -19,6 +19,8 @@ import {
   Zap,
   Play,
   Square,
+  Link2,
+  Timer,
 } from 'lucide-react';
 import { User, StoryItem, StoryFilter, StorySticker, StoryTextOverlay } from '../../types';
 import { compressImageWithinBudget, compressVideo, uploadMediaToFirebase, formatBytes } from '../../services/mediaCompressionService';
@@ -48,6 +50,9 @@ const FILTER_CLASSES: Record<StoryFilter, string> = {
   golden: 'sepia-[0.3] saturate-[1.4] brightness-[1.05]',
   sepia: 'sepia-[0.7] contrast-[0.9]',
   emerald: 'hue-rotate-[25deg] saturate-[1.2]',
+  cyber: 'hue-rotate-[180deg] saturate-[1.6] contrast-[1.2]',
+  sunset: 'sepia-[0.4] hue-rotate-[-20deg] saturate-[1.5] brightness-[1.05]',
+  grain: 'contrast-[1.2] brightness-[0.98] saturate-[0.85]',
 };
 
 const AMBIENT_SOUNDTRACKS = [
@@ -94,7 +99,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   const [stickers, setStickers] = useState<StorySticker[]>([]);
   const [playingAudioTitle, setPlayingAudioTitle] = useState<string | null>(null);
   const [activeStickerModal, setActiveStickerModal] = useState<
-    'none' | 'poll' | 'question' | 'music' | 'location' | 'mention' | 'emoji_slider'
+    'none' | 'poll' | 'question' | 'music' | 'location' | 'mention' | 'emoji_slider' | 'link' | 'countdown'
   >('none');
 
   // Poll form state
@@ -108,6 +113,12 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
   // Location & Mention state
   const [locationName, setLocationName] = useState('');
   const [mentionName, setMentionName] = useState('');
+
+  // Link & Countdown state
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkLabel, setLinkLabel] = useState('View Details');
+  const [countdownTitle, setCountdownTitle] = useState('Drop Live');
+  const [countdownHours, setCountdownHours] = useState('24');
 
   // Camera state
   const [isCameraActive, setIsCameraActive] = useState(false);
@@ -371,6 +382,38 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
     };
     setStickers((prev) => [...prev, newSticker]);
     setActiveStickerModal('none');
+  };
+
+  const handleAddLink = () => {
+    if (!linkUrl.trim()) return;
+    const newSticker: StorySticker = {
+      id: `sticker_link_${Date.now()}`,
+      type: 'link',
+      data: {
+        linkUrl: linkUrl.trim(),
+        linkLabel: linkLabel.trim() || 'Tap link',
+      },
+    };
+    setStickers((prev) => [...prev, newSticker]);
+    setActiveStickerModal('none');
+    setLinkUrl('');
+  };
+
+  const handleAddCountdown = () => {
+    if (!countdownTitle.trim()) return;
+    const hours = Math.max(1, Number(countdownHours) || 24);
+    const targetMs = Date.now() + hours * 3600000;
+    const newSticker: StorySticker = {
+      id: `sticker_count_${Date.now()}`,
+      type: 'countdown',
+      data: {
+        countdownTitle: countdownTitle.trim(),
+        countdownTargetMs: targetMs,
+      },
+    };
+    setStickers((prev) => [...prev, newSticker]);
+    setActiveStickerModal('none');
+    setCountdownTitle('Drop Live');
   };
 
   const handleRemoveSticker = (id: string) => {
@@ -687,6 +730,27 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Link Sticker rendering */}
+                {s.type === 'link' && (
+                  <div className="flex items-center gap-2 bg-white/95 text-[#064E3B] px-4 py-2.5 rounded-2xl shadow-xl font-semibold text-xs border border-white/50">
+                    <Link2 size={14} className="text-[#059669]" />
+                    <span className="truncate max-w-[180px]">{s.data.linkLabel || 'Visit Link'}</span>
+                  </div>
+                )}
+
+                {/* Countdown Sticker rendering */}
+                {s.type === 'countdown' && (
+                  <div className="w-56 bg-black/80 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-xl border border-white/20 text-center">
+                    <div className="text-[11px] text-[#8FA89B] font-mono uppercase tracking-wider mb-1 flex items-center justify-center gap-1">
+                      <Timer size={12} />
+                      <span>{s.data.countdownTitle}</span>
+                    </div>
+                    <div className="font-mono text-base font-bold tracking-widest text-emerald-300">
+                      23h 59m 59s
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -748,7 +812,7 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
         {/* Filter Pills row */}
         {(mediaUrl || mediaType === 'canvas') && (
           <div className="px-4 py-2 bg-[#1C2420] border-t border-white/10 flex items-center gap-2 overflow-x-auto z-20">
-            {(['none', 'vintage', 'nordic', 'noir', 'golden', 'sepia', 'emerald'] as StoryFilter[]).map(
+            {(['none', 'vintage', 'nordic', 'noir', 'golden', 'sepia', 'emerald', 'cyber', 'sunset', 'grain'] as StoryFilter[]).map(
               (f) => (
                 <button
                   key={f}
@@ -830,6 +894,8 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                 [
                   { id: 'poll', label: 'Poll', icon: BarChart2 },
                   { id: 'question', label: 'Question', icon: HelpCircle },
+                  { id: 'link', label: 'Link', icon: Link2 },
+                  { id: 'countdown', label: 'Countdown', icon: Timer },
                   { id: 'music', label: 'Music', icon: Music },
                   { id: 'location', label: 'Location', icon: MapPin },
                   { id: 'mention', label: 'Mention', icon: AtSign },
@@ -1031,6 +1097,73 @@ export const CreateStoryModal: React.FC<CreateStoryModalProps> = ({
                   className="w-full mt-2 py-2.5 rounded-xl bg-[#2D3732] text-white text-xs font-medium"
                 >
                   Place Mention Sticker
+                </button>
+              </div>
+            )}
+
+            {/* Link Content */}
+            {activeStickerModal === 'link' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-[#2D3732] mb-1">Destination Web URL</label>
+                  <input
+                    type="url"
+                    value={linkUrl}
+                    onChange={(e) => setLinkUrl(e.target.value)}
+                    placeholder="https://example.com/collection"
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#2D3732]/15 text-xs text-[#2D3732] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#2D3732] mb-1">Sticker Button Text</label>
+                  <input
+                    type="text"
+                    value={linkLabel}
+                    onChange={(e) => setLinkLabel(e.target.value)}
+                    placeholder="Shop Now, Read Journal, Visit Site"
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#2D3732]/15 text-xs text-[#2D3732] focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddLink}
+                  className="w-full mt-2 py-2.5 rounded-xl bg-[#2D3732] text-white text-xs font-medium"
+                >
+                  Place Link Sticker
+                </button>
+              </div>
+            )}
+
+            {/* Countdown Content */}
+            {activeStickerModal === 'countdown' && (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-[#2D3732] mb-1">Countdown Event Title</label>
+                  <input
+                    type="text"
+                    value={countdownTitle}
+                    onChange={(e) => setCountdownTitle(e.target.value)}
+                    placeholder="Artisan Drop, Live Show, Book Launch"
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#2D3732]/15 text-xs text-[#2D3732] focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-[#2D3732] mb-1">Duration From Now (Hours)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={72}
+                    value={countdownHours}
+                    onChange={(e) => setCountdownHours(e.target.value)}
+                    className="w-full px-3.5 py-2 rounded-xl bg-white border border-[#2D3732]/15 text-xs text-[#2D3732] focus:outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddCountdown}
+                  className="w-full mt-2 py-2.5 rounded-xl bg-[#2D3732] text-white text-xs font-medium"
+                >
+                  Place Countdown Timer
                 </button>
               </div>
             )}

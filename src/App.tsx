@@ -1264,6 +1264,7 @@ export default function App() {
             navigateToTab('explore');
           }}
           onOpenPayVerified={() => setIsPayVerifiedOpen(true)}
+          onOpenSuperAdmin={() => setIsSuperAdminOpen(true)}
         />
       </div>
 
@@ -1294,6 +1295,7 @@ export default function App() {
             onOpenNotifications={() => setIsNotificationsDrawerOpen(true)}
             onOpenAuth={() => setIsSettingsOpen(true)}
             onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenSuperAdmin={() => setIsSuperAdminOpen(true)}
           />
         </div>
 

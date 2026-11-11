@@ -37,6 +37,9 @@ const FILTER_CLASSES: Record<StoryFilter, string> = {
   golden: 'sepia-[0.3] saturate-[1.4] brightness-[1.05]',
   sepia: 'sepia-[0.7] contrast-[0.9]',
   emerald: 'hue-rotate-[25deg] saturate-[1.2]',
+  cyber: 'hue-rotate-[180deg] saturate-[1.6] contrast-[1.2]',
+  sunset: 'sepia-[0.4] hue-rotate-[-20deg] saturate-[1.5]',
+  grain: 'contrast-[1.1] brightness-[1.05]',
 };
 
 const PostMediaCarousel: React.FC<{ mediaUrls: string[]; filter?: StoryFilter }> = ({ mediaUrls, filter }) => {

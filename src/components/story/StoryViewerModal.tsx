@@ -20,6 +20,9 @@ import {
   Copy,
   Pencil,
   Save,
+  Link2,
+  Timer,
+  ExternalLink,
 } from 'lucide-react';
 import { Story, StoryItem, User, StoryFilter, StorySticker } from '../../types';
 import { voteStoryPoll, answerStoryQuestion, createStoryHighlight } from '../../services/storyService';
@@ -50,6 +53,9 @@ const FILTER_CLASSES: Record<StoryFilter, string> = {
   golden: 'sepia-[0.3] saturate-[1.4] brightness-[1.05]',
   sepia: 'sepia-[0.7] contrast-[0.9]',
   emerald: 'hue-rotate-[25deg] saturate-[1.2]',
+  cyber: 'hue-rotate-[180deg] saturate-[1.6] contrast-[1.2]',
+  sunset: 'sepia-[0.4] hue-rotate-[-20deg] saturate-[1.5] brightness-[1.05]',
+  grain: 'contrast-[1.2] brightness-[0.98] saturate-[0.85]',
 };
 
 export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
@@ -666,10 +672,58 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
                   return (
                     <div
                       key={s.id}
-                      className="flex items-center gap-1.5 bg-[#8FA89B] text-white px-4 py-2 rounded-full shadow-xl font-mono text-xs font-bold pointer-events-auto"
-                      onClick={(e) => e.stopPropagation()}
+                      className="flex items-center gap-1.5 bg-[#8FA89B] hover:bg-[#7e9689] text-white px-4 py-2 rounded-full shadow-xl font-mono text-xs font-bold pointer-events-auto cursor-pointer transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (s.data.username) {
+                          window.location.hash = `#/profile/${s.data.username}`;
+                          onClose();
+                        }
+                      }}
                     >
                       <span>@{s.data.username}</span>
+                    </div>
+                  );
+                }
+
+                // Link sticker
+                if (s.type === 'link') {
+                  return (
+                    <a
+                      key={s.id}
+                      href={s.data.linkUrl || '#'}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 bg-white/95 hover:bg-white text-[#064E3B] px-4 py-2.5 rounded-2xl shadow-xl font-semibold text-xs border border-white/50 pointer-events-auto cursor-pointer transition-transform hover:scale-105"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Link2 size={14} className="text-[#059669]" />
+                      <span className="truncate max-w-[180px]">{s.data.linkLabel || 'Visit Link'}</span>
+                      <ExternalLink size={12} className="text-[#55635C]" />
+                    </a>
+                  );
+                }
+
+                // Countdown sticker
+                if (s.type === 'countdown') {
+                  const target = s.data.countdownTargetMs || Date.now() + 86400000;
+                  const diff = Math.max(0, target - Date.now());
+                  const hours = Math.floor(diff / 3600000);
+                  const minutes = Math.floor((diff % 3600000) / 60000);
+
+                  return (
+                    <div
+                      key={s.id}
+                      className="w-56 bg-black/85 backdrop-blur-md text-white rounded-2xl p-3.5 shadow-2xl border border-white/25 text-center pointer-events-auto"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="text-[11px] text-[#8FA89B] font-mono uppercase tracking-wider mb-1 flex items-center justify-center gap-1">
+                        <Timer size={12} />
+                        <span>{s.data.countdownTitle || 'Countdown'}</span>
+                      </div>
+                      <div className="font-mono text-base font-bold tracking-widest text-emerald-300">
+                        {hours}h {minutes}m remaining
+                      </div>
                     </div>
                   );
                 }
@@ -936,7 +990,7 @@ export const StoryViewerModal: React.FC<StoryViewerModalProps> = ({
               <div>
                 <label className="block text-xs font-semibold mb-1.5">Color treatment</label>
                 <div className="flex flex-wrap gap-1.5">
-                  {(['none', 'vintage', 'nordic', 'noir', 'golden', 'sepia', 'emerald'] as StoryFilter[]).map((filter) => (
+                  {(['none', 'vintage', 'nordic', 'noir', 'golden', 'sepia', 'emerald', 'cyber', 'sunset', 'grain'] as StoryFilter[]).map((filter) => (
                     <button key={filter} type="button" onClick={() => setEditFilter(filter)} className={`rounded-full border px-3 py-1.5 text-[11px] capitalize ${editFilter === filter ? 'bg-[#2D3732] text-white border-[#2D3732]' : 'bg-white border-[#D1E2D9] text-[#52645A]'}`}>
                       {filter}
                     </button>

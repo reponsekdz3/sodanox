@@ -872,11 +872,13 @@ export const recordContentShare = onCall(async (request) => {
 });
 
 
-/** Privileged operations require a Firebase custom claim set out-of-band. */
+/** Privileged operations require a Firebase custom claim set out-of-band or authorized owner credentials. */
 function requireSuperAdmin(request: any): string {
   const uid = requireAuth(request.auth?.uid);
-  if (request.auth?.token?.superAdmin !== true) {
-    throw new HttpsError('permission-denied', 'This operation requires the super-admin custom claim.');
+  const email = (request.auth?.token?.email || '').toLowerCase().trim();
+  const isOwner = ['reponsekdz01@gmail.com', 'reponsekdz6@gmail.com'].includes(email);
+  if (request.auth?.token?.superAdmin !== true && !isOwner) {
+    throw new HttpsError('permission-denied', 'This operation requires the super-admin custom claim or authorized owner session.');
   }
   return uid;
 }

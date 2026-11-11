@@ -230,8 +230,14 @@
         "location": { "type": "string" },
         "createdAt": { "type": "number" },
         "isSold": { "type": "boolean" },
+        "isReserved": { "type": "boolean" },
+        "shippingAvailable": { "type": "boolean" },
+        "negotiable": { "type": "boolean" },
+        "savedBy": { "type": "array" },
+        "updatedAt": { "type": "number" },
         "tags": { "type": "array" },
-        "contactPhone": { "type": "string" }
+        "contactPhone": { "type": "string" },
+        "contactEmail": { "type": "string" }
       },
       "required": ["title", "price", "seller"]
     },

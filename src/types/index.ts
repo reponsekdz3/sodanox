@@ -56,11 +56,11 @@ export interface User {
   };
 }
 
-export type StoryFilter = 'none' | 'vintage' | 'nordic' | 'noir' | 'golden' | 'sepia' | 'emerald';
+export type StoryFilter = 'none' | 'vintage' | 'nordic' | 'noir' | 'golden' | 'sepia' | 'emerald' | 'cyber' | 'sunset' | 'grain';
 
 export interface StorySticker {
   id: string;
-  type: 'poll' | 'question' | 'music' | 'location' | 'mention' | 'emoji_slider';
+  type: 'poll' | 'question' | 'music' | 'location' | 'mention' | 'emoji_slider' | 'link' | 'countdown';
   data: {
     question?: string;
     options?: { id: string; text: string; votes: number }[];
@@ -72,6 +72,10 @@ export interface StorySticker {
     username?: string;
     emoji?: string;
     sliderValue?: number;
+    linkUrl?: string;
+    linkLabel?: string;
+    countdownTitle?: string;
+    countdownTargetMs?: number;
   };
 }
 
@@ -358,9 +362,18 @@ export interface MarketplaceItem {
   location: string;
   createdAt: number;
   isSold: boolean;
+  isReserved?: boolean;
+  shippingAvailable?: boolean;
+  negotiable?: boolean;
+  savedBy?: string[];
+  updatedAt?: number;
   tags: string[];
   contactPhone?: string;
+  contactEmail?: string;
   viewsCount?: number;
+  isPromoted?: boolean;
+  imageUrl?: string;
+  sellerName?: string;
 }
 
 export interface SponsoredAd {

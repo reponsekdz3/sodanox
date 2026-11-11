@@ -247,7 +247,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               </button>
             </div>
 
-            <button type="button" onClick={onOpenSubscription} className="mb-3 flex w-full items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"><CreditCard size={15} /><span>Membership plans & billing</span></button>
+            <button type="button" onClick={onOpenSubscription} className="mb-2 flex w-full items-center gap-2 rounded-xl bg-emerald-700 px-3 py-2.5 text-xs font-bold text-white hover:bg-emerald-800"><CreditCard size={15} /><span>Membership plans & billing</span></button>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                window.location.hash = '#/super';
+              }}
+              className="mb-3 flex w-full items-center gap-2 rounded-xl bg-[#064E3B] border border-emerald-500/30 px-3 py-2 text-xs font-bold text-emerald-100 hover:bg-[#075943]"
+            >
+              <Shield size={15} className="text-emerald-400" />
+              <span>Platform Admin Command</span>
+            </button>
 
             {/* Section tabs */}
             <div className="flex md:flex-col gap-1 overflow-x-auto py-2 md:py-0">

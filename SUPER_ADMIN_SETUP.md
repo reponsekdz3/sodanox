@@ -2,15 +2,21 @@
 
 ## Access model
 
-The console requires the Firebase Authentication custom claim `superAdmin: true`. It does not accept a browser password, local-storage flag, email allowlist or client-writable profile role.
+The console requires the Firebase Authentication custom claim `superAdmin: true` or authorized owner credentials (`reponsekdz6@gmail.com`, `reponsekdz01@gmail.com`).
 
 From a trusted operator environment with Application Default Credentials configured:
 
 ```bash
 cd functions
 npm install
-node scripts/grant-super-admin.mjs FIREBASE_AUTH_UID grant
-node scripts/grant-super-admin.mjs FIREBASE_AUTH_UID revoke
+
+# Grant super-admin by email or UID:
+node scripts/grant-super-admin.mjs reponsekdz6@gmail.com grant
+node scripts/grant-super-admin.mjs reponsekdz01@gmail.com grant
+node scripts/grant-super-admin.mjs <FIREBASE_AUTH_UID> grant
+
+# Revoke super-admin:
+node scripts/grant-super-admin.mjs reponsekdz6@gmail.com revoke
 ```
 
 Never commit service-account keys or expose them in the browser. The user must refresh their Firebase ID token after a claim change.
