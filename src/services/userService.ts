@@ -3,6 +3,8 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  runTransaction,
+  writeBatch,
   collection,
   getDocs,
   query,
@@ -135,8 +137,9 @@ export async function checkUsernameAvailable(username: string, excludeUid?: stri
     }
     return false;
   } catch (err) {
-    console.warn('Error checking username:', err);
-    return true;
+    console.error('Username availability could not be verified:', err);
+    // Fail closed: signup must not proceed when uniqueness cannot be checked.
+    return false;
   }
 }
 
@@ -200,11 +203,11 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
 
   const fullProfile: User = {
     id: uid,
-    name: profileData.name || 'Aura Member',
+    name: profileData.name?.trim() || '',
     username: cleanUsername,
     avatar: cleanAvatar,
     bannerUrl: profileData.bannerUrl || '',
-    bio: profileData.bio || 'Exploring design, craft, and quiet conversations on Aura.',
+    bio: profileData.bio || '',
     pronouns: profileData.pronouns || '',
     location: profileData.location || '',
     website: profileData.website || '',
@@ -216,7 +219,7 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     isFollowing: false,
     isFollower: false,
     isMutual: false,
-    verified: profileData.verified || false,
+    verified: false,
     email: profileData.email || '',
     privateAccount: profileData.privateAccount || false,
     themePreference: profileData.themePreference || 'nordic',
@@ -255,7 +258,6 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     followers: [],
     following: [],
     verified: false,
-    email: profileData.email || '',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -274,20 +276,20 @@ export async function createUserProfile(uid: string, profileData: Partial<User>)
     updatedAt: serverTimestamp(),
   };
 
-  try {
-    await setDoc(userDocRef, publicData, { merge: true });
-  } catch (err) {
-    console.warn('Firestore userDoc setDoc notice:', err);
+  if (!uid || !fullProfile.name || !cleanUsername) {
+    throw new Error('A valid account ID, display name, and username are required to create a profile.');
+  }
+  if (!auth.currentUser || auth.currentUser.uid !== uid) {
+    throw new Error('The active sign-in session does not match this profile. Please sign in again.');
   }
 
-  try {
-    const privateRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
-    await setDoc(privateRef, privateData, { merge: true });
-  } catch (err) {
-    console.warn('Firestore private settings setDoc notice:', err);
-  }
+  const privateRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
+  const batch = writeBatch(db);
+  batch.set(userDocRef, publicData, { merge: true });
+  batch.set(privateRef, privateData, { merge: true });
+  // Do not claim profile creation until both public and private documents commit.
+  await batch.commit();
 
-  // Update local community cache
   const cached = getCachedUsers();
   const idx = cached.findIndex((u) => u.id === uid);
   if (idx >= 0) cached[idx] = fullProfile;
@@ -329,16 +331,16 @@ export async function updateUserProfile(uid: string, data: Partial<User>): Promi
   if (data.allowMessagesFrom !== undefined) privateUpdates.allowMessagesFrom = data.allowMessagesFrom;
   privateUpdates.updatedAt = serverTimestamp();
 
-  try {
-    if (Object.keys(publicUpdates).length > 1) {
-      await updateDoc(userDocRef, publicUpdates);
-    }
-    if (Object.keys(privateUpdates).length > 1) {
-      const privateRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
-      await setDoc(privateRef, privateUpdates, { merge: true });
-    }
-  } catch (err) {
-    console.warn('Firestore updateUserProfile notice:', err);
+  const batch = writeBatch(db);
+  if (Object.keys(publicUpdates).length > 1) {
+    batch.update(userDocRef, publicUpdates);
+  }
+  if (Object.keys(privateUpdates).length > 1) {
+    const privateRef = doc(db, USERS_COLLECTION, uid, 'private', 'settings');
+    batch.set(privateRef, privateUpdates, { merge: true });
+  }
+  if (Object.keys(publicUpdates).length > 1 || Object.keys(privateUpdates).length > 1) {
+    await batch.commit();
   }
 
   const cached = getCachedUsers();
@@ -545,98 +547,51 @@ export async function toggleFollowUser(
   if (!currentUid || !targetUid || currentUid === targetUid) {
     return { isFollowing: currentlyFollowing, newFollowersCount: 0 };
   }
-
   const currentUserRef = doc(db, USERS_COLLECTION, currentUid);
   const targetUserRef = doc(db, USERS_COLLECTION, targetUid);
-
-  if (currentlyFollowing) {
-    // Unfollow action
-    await updateDoc(currentUserRef, {
-      following: arrayRemove(targetUid),
-      followingCount: increment(-1),
-      updatedAt: serverTimestamp(),
-    }).catch(async (e) => {
-      console.warn('Error removing following:', e);
-      // Fallback in case increment is not initialized
-      const c = await getUserProfile(currentUid);
-      if (c) {
-        await updateDoc(currentUserRef, {
-          following: (c.following || []).filter((id) => id !== targetUid),
-          followingCount: Math.max(0, (c.followingCount || 1) - 1),
-        });
-      }
-    });
-
-    await updateDoc(targetUserRef, {
-      followers: arrayRemove(currentUid),
-      followersCount: increment(-1),
-      updatedAt: serverTimestamp(),
-    }).catch(async (e) => {
-      console.warn('Error removing followers:', e);
-      const t = await getUserProfile(targetUid);
-      if (t) {
-        await updateDoc(targetUserRef, {
-          followers: (t.followers || []).filter((id) => id !== currentUid),
-          followersCount: Math.max(0, (t.followersCount || 1) - 1),
-        });
-      }
-    });
-
-    const targetUser = await getUserProfile(targetUid);
-    return {
-      isFollowing: false,
-      newFollowersCount: targetUser?.followersCount || 0,
-    };
-  } else {
-    // Follow action
-    await updateDoc(currentUserRef, {
-      following: arrayUnion(targetUid),
-      followingCount: increment(1),
-      updatedAt: serverTimestamp(),
-    }).catch(async (e) => {
-      console.warn('Error adding following:', e);
-      const c = await getUserProfile(currentUid);
-      if (c) {
-        await updateDoc(currentUserRef, {
-          following: Array.from(new Set([...(c.following || []), targetUid])),
-          followingCount: (c.followingCount || 0) + 1,
-        });
-      }
-    });
-
-    await updateDoc(targetUserRef, {
-      followers: arrayUnion(currentUid),
-      followersCount: increment(1),
-      updatedAt: serverTimestamp(),
-    }).catch(async (e) => {
-      console.warn('Error adding follower:', e);
-      const t = await getUserProfile(targetUid);
-      if (t) {
-        await updateDoc(targetUserRef, {
-          followers: Array.from(new Set([...(t.followers || []), currentUid])),
-          followersCount: (t.followersCount || 0) + 1,
-        });
-      }
-    });
-
-    // Send real notification to target user
-    if (currentUser && targetUid !== currentUid) {
-      await createNotification(
-        targetUid,
-        currentUser,
-        'follow',
-        'started following your channel',
-        targetUid,
-        'profile'
-      ).catch((err) => console.warn('Could not create follow notification:', err));
+  const result = await runTransaction(db, async (transaction) => {
+    const currentSnapshot = await transaction.get(currentUserRef);
+    const targetSnapshot = await transaction.get(targetUserRef);
+    if (!currentSnapshot.exists() || !targetSnapshot.exists()) {
+      throw new Error('The selected account could not be found. Refresh and try again.');
     }
+    const currentData = currentSnapshot.data();
+    const targetData = targetSnapshot.data();
+    const following: string[] = Array.isArray(currentData.following) ? currentData.following : [];
+    const followers: string[] = Array.isArray(targetData.followers) ? targetData.followers : [];
+    const isFollowing = following.includes(targetUid);
+    const targetHasFollower = followers.includes(currentUid);
+    const desiredFollowing = !currentlyFollowing;
+    if (isFollowing === desiredFollowing && targetHasFollower === desiredFollowing) {
+      return { isFollowing, newFollowersCount: Number(targetData.followersCount || followers.length) };
+    }
+    // Repair a stale one-sided relationship rather than incrementing the counter twice.
+    const shouldFollow = desiredFollowing;
+    const nextFollowing = shouldFollow
+      ? Array.from(new Set([...following, targetUid]))
+      : following.filter((id) => id !== targetUid);
+    const nextFollowers = shouldFollow
+      ? Array.from(new Set([...followers, currentUid]))
+      : followers.filter((id) => id !== currentUid);
+    transaction.update(currentUserRef, {
+      following: nextFollowing,
+      followingCount: nextFollowing.length,
+      updatedAt: serverTimestamp(),
+    });
+    transaction.update(targetUserRef, {
+      followers: nextFollowers,
+      followersCount: nextFollowers.length,
+      updatedAt: serverTimestamp(),
+    });
+    return { isFollowing: shouldFollow, newFollowersCount: nextFollowers.length };
+  });
 
-    const targetUser = await getUserProfile(targetUid);
-    return {
-      isFollowing: true,
-      newFollowersCount: targetUser?.followersCount || 1,
-    };
+  if (result.isFollowing && currentUser) {
+    await createNotification(
+      targetUid, currentUser, 'follow', 'started following your channel', targetUid, 'profile'
+    ).catch((error) => console.warn('Follow was saved, but its notification could not be delivered:', error));
   }
+  return result;
 }
 
 /**
@@ -723,7 +678,7 @@ export async function toggleBlockUser(
         { merge: true }
       );
     } else {
-      // Block: Add to blocked list in private subcollection and unfollow both ways
+      // Block: Add to the owner's private block list and remove the owner's outgoing follow edge.
       await setDoc(
         privateRef,
         {
@@ -732,11 +687,13 @@ export async function toggleBlockUser(
         },
         { merge: true }
       );
-      // Remove from following
-      await toggleFollowUser(currentUid, targetUid, true).catch(() => {});
-      await toggleFollowUser(targetUid, currentUid, true).catch(() => {});
+      // Remove only the acting user's outgoing follow. The other account's own
+      // following list cannot be edited by this client; the block privacy rule
+      // prevents the blocked member from interacting with the blocker. 
+      await toggleFollowUser(currentUid, targetUid, true);
     }
   } catch (err) {
-    console.warn('Error toggling block user:', err);
+    console.error('Block/unblock could not be saved:', err);
+    throw err;
   }
 }

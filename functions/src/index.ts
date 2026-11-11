@@ -1,6 +1,6 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { getApp, getApps, initializeApp } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { FieldValue, getFirestore } from 'firebase-admin/firestore';
 import * as logger from 'firebase-functions/logger';
 import { setGlobalOptions } from 'firebase-functions/v2';
 import { HttpsError, onCall, onRequest } from 'firebase-functions/v2/https';
@@ -9,6 +9,9 @@ import { defineSecret, defineString } from 'firebase-functions/params';
 setGlobalOptions({ region: 'europe-west1', maxInstances: 10 });
 
 const FLW_SECRET_KEY = defineSecret('FLW_SECRET_KEY');
+const TWILIO_ACCOUNT_SID = defineSecret('TWILIO_ACCOUNT_SID');
+const TWILIO_API_KEY_SID = defineSecret('TWILIO_API_KEY_SID');
+const TWILIO_API_KEY_SECRET = defineSecret('TWILIO_API_KEY_SECRET');
 const FLW_WEBHOOK_SECRET = defineSecret('FLW_WEBHOOK_SECRET');
 const MTN_MOMO_API_USER = defineSecret('MTN_MOMO_API_USER');
 const MTN_MOMO_API_KEY = defineSecret('MTN_MOMO_API_KEY');
@@ -529,4 +532,299 @@ export const flutterwaveVerificationWebhook = onRequest(
     }
   }
 );
+/**
+ * Authenticated short-lived ICE credentials for real WebRTC calls.
+ * Twilio's Network Traversal Service returns ephemeral STUN/TURN credentials;
+ * the Twilio account key/secret never reach the browser.
+ */
+export const getCallIceConfig = onCall(
+  {
+    secrets: [TWILIO_ACCOUNT_SID, TWILIO_API_KEY_SID, TWILIO_API_KEY_SECRET],
+    timeoutSeconds: 30,
+  },
+  async (request) => {
+    requireAuth(request.auth?.uid);
+    const stunOnly = {
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+      ],
+      relayAvailable: false,
+      expiresInSeconds: 0,
+      note: 'TURN relay credentials are not configured. Direct peer connections may work, but restrictive carrier and corporate networks may require TURN.',
+    };
 
+    const accountSid = TWILIO_ACCOUNT_SID.value();
+    const apiKeySid = TWILIO_API_KEY_SID.value();
+    const apiKeySecret = TWILIO_API_KEY_SECRET.value();
+    if (!accountSid || !apiKeySid || !apiKeySecret) return stunOnly;
+
+    try {
+      const tokenUrl = 'https://api.twilio.com/2010-04-01/Accounts/' + encodeURIComponent(accountSid) + '/Tokens.json';
+      const response = await fetch(tokenUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: 'Basic ' + Buffer.from(apiKeySid + ':' + apiKeySecret).toString('base64'),
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Accept: 'application/json',
+        },
+        body: new URLSearchParams({ Ttl: '3600' }).toString(),
+        signal: AbortSignal.timeout(20000),
+      });
+      const payload: any = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        logger.error('Twilio Network Traversal token request failed', {
+          status: response.status,
+          detail: String(payload?.message || '').slice(0, 200),
+        });
+        return {
+          ...stunOnly,
+          note: 'The TURN credential provider is temporarily unavailable. Direct STUN connectivity is being attempted.',
+        };
+      }
+      const iceServers = Array.isArray(payload.ice_servers)
+        ? payload.ice_servers.filter((server: any) =>
+            server && server.urls && (
+              typeof server.urls === 'string' ||
+              (Array.isArray(server.urls) && server.urls.length > 0)
+            )
+          )
+        : [];
+      const relayAvailable = iceServers.some((server: any) => {
+        const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+        return urls.some((url: string) => url.startsWith('turn:') || url.startsWith('turns:'));
+      });
+      if (!iceServers.length || !relayAvailable) {
+        logger.warn('Twilio returned no TURN relay entries for the call ICE configuration.');
+        return stunOnly;
+      }
+      return {
+        iceServers,
+        relayAvailable: true,
+        expiresInSeconds: Number(payload.ttl || 3600),
+      };
+    } catch (error) {
+      logger.error('Unable to create ephemeral TURN credentials', error);
+      return {
+        ...stunOnly,
+        note: 'The TURN credential provider could not be reached. Direct STUN connectivity is being attempted.',
+      };
+    }
+  }
+);
+/** Authenticated, idempotent server-side sponsored placement accounting. */
+export const recordSponsoredAdEvent = onCall(async (request) => {
+  const uid = requireAuth(request.auth?.uid);
+  const adId = String(request.data?.adId || '');
+  const eventType = request.data?.eventType;
+  const eventId = String(request.data?.eventId || '');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(adId)) {
+    throw new HttpsError('invalid-argument', 'A valid campaign ID is required.');
+  }
+  if (eventType !== 'impression' && eventType !== 'click') {
+    throw new HttpsError('invalid-argument', 'Unsupported sponsored campaign event.');
+  }
+  if (!/^[A-Za-z0-9_-]{16,100}$/.test(eventId)) {
+    throw new HttpsError('invalid-argument', 'A unique event ID is required.');
+  }
+  const db = database();
+  const adRef = db.collection('sponsored_ads').doc(adId);
+  const eventRef = adRef.collection('events').doc(eventType + '_' + eventId);
+  return db.runTransaction(async (transaction) => {
+    const [adSnapshot, eventSnapshot] = await Promise.all([
+      transaction.get(adRef),
+      transaction.get(eventRef),
+    ]);
+    if (!adSnapshot.exists) throw new HttpsError('not-found', 'The sponsored campaign could not be found.');
+    if (eventSnapshot.exists) return { recorded: false, duplicate: true };
+    const campaign = adSnapshot.data() || {};
+    if (campaign.status !== 'active') {
+      throw new HttpsError('failed-precondition', 'Only an approved active campaign can receive delivery events.');
+    }
+    if (campaign.sellerId === uid && eventType === 'impression') {
+      // Self-impressions are ignored for billing/accounting integrity.
+      return { recorded: false, duplicate: false, ignored: true };
+    }
+    const metric = eventType === 'impression' ? 'impressions' : 'clicks';
+    transaction.update(adRef, { [metric]: FieldValue.increment(1), updatedAt: Date.now() });
+    transaction.create(eventRef, {
+      eventType,
+      eventId,
+      actorId: uid,
+      recordedAt: FieldValue.serverTimestamp(),
+    });
+    return { recorded: true, duplicate: false };
+  });
+});
+/** Vote once in a post poll; all counts and voter state are committed atomically. */
+export const voteInPostPoll = onCall(async (request) => {
+  const uid = requireAuth(request.auth?.uid);
+  const postId = String(request.data?.postId || '');
+  const optionId = String(request.data?.optionId || '');
+  if (!/^[A-Za-z0-9_-]{1,180}$/.test(postId) || !optionId || optionId.length > 120) {
+    throw new HttpsError('invalid-argument', 'A valid post and poll option are required.');
+  }
+  const db = database();
+  const postRef = db.collection('posts').doc(postId);
+  return db.runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(postRef);
+    if (!snapshot.exists) throw new HttpsError('not-found', 'This post no longer exists.');
+    const post = snapshot.data() || {};
+    const poll = post.poll;
+    if (!poll || !Array.isArray(poll.options)) throw new HttpsError('failed-precondition', 'This post does not contain an active poll.');
+    const voters = poll.voters || {};
+    if (voters[uid]) throw new HttpsError('already-exists', 'You have already voted in this poll.');
+    let optionFound = false;
+    const options = poll.options.map((option: any) => {
+      if (option.id !== optionId) return option;
+      optionFound = true;
+      return { ...option, votes: Number(option.votes || 0) + 1 };
+    });
+    if (!optionFound) throw new HttpsError('not-found', 'This poll option is no longer available.');
+    const nextPoll = {
+      ...poll,
+      options,
+      totalVotes: Number(poll.totalVotes || 0) + 1,
+      voters: { ...voters, [uid]: optionId },
+    };
+    transaction.update(postRef, { poll: nextPoll });
+    return { success: true, totalVotes: nextPoll.totalVotes, optionId };
+  });
+});
+
+/** Server-authoritative comment operations for posts and reels. */
+export const updateContentComment = onCall(async (request) => {
+  const uid = requireAuth(request.auth?.uid);
+  const collectionName = request.data?.collectionName;
+  const action = request.data?.action;
+  const contentId = String(request.data?.contentId || '');
+  const commentId = String(request.data?.commentId || '');
+  const replyId = request.data?.replyId ? String(request.data.replyId) : undefined;
+  const content = String(request.data?.content || '').trim();
+  if (collectionName !== 'posts' && collectionName !== 'reels') {
+    throw new HttpsError('invalid-argument', 'Unsupported content type.');
+  }
+  if (!['add', 'reply', 'toggle_like', 'delete'].includes(action)) {
+    throw new HttpsError('invalid-argument', 'Unsupported comment operation.');
+  }
+  if (!/^[A-Za-z0-9_-]{1,180}$/.test(contentId)) throw new HttpsError('invalid-argument', 'A valid content ID is required.');
+  if ((action === 'add' || action === 'reply') && (!content || content.length > 2000)) {
+    throw new HttpsError('invalid-argument', 'Comments must be between 1 and 2,000 characters.');
+  }
+  if ((action === 'reply' || action === 'toggle_like' || action === 'delete') && !commentId) {
+    throw new HttpsError('invalid-argument', 'A valid comment ID is required.');
+  }
+  const db = database();
+  const contentRef = db.collection(collectionName).doc(contentId);
+  const userRef = db.collection('users').doc(uid);
+  return db.runTransaction(async (transaction) => {
+    const [contentSnapshot, userSnapshot] = await Promise.all([
+      transaction.get(contentRef),
+      transaction.get(userRef),
+    ]);
+    if (!contentSnapshot.exists) throw new HttpsError('not-found', 'This content no longer exists.');
+    if (!userSnapshot.exists) throw new HttpsError('failed-precondition', 'Your member profile is not ready.');
+    const record = contentSnapshot.data() || {};
+    const user = userSnapshot.data() || {};
+    if (collectionName === 'posts' && record.commentsDisabled && (action === 'add' || action === 'reply')) {
+      throw new HttpsError('permission-denied', 'Comments are disabled for this post.');
+    }
+    const comments: any[] = Array.isArray(record.comments) ? [...record.comments] : [];
+    const actor = {
+      id: uid, name: String(user.name || 'Member'), username: String(user.username || ''),
+      avatar: String(user.avatar || ''), verified: Boolean(user.verified),
+    };
+    let resultId = commentId;
+    if (action === 'add') {
+      resultId = randomUUID();
+      comments.push({
+        id: resultId, author: actor, content, timestamp: new Date().toISOString(),
+        likesCount: 0, likedBy: [], replies: [],
+      });
+      transaction.update(contentRef, { comments, commentsCount: Number(record.commentsCount || 0) + 1 });
+      return { success: true, commentId: resultId };
+    }
+    if (action === 'reply') {
+      const parentIndex = comments.findIndex((comment) => comment.id === commentId);
+      if (parentIndex < 0) throw new HttpsError('not-found', 'The comment you are replying to no longer exists.');
+      const reply = {
+        id: randomUUID(), author: actor, content, timestamp: new Date().toISOString(),
+        likesCount: 0, likedBy: [], replies: [],
+      };
+      comments[parentIndex] = { ...comments[parentIndex], replies: [...(comments[parentIndex].replies || []), reply] };
+      transaction.update(contentRef, { comments });
+      return { success: true, commentId: reply.id };
+    }
+    let found = false;
+    if (action === 'toggle_like') {
+      const toggle = (item: any) => {
+        found = true;
+        const likedBy: string[] = Array.isArray(item.likedBy) ? item.likedBy : [];
+        const next = likedBy.includes(uid) ? likedBy.filter((id) => id !== uid) : [...likedBy, uid];
+        return { ...item, likedBy: next, likesCount: next.length };
+      };
+      const updated = comments.map((comment) => {
+        if (comment.id === commentId) return toggle(comment);
+        if (Array.isArray(comment.replies)) {
+          return { ...comment, replies: comment.replies.map((reply: any) => reply.id === commentId ? toggle(reply) : reply) };
+        }
+        return comment;
+      });
+      if (!found) throw new HttpsError('not-found', 'This comment no longer exists.');
+      transaction.update(contentRef, { comments: updated });
+      return { success: true, commentId };
+    }
+    const postAuthorId = record.authorId || record.author?.id;
+    let removed = false;
+    const updated = replyId
+      ? comments.map((comment) => {
+          if (comment.id !== commentId || !Array.isArray(comment.replies)) return comment;
+          const replies = comment.replies.filter((reply: any) => {
+            if (reply.id !== replyId) return true;
+            if (reply.author?.id !== uid && postAuthorId !== uid) {
+              throw new HttpsError('permission-denied', 'You can only delete your own comment or reply.');
+            }
+            removed = true;
+            return false;
+          });
+          return { ...comment, replies };
+        })
+      : comments.filter((comment) => {
+          if (comment.id !== commentId) return true;
+          if (comment.author?.id !== uid && postAuthorId !== uid) {
+            throw new HttpsError('permission-denied', 'You can only delete your own comment or reply.');
+          }
+          removed = true;
+          return false;
+        });
+    if (!removed) throw new HttpsError('not-found', 'This comment no longer exists.');
+    transaction.update(contentRef, {
+      comments: updated,
+      ...(replyId ? {} : { commentsCount: Math.max(0, Number(record.commentsCount || 0) - 1) }),
+    });
+    return { success: true, commentId };
+  });
+});
+/** Count one unique share per member for posts and reels. */
+export const recordContentShare = onCall(async (request) => {
+  const uid = requireAuth(request.auth?.uid);
+  const collectionName = request.data?.collectionName;
+  const contentId = String(request.data?.contentId || '');
+  if (collectionName !== 'posts' && collectionName !== 'reels') {
+    throw new HttpsError('invalid-argument', 'Unsupported content type.');
+  }
+  if (!/^[A-Za-z0-9_-]{1,180}$/.test(contentId)) {
+    throw new HttpsError('invalid-argument', 'A valid content ID is required.');
+  }
+  const ref = database().collection(collectionName).doc(contentId);
+  return database().runTransaction(async (transaction) => {
+    const snapshot = await transaction.get(ref);
+    if (!snapshot.exists) throw new HttpsError('not-found', 'This content no longer exists.');
+    const data = snapshot.data() || {};
+    const sharedBy: string[] = Array.isArray(data.sharedBy) ? data.sharedBy : [];
+    if (sharedBy.includes(uid)) return { success: true, recorded: false, sharesCount: Number(data.sharesCount || sharedBy.length) };
+    const next = [...sharedBy, uid];
+    transaction.update(ref, { sharedBy: next, sharesCount: next.length });
+    return { success: true, recorded: true, sharesCount: next.length };
+  });
+});

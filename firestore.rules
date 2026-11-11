@@ -119,70 +119,59 @@ service cloud.firestore {
     // 3. Posts Collection (/posts/{postId})
     // -------------------------------------------------------------
     match /posts/{postId} {
-      // Authenticated users can read public posts or posts where they follow the author
       allow read: if isSignedIn() && (
-        resource.data.get('audience', 'public') == 'public' ||
-        isAuthor(resource.data)
+        resource.data.get('audience', 'public') == 'public' || isAuthor(resource.data)
       );
-
-      // Any authenticated user can create a post where authorId matches their UID
       allow create: if isSignedIn() &&
         (incoming().get('authorId', '') == request.auth.uid || incoming().author.id == request.auth.uid);
 
-      // Post updates:
-      // Author can edit post content; other users can only toggle their own likes, bookmarks, reposts, or vote
+      // Authors may edit presentation/content fields only. Engagement metrics,
+      // votes, and comments are maintained by validated transactions.
       allow update: if isSignedIn() && (
-        // Case A: Author modifies post content/tags (cannot change immutable author identity or post ID)
-        (isAuthor(existing()) &&
-         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'authorId', 'createdAt'])) ||
-
-        // Case B: Like toggle (only acting user UID can be added/removed from likedBy)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount']) && (
-          (incoming().likedBy.hasAll(existing().likedBy) && incoming().likedBy.removeAll(existing().likedBy).hasOnly([request.auth.uid])) ||
-          (existing().likedBy.hasAll(incoming().likedBy) && existing().likedBy.removeAll(incoming().likedBy).hasOnly([request.auth.uid]))
-        )) ||
-
-        // Case C: Bookmark toggle (only acting user UID can be added/removed from bookmarkedBy)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['bookmarkedBy', 'bookmarksCount']) && (
-          (incoming().bookmarkedBy.hasAll(existing().bookmarkedBy) && incoming().bookmarkedBy.removeAll(existing().bookmarkedBy).hasOnly([request.auth.uid])) ||
-          (existing().bookmarkedBy.hasAll(incoming().bookmarkedBy) && existing().bookmarkedBy.removeAll(incoming().bookmarkedBy).hasOnly([request.auth.uid]))
-        )) ||
-
-        // Case D: Repost toggle (only acting user UID can be added/removed from repostedBy)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['repostedBy', 'repostsCount']) && (
-          (incoming().repostedBy.hasAll(existing().repostedBy) && incoming().repostedBy.removeAll(existing().repostedBy).hasOnly([request.auth.uid])) ||
-          (existing().repostedBy.hasAll(incoming().repostedBy) && existing().repostedBy.removeAll(incoming().repostedBy).hasOnly([request.auth.uid]))
-        )) ||
-
-        // Case E: View / Impression count tracking
-        (incoming().diff(existing()).affectedKeys().hasOnly(['viewedBy', 'viewsCount']) && (
+        (isAuthor(existing()) && incoming().diff(existing()).affectedKeys().hasOnly([
+          'content', 'tags', 'location', 'audience', 'commentsDisabled', 'isEdited', 'updatedAt', 'filter', 'fontStyle'
+        ])) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount']) &&
+          incoming().likesCount == incoming().likedBy.size() && (
+            (incoming().likedBy.hasAll(existing().likedBy) &&
+             incoming().likedBy.removeAll(existing().likedBy).hasOnly([request.auth.uid]) &&
+             incoming().likedBy.size() == existing().likedBy.size() + 1) ||
+            (existing().likedBy.hasAll(incoming().likedBy) &&
+             existing().likedBy.removeAll(incoming().likedBy).hasOnly([request.auth.uid]) &&
+             incoming().likedBy.size() == existing().likedBy.size() - 1)
+          )) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['bookmarkedBy', 'bookmarksCount']) &&
+          incoming().bookmarksCount == incoming().bookmarkedBy.size() && (
+            (incoming().bookmarkedBy.hasAll(existing().bookmarkedBy) &&
+             incoming().bookmarkedBy.removeAll(existing().bookmarkedBy).hasOnly([request.auth.uid]) &&
+             incoming().bookmarkedBy.size() == existing().bookmarkedBy.size() + 1) ||
+            (existing().bookmarkedBy.hasAll(incoming().bookmarkedBy) &&
+             existing().bookmarkedBy.removeAll(incoming().bookmarkedBy).hasOnly([request.auth.uid]) &&
+             incoming().bookmarkedBy.size() == existing().bookmarkedBy.size() - 1)
+          )) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['repostedBy', 'repostsCount']) &&
+          incoming().repostsCount == incoming().repostedBy.size() && (
+            (incoming().repostedBy.hasAll(existing().repostedBy) &&
+             incoming().repostedBy.removeAll(existing().repostedBy).hasOnly([request.auth.uid]) &&
+             incoming().repostedBy.size() == existing().repostedBy.size() + 1) ||
+            (existing().repostedBy.hasAll(incoming().repostedBy) &&
+             existing().repostedBy.removeAll(incoming().repostedBy).hasOnly([request.auth.uid]) &&
+             incoming().repostedBy.size() == existing().repostedBy.size() - 1)
+          )) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['viewedBy', 'viewsCount']) &&
+          incoming().viewsCount == incoming().viewedBy.size() &&
           incoming().viewedBy.hasAll(existing().viewedBy) &&
-          incoming().viewedBy.removeAll(existing().viewedBy).hasOnly([request.auth.uid])
-        )) ||
+          incoming().viewedBy.removeAll(existing().viewedBy).hasOnly([request.auth.uid]) &&
+          incoming().viewedBy.size() == existing().viewedBy.size() + 1) ||
 
-        // Case F: Share counter increment
-        (incoming().diff(existing()).affectedKeys().hasOnly(['sharedBy', 'sharesCount']) && (
-          incoming().sharedBy.hasAll(existing().sharedBy) &&
-          incoming().sharedBy.removeAll(existing().sharedBy).hasOnly([request.auth.uid])
-        )) ||
-
-        // Case G: Poll Vote (only acting user's vote entry can be submitted)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['poll'])) ||
-
-        // Case H: Comments array updates
-        (incoming().diff(existing()).affectedKeys().hasOnly(['comments', 'commentsCount']))
       );
-
-      // Only author can delete their post
+      // Poll votes and comment mutations use authenticated Cloud Functions.
       allow delete: if isSignedIn() && isAuthor(existing());
 
-      // Comments Subcollection (Alternative / legacy comments path)
       match /comments/{commentId} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() &&
-          (incoming().get('authorId', '') == request.auth.uid || incoming().author.id == request.auth.uid);
-        allow update, delete: if isSignedIn() &&
-          (existing().get('authorId', '') == request.auth.uid || existing().author.id == request.auth.uid);
+        allow create: if isSignedIn() && incoming().authorId == request.auth.uid;
+        allow update, delete: if isSignedIn() && existing().authorId == request.auth.uid;
       }
     }
 
@@ -227,31 +216,32 @@ service cloud.firestore {
     // -------------------------------------------------------------
     match /reels/{reelId} {
       allow read: if isSignedIn();
-
       allow create: if isSignedIn() &&
         (incoming().get('authorId', '') == request.auth.uid || incoming().author.id == request.auth.uid);
-
       allow update: if isSignedIn() && (
-        // Reel Author updates caption / metadata
-        (isAuthor(existing()) &&
-         !incoming().diff(existing()).affectedKeys().hasAny(['id', 'createdAt'])) ||
-
-        // Likes toggle (acting user UID only)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount']) && (
-          (incoming().likedBy.hasAll(existing().likedBy) && incoming().likedBy.removeAll(existing().likedBy).hasOnly([request.auth.uid])) ||
-          (existing().likedBy.hasAll(incoming().likedBy) && existing().likedBy.removeAll(incoming().likedBy).hasOnly([request.auth.uid]))
-        )) ||
-
-        // Bookmarks toggle (acting user UID only)
-        (incoming().diff(existing()).affectedKeys().hasOnly(['bookmarkedBy']) && (
-          (incoming().bookmarkedBy.hasAll(existing().bookmarkedBy) && incoming().bookmarkedBy.removeAll(existing().bookmarkedBy).hasOnly([request.auth.uid])) ||
-          (existing().bookmarkedBy.hasAll(incoming().bookmarkedBy) && existing().bookmarkedBy.removeAll(incoming().bookmarkedBy).hasOnly([request.auth.uid]))
-        )) ||
-
-        // Comments mutation
-        (incoming().diff(existing()).affectedKeys().hasOnly(['comments', 'commentsCount']))
+        (isAuthor(existing()) && incoming().diff(existing()).affectedKeys().hasOnly([
+          'caption', 'tags', 'audioTrack', 'isEdited', 'updatedAt'
+        ])) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['likedBy', 'likesCount']) &&
+          incoming().likesCount == incoming().likedBy.size() && (
+            (incoming().likedBy.hasAll(existing().likedBy) &&
+             incoming().likedBy.removeAll(existing().likedBy).hasOnly([request.auth.uid]) &&
+             incoming().likedBy.size() == existing().likedBy.size() + 1) ||
+            (existing().likedBy.hasAll(incoming().likedBy) &&
+             existing().likedBy.removeAll(incoming().likedBy).hasOnly([request.auth.uid]) &&
+             incoming().likedBy.size() == existing().likedBy.size() - 1)
+          )) ||
+        (incoming().diff(existing()).affectedKeys().hasOnly(['bookmarkedBy', 'bookmarksCount']) &&
+          incoming().bookmarksCount == incoming().bookmarkedBy.size() && (
+            (incoming().bookmarkedBy.hasAll(existing().bookmarkedBy) &&
+             incoming().bookmarkedBy.removeAll(existing().bookmarkedBy).hasOnly([request.auth.uid]) &&
+             incoming().bookmarkedBy.size() == existing().bookmarkedBy.size() + 1) ||
+            (existing().bookmarkedBy.hasAll(incoming().bookmarkedBy) &&
+             existing().bookmarkedBy.removeAll(incoming().bookmarkedBy).hasOnly([request.auth.uid]) &&
+             incoming().bookmarkedBy.size() == existing().bookmarkedBy.size() - 1)
+          ))
       );
-
+      // Comments and shares are recorded by authenticated Cloud Functions.
       allow delete: if isSignedIn() && isAuthor(existing());
     }
 
@@ -259,41 +249,91 @@ service cloud.firestore {
     // 7. Conversations & Messages (/conversations/{conversationId})
     // -------------------------------------------------------------
     match /conversations/{conversationId} {
-      // Only conversation participants can read the conversation thread
+      function otherParticipant(ids) {
+        return ids[0] == request.auth.uid ? ids[1] : ids[0];
+      }
+      function participantsNotBlocked(ids) {
+        let other = otherParticipant(ids);
+        let selfPath = /databases/$(database)/documents/users/$(request.auth.uid)/private/settings;
+        let otherPath = /databases/$(database)/documents/users/$(other)/private/settings;
+        return isSignedIn() && ids is list && ids.size() == 2 && request.auth.uid in ids &&
+          (!exists(selfPath) || !get(selfPath).data.get('blockedUsers', []).hasAny([other])) &&
+          (!exists(otherPath) || !get(otherPath).data.get('blockedUsers', []).hasAny([request.auth.uid]));
+      }
+      function validConversationCreate() {
+        return incoming().participantIds is list && incoming().participantIds.size() == 2 &&
+          incoming().participantIds[0] != incoming().participantIds[1] &&
+          request.auth.uid in incoming().participantIds &&
+          incoming().lastMessage.senderId == request.auth.uid &&
+          incoming().lastMessage.id is string;
+      }
+      function validTypingUpdate() {
+        return incoming().diff(existing()).affectedKeys().hasOnly(['typing']) &&
+          incoming().typing is map &&
+          incoming().typing.diff(existing().typing).affectedKeys().hasOnly([request.auth.uid]) &&
+          incoming().typing.get(request.auth.uid, false) is bool;
+      }
+      function validReadReceiptUpdate() {
+        let ids = existing().participantIds;
+        let other = otherParticipant(ids);
+        return incoming().diff(existing()).affectedKeys().hasOnly(['unreadCounts']) &&
+          incoming().unreadCounts.get(request.auth.uid, 0) == 0 &&
+          incoming().unreadCounts.get(other, 0) == existing().unreadCounts.get(other, 0);
+      }
+      function validSendPreviewUpdate() {
+        let ids = existing().participantIds;
+        let other = otherParticipant(ids);
+        let messagePath = /databases/$(database)/documents/conversations/$(conversationId)/messages/$(incoming().lastMessage.id);
+        return incoming().diff(existing()).affectedKeys().hasOnly(['lastMessage', 'unreadCounts', 'updatedAt', 'typing']) &&
+          incoming().lastMessage.senderId == request.auth.uid &&
+          incoming().lastMessage.id is string &&
+          incoming().unreadCounts.diff(existing().unreadCounts).affectedKeys().hasOnly([other]) &&
+          incoming().unreadCounts.get(other, 0) == existing().unreadCounts.get(other, 0) + 1 &&
+          incoming().unreadCounts.get(request.auth.uid, 0) == existing().unreadCounts.get(request.auth.uid, 0) &&
+          incoming().typing.get(request.auth.uid, false) == false &&
+          existsAfter(messagePath) && getAfter(messagePath).data.senderId == request.auth.uid &&
+          getAfter(messagePath).data.conversationId == conversationId;
+      }
       allow read: if isSignedIn() && request.auth.uid in resource.data.participantIds;
+      allow create: if participantsNotBlocked(incoming().participantIds) && validConversationCreate();
+      // Participants may update only their own typing state, own unread receipt,
+      // or a message preview that is tied to a real sender-authenticated message.
+      allow update: if participantsNotBlocked(existing().participantIds) &&
+        (validTypingUpdate() || validReadReceiptUpdate() || validSendPreviewUpdate());
+      allow delete: if isSignedIn() && request.auth.uid in existing().participantIds;
 
-      // New conversation must include the creating user in participantIds
-      allow create: if isSignedIn() && request.auth.uid in incoming().participantIds;
+      // Private, per-participant clear marker. This never deletes another member's history.
+      match /userState/{userId} {
+        function isConversationMember() {
+          return isSignedIn() && request.auth.uid in
+            get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
+        }
+        allow read: if isConversationMember() && request.auth.uid == userId;
+        allow create, update: if isConversationMember() && request.auth.uid == userId &&
+          incoming().keys().hasOnly(['clearedAt', 'updatedAt']);
+        allow delete: if isConversationMember() && request.auth.uid == userId;
+      }
 
-      // Participants can update conversation metadata (lastMessage, unreadCounts, typing indicators)
-      allow update: if isSignedIn() && request.auth.uid in resource.data.participantIds;
-
-      // Participants can remove the conversation
-      allow delete: if isSignedIn() && request.auth.uid in resource.data.participantIds;
-
-      // Nested Direct Messages Subcollection
       match /messages/{messageId} {
-        // Only thread participants can read messages
-        allow read: if isSignedIn() &&
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
-
-        // Only participants can create messages, and senderId must match auth UID
-        allow create: if isSignedIn() &&
-          incoming().senderId == request.auth.uid &&
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds;
-
-        // Message updates:
-        // Either sender edits their own message, or participant updates seen status or adds reaction
-        allow update: if isSignedIn() &&
-          request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds &&
-          (existing().senderId == request.auth.uid ||
-           incoming().diff(existing()).affectedKeys().hasOnly(['reaction', 'status', 'readAt']));
-
-        // Only message author can delete their message
-        allow delete: if isSignedIn() && existing().senderId == request.auth.uid;
+        function parentConversation() {
+          return get(/databases/$(database)/documents/conversations/$(conversationId)).data;
+        }
+        function parentParticipantsNotBlocked() {
+          return participantsNotBlocked(parentConversation().participantIds);
+        }
+        allow read: if isSignedIn() && request.auth.uid in parentConversation().participantIds;
+        allow create: if parentParticipantsNotBlocked() && incoming().senderId == request.auth.uid &&
+          incoming().conversationId == conversationId && incoming().id == messageId &&
+          incoming().createdAt != null;
+        // Only safe reactions/read receipts can be changed by participants.
+        allow update: if parentParticipantsNotBlocked() &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['reaction', 'status', 'readAt']) &&
+          (!incoming().diff(existing()).affectedKeys().hasAny(['status', 'readAt']) ||
+            (existing().senderId != request.auth.uid && incoming().status == 'read'));
+        allow delete: if isSignedIn() && existing().senderId == request.auth.uid &&
+          request.auth.uid in parentConversation().participantIds;
       }
     }
-
     // -------------------------------------------------------------
     // 8. Notifications Collection (/notifications/{notificationId})
     // -------------------------------------------------------------
@@ -321,42 +361,104 @@ service cloud.firestore {
     // 9. Calls Signaling Collection (/calls/{callId})
     // -------------------------------------------------------------
     match /calls/{callId} {
-      // Audio/Video signaling documents can only be accessed by the caller or recipient
-      allow read: if isSignedIn() &&
-        (resource.data.callerId == request.auth.uid || resource.data.recipientId == request.auth.uid);
-
-      // Caller can initiate call session
-      allow create: if isSignedIn() && incoming().callerId == request.auth.uid;
-
-      // Caller or recipient can update signaling states (answer, decline, end, reactions)
-      allow update: if isSignedIn() &&
-        (resource.data.callerId == request.auth.uid || resource.data.recipientId == request.auth.uid);
-
-      allow delete: if isSignedIn() &&
-        (resource.data.callerId == request.auth.uid || resource.data.recipientId == request.auth.uid);
+      function isCaller() { return isSignedIn() && existing().callerId == request.auth.uid; }
+      function isRecipient() { return isSignedIn() && existing().recipientId == request.auth.uid; }
+      function isCallParticipant() { return isCaller() || isRecipient(); }
+      function changedCallKeys() { return incoming().diff(existing()).affectedKeys(); }
+      function validCallEventFields() {
+        return (!changedCallKeys().hasAny(['lastReaction']) ||
+          (incoming().lastReaction.senderId == request.auth.uid && incoming().lastReaction.emoji in ['❤️', '👏', '🔥', '✨', '👋', '☕'])) &&
+          (!changedCallKeys().hasAny(['lastQuickMessage']) ||
+          (incoming().lastQuickMessage.senderId == request.auth.uid &&
+           incoming().lastQuickMessage.text is string && incoming().lastQuickMessage.text.size() <= 500));
+      }
+      allow read: if isCallParticipant();
+      allow create: if isSignedIn() && incoming().id == callId &&
+        incoming().callerId == request.auth.uid && incoming().recipientId is string &&
+        incoming().recipientId != request.auth.uid && incoming().type in ['audio', 'video'] &&
+        incoming().status == 'ringing' &&
+        incoming().keys().hasOnly(['id', 'callerId', 'caller', 'recipientId', 'recipient', 'type', 'status', 'createdAt']);
+      // Caller publishes an offer/ends; recipient accepts, declines, ends, and publishes an answer.
+      allow update: if isCallParticipant() && validCallEventFields() && (
+        (isCaller() && changedCallKeys().hasOnly(['offer', 'lastReaction', 'lastQuickMessage', 'status', 'endedAt']) &&
+          (!changedCallKeys().hasAny(['status']) || incoming().status == 'ended') &&
+          (!changedCallKeys().hasAny(['endedAt']) || incoming().status == 'ended') &&
+          (!changedCallKeys().hasAny(['offer']) || (incoming().offer.type == 'offer' &&
+            incoming().offer.sdp is string && incoming().offer.sdp.size() <= 200000))) ||
+        (isRecipient() && changedCallKeys().hasOnly(['answer', 'status', 'acceptedAt', 'connectedAt', 'endedAt', 'lastReaction', 'lastQuickMessage']) &&
+          (!changedCallKeys().hasAny(['status']) || incoming().status in ['accepted', 'connected', 'declined', 'ended']) &&
+          (!changedCallKeys().hasAny(['status']) || incoming().status != 'connected' || changedCallKeys().hasAny(['answer'])) &&
+          (!changedCallKeys().hasAny(['endedAt']) || incoming().status in ['declined', 'ended']) &&
+          (!changedCallKeys().hasAny(['answer']) || (incoming().status == 'connected' &&
+            incoming().answer.type == 'answer' && incoming().answer.sdp is string && incoming().answer.sdp.size() <= 200000)))
+      );
+      allow delete: if isCallParticipant();
+      match /callerCandidates/{candidateId} {
+        function parentCall() { return get(/databases/$(database)/documents/calls/$(callId)).data; }
+        function parentParticipant() { return isSignedIn() &&
+          (parentCall().callerId == request.auth.uid || parentCall().recipientId == request.auth.uid); }
+        allow read: if parentParticipant();
+        allow create: if isSignedIn() && parentCall().callerId == request.auth.uid &&
+          incoming().senderId == request.auth.uid && incoming().candidate is map;
+        allow update: if false;
+        allow delete: if isSignedIn() && parentCall().callerId == request.auth.uid && existing().senderId == request.auth.uid;
+      }
+      match /recipientCandidates/{candidateId} {
+        function parentCall() { return get(/databases/$(database)/documents/calls/$(callId)).data; }
+        function parentParticipant() { return isSignedIn() &&
+          (parentCall().callerId == request.auth.uid || parentCall().recipientId == request.auth.uid); }
+        allow read: if parentParticipant();
+        allow create: if isSignedIn() && parentCall().recipientId == request.auth.uid &&
+          incoming().senderId == request.auth.uid && incoming().candidate is map;
+        allow update: if false;
+        allow delete: if isSignedIn() && parentCall().recipientId == request.auth.uid && existing().senderId == request.auth.uid;
+      }
+      match /events/{eventId} {
+        function parentCall() { return get(/databases/$(database)/documents/calls/$(callId)).data; }
+        function parentParticipant() { return isSignedIn() &&
+          (parentCall().callerId == request.auth.uid || parentCall().recipientId == request.auth.uid); }
+        allow read: if parentParticipant();
+        allow create: if parentParticipant() && incoming().senderId == request.auth.uid && (
+          (incoming().kind == 'reaction' && incoming().emoji in ['❤️', '👏', '🔥', '✨', '👋', '☕']) ||
+          (incoming().kind == 'message' && incoming().text is string && incoming().text.size() > 0 &&
+            incoming().text.size() <= 500 && incoming().senderName is string && incoming().senderName.size() <= 80));
+        allow update, delete: if false;
+      }
     }
-
     // -------------------------------------------------------------
     // 10. Marketplace Items (/marketplace_items/{itemId})
     // -------------------------------------------------------------
     match /marketplace_items/{itemId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && incoming().seller.id == request.auth.uid;
-      allow update, delete: if isSignedIn() && (resource.data.seller.id == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && incoming().seller.id == request.auth.uid &&
+        incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 120 &&
+        incoming().price is number && incoming().price > 0 &&
+        incoming().images is list && incoming().images.size() > 0 && incoming().images.size() <= 8 &&
+        incoming().isSold == false;
+      allow update: if isSignedIn() && resource.data.seller.id == request.auth.uid &&
+        !incoming().diff(existing()).affectedKeys().hasAny(['id', 'seller', 'createdAt', 'viewsCount']) &&
+        (!incoming().diff(existing()).affectedKeys().hasAny(['isSold']) || incoming().isSold == true);
+      allow delete: if isSignedIn() && (resource.data.seller.id == request.auth.uid || isAdmin());
     }
-
     // -------------------------------------------------------------
     // 11. Sponsored Advertisements (/sponsored_ads/{adId})
     // -------------------------------------------------------------
     match /sponsored_ads/{adId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && incoming().sellerId == request.auth.uid;
-      allow update: if isSignedIn() && (
-        resource.data.sellerId == request.auth.uid ||
-        isAdmin() ||
-        incoming().diff(existing()).affectedKeys().hasOnly(['impressions', 'clicks'])
-      );
+      // Client-submitted campaigns remain pending until an administrator approves them.
+      allow create: if isSignedIn() && incoming().sellerId == request.auth.uid &&
+        incoming().status == 'pending' && incoming().impressions == 0 && incoming().clicks == 0 &&
+        incoming().budget is number && incoming().budget > 0 &&
+        incoming().title is string && incoming().title.size() > 0 && incoming().title.size() <= 120;
+      allow update: if isAdmin() ||
+        (isSignedIn() && resource.data.sellerId == request.auth.uid && resource.data.status == 'pending' &&
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'description', 'mediaUrl', 'mediaType', 'ctaText', 'ctaUrl', 'budget', 'targetCategory']));
       allow delete: if isSignedIn() && (resource.data.sellerId == request.auth.uid || isAdmin());
+      // Delivery counters and event IDs are written only by the trusted callable.
+      match /events/{eventId} {
+        allow read: if isAdmin();
+        allow create, update, delete: if false;
+      }
     }
 
     // -------------------------------------------------------------

@@ -1,9 +1,11 @@
 import React, { useEffect } from 'react';
-import { Sparkles, ExternalLink, MessageSquare, CheckCircle2, ShoppingBag } from 'lucide-react';
+import { Sparkles, ExternalLink, MessageSquare, ShoppingBag } from 'lucide-react';
 import { SponsoredAd, User } from '../../types';
 import { ModernAvatar } from '../common/ModernAvatar';
 import { recordAdImpression, recordAdClick } from '../../services/marketplaceService';
+import { getUserProfile } from '../../services/userService';
 import { auraAudio } from '../../utils/audioSynthesizer';
+import { getUserProfile } from '../../services/userService';
 
 interface SponsoredFeedAdCardProps {
   ad: SponsoredAd;
@@ -20,12 +22,12 @@ export const SponsoredFeedAdCard: React.FC<SponsoredFeedAdCardProps> = ({
 }) => {
   // Record impression once when ad mounts
   useEffect(() => {
-    recordAdImpression(ad.id).catch(() => {});
+    recordAdImpression(ad.id).catch((error) => console.warn('Sponsored impression could not be recorded:', error));
   }, [ad.id]);
 
   const handleCtaClick = () => {
     auraAudio.playClick(650, 0.04);
-    recordAdClick(ad.id).catch(() => {});
+    void recordAdClick(ad.id).catch((error) => console.warn('Sponsored click could not be recorded:', error));
 
     if (ad.ctaUrl && ad.ctaUrl.startsWith('http')) {
       window.open(ad.ctaUrl, '_blank', 'noopener,noreferrer');
@@ -37,34 +39,22 @@ export const SponsoredFeedAdCard: React.FC<SponsoredFeedAdCardProps> = ({
     }
   };
 
-  const handleMessageAdvertiser = () => {
+  const handleMessageAdvertiser = async () => {
     auraAudio.playClick(500, 0.03);
-    recordAdClick(ad.id).catch(() => {});
-
-    const advertiserUser: User = {
-      id: ad.sellerId,
-      name: ad.sellerName,
-      username: ad.sellerUsername,
-      avatar: ad.sellerAvatar,
-      bannerUrl: '',
-      bio: `Official advertiser for ${ad.title}`,
-      pronouns: '',
-      location: 'Kigali, Rwanda',
-      website: '',
-      joinedDate: 'Joined 2026',
-      followersCount: 1420,
-      followingCount: 88,
-      followers: [],
-      following: [],
-      isFollowing: false,
-      isFollower: false,
-      isMutual: false,
-      verified: true,
-      verifiedBadgeType: 'blue',
-      privateAccount: false,
-    };
-
-    onOpenDirectChat?.(advertiserUser);
+    if (ad.sellerId === currentUser.id) return;
+    void recordAdClick(ad.id).catch((error) => {
+      console.warn('Sponsored click could not be recorded:', error);
+    });
+    try {
+      const advertiser = await getUserProfile(ad.sellerId);
+      if (!advertiser) {
+        throw new Error('The advertiser profile is no longer available.');
+      }
+      onOpenDirectChat?.(advertiser);
+    } catch (error) {
+      console.error('Advertiser profile could not be opened:', error);
+      window.alert(error instanceof Error ? error.message : 'The advertiser profile could not be opened.');
+    }
   };
 
   return (
@@ -82,7 +72,7 @@ export const SponsoredFeedAdCard: React.FC<SponsoredFeedAdCardProps> = ({
               <h4 className="font-bold text-sm text-[#022C22] group-hover:text-[#059669] transition-colors">
                 {ad.sellerName}
               </h4>
-              <CheckCircle2 size={14} fill="#3B82F6" className="text-white inline" />
+
             </div>
             <p className="text-[11px] text-[#4B6358] font-mono">@{ad.sellerUsername}</p>
           </div>

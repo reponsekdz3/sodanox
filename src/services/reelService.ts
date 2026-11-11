@@ -9,12 +9,15 @@ import {
   onSnapshot,
   serverTimestamp,
   getDocs,
+  runTransaction,
   limit,
   arrayUnion,
   arrayRemove,
+  increment,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { db, functions } from '../firebase/config';
+import { httpsCallable } from 'firebase/functions';
 import { Reel, Comment, User } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
@@ -139,12 +142,8 @@ export function subscribeToReels(
         });
       });
 
-      // Merge Firestore reels with locally cached reels
-      const cached = getStoredReels();
-      const firestoreIds = new Set(firestoreReels.map((r) => r.id));
-      const localOnly = cached.filter((r) => !firestoreIds.has(r.id) && !deleted.has(r.id));
-
-      const merged = [...firestoreReels, ...localOnly];
+      // A live Firestore snapshot is authoritative; don't surface unconfirmed local-only reels.
+      const merged = firestoreReels;
 
       // Sort client-side so new reels appear first
       merged.sort((a, b) => {
@@ -187,7 +186,7 @@ export async function createReelInFirestore(
   audioTrack?: { title: string; artist: string },
   explicitReelId?: string
 ): Promise<Reel> {
-  const reelId = explicitReelId || `reel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const reelId = explicitReelId || doc(collection(db, REELS_COLLECTION)).id;
   const cleanAvatar = isMockOrEmptyAvatar(author.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : author.avatar;
 
   const newReel: Reel = {
@@ -209,14 +208,11 @@ export async function createReelInFirestore(
     comments: [],
     sharesCount: 0,
     isSaved: false,
-    createdAt: { toMillis: () => Date.now() } as any,
+    createdAt: Date.now(),
   };
 
-  // 1. Immediately store in persistent local cache so reel NEVER disappears on refresh
-  const current = getStoredReels().filter((r) => r.id !== reelId);
-  saveStoredReels([newReel, ...current]);
-
-  // 2. Persist to Firestore with explicit ID
+  if (!videoUrl || !posterUrl) throw new Error('A reel video and poster are required.');
+  // Persist to Firestore first; local cache only receives confirmed server records.
   try {
     const reelRef = doc(db, REELS_COLLECTION, reelId);
     await setDoc(reelRef, {
@@ -243,9 +239,12 @@ export async function createReelInFirestore(
       createdAt: serverTimestamp(),
     });
   } catch (err) {
-    console.warn('Firestore reel sync notice (stored safely in local persistent cache):', err);
+    console.error('Reel creation failed; no local-only reel was retained:', err);
+    throw err;
   }
 
+  const current = getStoredReels().filter((reel) => reel.id !== reelId);
+  saveStoredReels([newReel, ...current]);
   return newReel;
 }
 
@@ -253,118 +252,67 @@ export async function createReelInFirestore(
  * Toggle like for a reel in Firestore & notify author
  */
 export async function toggleLikeReel(
-  reelId: string,
-  currentUid: string,
-  hasLiked: boolean,
-  authorId?: string,
-  actor?: User
+  reelId: string, currentUid: string, hasLiked: boolean, authorId?: string, actor?: User
 ): Promise<void> {
-  try {
-    const reelRef = doc(db, REELS_COLLECTION, reelId);
-    if (hasLiked) {
-      await updateDoc(reelRef, {
-        likedBy: arrayRemove(currentUid),
-      });
-    } else {
-      await updateDoc(reelRef, {
-        likedBy: arrayUnion(currentUid),
-      });
-      if (authorId && actor) {
-        await createNotification(authorId, actor, 'like', 'liked your reel', reelId);
-      }
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${REELS_COLLECTION}/${reelId}`);
+  if (!currentUid) throw new Error('Sign in before liking a reel.');
+  const reelRef = doc(db, REELS_COLLECTION, reelId);
+  const didLike = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reelRef);
+    if (!snapshot.exists()) throw new Error('This reel no longer exists.');
+    const likedBy: string[] = Array.isArray(snapshot.data().likedBy) ? snapshot.data().likedBy : [];
+    const desired = !hasLiked;
+    const alreadyLiked = likedBy.includes(currentUid);
+    if (alreadyLiked === desired) return false;
+    const next = desired ? [...likedBy, currentUid] : likedBy.filter((id) => id !== currentUid);
+    transaction.update(reelRef, { likedBy: next, likesCount: next.length });
+    return desired;
+  });
+  if (didLike && authorId && actor && authorId !== currentUid) {
+    await createNotification(authorId, actor, 'like', 'liked your reel', reelId)
+      .catch((error) => console.warn('Reel like saved, but its notification could not be delivered:', error));
   }
 }
-
-/**
- * Toggle bookmark for a reel in Firestore
- */
 export async function toggleBookmarkReel(
-  reelId: string,
-  currentUid: string,
-  isSaved: boolean
+  reelId: string, currentUid: string, isSaved: boolean
 ): Promise<void> {
-  try {
-    const reelRef = doc(db, REELS_COLLECTION, reelId);
-    if (isSaved) {
-      await updateDoc(reelRef, {
-        bookmarkedBy: arrayRemove(currentUid),
-      });
-    } else {
-      await updateDoc(reelRef, {
-        bookmarkedBy: arrayUnion(currentUid),
-      });
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${REELS_COLLECTION}/${reelId}`);
-  }
+  if (!currentUid) throw new Error('Sign in before saving a reel.');
+  const reelRef = doc(db, REELS_COLLECTION, reelId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(reelRef);
+    if (!snapshot.exists()) throw new Error('This reel no longer exists.');
+    const bookmarkedBy: string[] = Array.isArray(snapshot.data().bookmarkedBy) ? snapshot.data().bookmarkedBy : [];
+    const desired = !isSaved;
+    const alreadySaved = bookmarkedBy.includes(currentUid);
+    if (alreadySaved === desired) return;
+    const next = desired ? [...bookmarkedBy, currentUid] : bookmarkedBy.filter((id) => id !== currentUid);
+    transaction.update(reelRef, { bookmarkedBy: next, bookmarksCount: next.length });
+  });
 }
 
-/**
- * Add a comment to a reel in Firestore & notify author
- */
 export async function addCommentToReel(
-  reelId: string,
-  author: User,
-  content: string,
-  targetAuthorId?: string
+  reelId: string, author: User, content: string, targetAuthorId?: string
 ): Promise<void> {
-  try {
-    const reelRef = doc(db, REELS_COLLECTION, reelId);
-    const newComment: Comment = {
-      id: `rc_${Date.now()}`,
-      author: {
-        id: author.id,
-        name: author.name,
-        username: author.username,
-        avatar: author.avatar,
-        bio: author.bio,
-        joinedDate: author.joinedDate,
-        followersCount: author.followersCount,
-        followingCount: author.followingCount,
-        isFollowing: false,
-      },
-      content,
-      timestamp: 'Just now',
-      likesCount: 0,
-      hasLiked: false,
-    };
-
-    await updateDoc(reelRef, {
-      comments: arrayUnion(newComment),
-    });
-
-    if (targetAuthorId && targetAuthorId !== author.id) {
-      await createNotification(targetAuthorId, author, 'comment', `commented: "${content.slice(0, 30)}..."`, reelId);
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${REELS_COLLECTION}/${reelId}`);
+  const cleanContent = content.trim();
+  if (!cleanContent || cleanContent.length > 2000) throw new Error('Comments must be between 1 and 2,000 characters.');
+  const updateComment = httpsCallable<
+    { collectionName: 'reels'; contentId: string; action: 'add'; content: string },
+    { success: boolean; commentId: string }
+  >(functions, 'updateContentComment');
+  await updateComment({ collectionName: 'reels', contentId: reelId, action: 'add', content: cleanContent });
+  if (targetAuthorId && targetAuthorId !== author.id) {
+    await createNotification(targetAuthorId, author, 'comment', `commented: "${cleanContent.slice(0, 30)}..."`, reelId);
   }
 }
 
-/**
- * Increment share counter for a reel in Firestore
- */
 export async function incrementReelShareCount(reelId: string): Promise<void> {
-  try {
-    const reelRef = doc(db, REELS_COLLECTION, reelId);
-    const snap = await getDocs(query(collection(db, REELS_COLLECTION)));
-    const target = snap.docs.find((d) => d.id === reelId);
-    if (!target) return;
-    const currentShares = target.data().sharesCount || 0;
-    await updateDoc(reelRef, {
-      sharesCount: currentShares + 1,
-    });
-  } catch (err) {
-    console.warn('Error incrementing reel share count:', err);
-  }
+  if (!reelId) return;
+  if (!auth.currentUser) throw new Error('Sign in to share a reel.');
+  const record = httpsCallable<{ collectionName: 'reels'; contentId: string }, { success: boolean; recorded: boolean; sharesCount: number }>(
+    functions, 'recordContentShare'
+  );
+  await record({ collectionName: 'reels', contentId: reelId });
 }
 
-/**
- * Create a new Reel in Firestore
- */
 export async function createNewReel(
   author: User,
   data: {

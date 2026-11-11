@@ -10,13 +10,15 @@ import {
   serverTimestamp,
   getDocs,
   getDoc,
+  runTransaction,
   limit,
   arrayUnion,
   arrayRemove,
   increment,
   Unsubscribe,
 } from 'firebase/firestore';
-import { db, auth } from '../firebase/config';
+import { db, auth, functions } from '../firebase/config';
+import { httpsCallable } from 'firebase/functions';
 import { Post, Comment, User, Poll } from '../types';
 import { handleFirestoreError, OperationType } from '../firebase/errorHandler';
 import { createNotification } from './notificationService';
@@ -30,111 +32,17 @@ export function isMockArtifact(id?: string, username?: string): boolean {
   if (!id && !username) return false;
   const lowerId = (id || '').toLowerCase();
   const lowerUser = (username || '').toLowerCase();
-  if (lowerId.startsWith('aurachats_')) return false;
   return (
     lowerId.startsWith('creator_') ||
     lowerId.startsWith('mock_') ||
     lowerId.startsWith('demo_') ||
+    lowerId.startsWith('aurachats_') ||
     lowerUser === 'clarachen' ||
     lowerUser === 'soren.studio'
   );
 }
 
-export const COMMUNITY_WELCOME_POSTS: Post[] = [
-  {
-    id: 'aurachats_welcome_01',
-    author: {
-      id: 'aurachats_official',
-      name: 'AuraChats Official',
-      username: 'aurachats',
-      avatar: 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><radialGradient id="g" cx="50%" cy="50%" r="50%"><stop offset="0%" stop-color="%2310B981"/><stop offset="100%" stop-color="%23064E3B"/></radialGradient></defs><circle cx="50" cy="50" r="50" fill="url(%23g)"/><text x="50" y="58" font-family="sans-serif" font-size="34" font-weight="bold" fill="white" text-anchor="middle">A</text></svg>',
-      bio: 'Welcome to AuraChats — the modern dark emerald platform for messaging, voice reflections, calls, and stories.',
-      joinedDate: 'Joined March 2026',
-      followersCount: 1240,
-      followingCount: 32,
-      verified: true,
-    },
-    timestamp: 'Just now',
-    content: 'Welcome to AuraChats! 🌿 Designed with a rich dark modern green palette, instant voice notes, full 4K UHD resolutions, custom aspect ratios, real live story additions, and direct post sharing straight into messages. Tap on any post to view details, join the discussion, or vote below!',
-    tags: ['aurachats', 'welcome', 'community', 'modern'],
-    likesCount: 42,
-    hasLiked: false,
-    likedBy: [],
-    bookmarksCount: 21,
-    isBookmarked: false,
-    repostsCount: 14,
-    hasReposted: false,
-    repostedBy: [],
-    viewsCount: 380,
-    commentsCount: 2,
-    sharesCount: 19,
-    poll: {
-      id: 'poll_welcome_01',
-      question: 'Which AuraChats feature do you find most essential?',
-      options: [
-        { id: 'opt_1', text: '4K Resolutions & Aspect Ratio Cropping', votes: 34 },
-        { id: 'opt_2', text: 'Instant Voice Notes & Audio/Video Calling', votes: 41 },
-        { id: 'opt_3', text: 'Modern Live Stories & Profile Highlights', votes: 29 },
-        { id: 'opt_4', text: 'Direct Post Sharing to Messages', votes: 38 },
-      ],
-      totalVotes: 142,
-    },
-    comments: [
-      {
-        id: 'c_welcome_01',
-        author: {
-          id: 'aurachats_member_01',
-          name: 'Sarah Chen',
-          username: 'sarahc',
-          avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
-          bio: 'Interface design & tactile architecture.',
-          joinedDate: 'Joined 2026',
-          followersCount: 410,
-          followingCount: 180,
-        },
-        content: 'The new Dark Modern Green aesthetic is stunning! The progress bar with linear percentages during image upload feels remarkably fast.',
-        timestamp: '12m ago',
-        likesCount: 8,
-        hasLiked: false,
-        replies: [],
-      },
-    ],
-  },
-  {
-    id: 'aurachats_welcome_02',
-    author: {
-      id: 'aurachats_creator_02',
-      name: 'Julian Vance',
-      username: 'julianv',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-      bio: 'Acoustic research & Nordic design.',
-      joinedDate: 'Joined 2026',
-      followersCount: 860,
-      followingCount: 95,
-    },
-    timestamp: '45m ago',
-    content: 'Capturing morning clarity in the workshop. Posted using 4:5 portrait aspect ratio with high fidelity compression. Notice the crisp gradients and shadow detail.',
-    mediaUrl: 'https://images.unsplash.com/photo-1513694203232-719a280e022f?w=1200&auto=format&fit=crop&q=80',
-    mediaUrls: ['https://images.unsplash.com/photo-1513694203232-719a280e022f?w=1200&auto=format&fit=crop&q=80'],
-    mediaType: 'image',
-    resolution: '1080p',
-    aspectRatio: '4:5',
-    tags: ['craft', 'architecture', 'nordic', 'studio'],
-    likesCount: 65,
-    hasLiked: false,
-    likedBy: [],
-    bookmarksCount: 31,
-    isBookmarked: false,
-    repostsCount: 9,
-    hasReposted: false,
-    repostedBy: [],
-    viewsCount: 512,
-    commentsCount: 0,
-    sharesCount: 16,
-    comments: [],
-  },
-];
-
+export const COMMUNITY_WELCOME_POSTS: Post[] = []; // No fictional seed posts are shipped to members.
 export function getStoredPosts(): Post[] {
   try {
     const raw = localStorage.getItem(LOCAL_POSTS_CACHE_KEY);
@@ -192,7 +100,7 @@ export function subscribeToPosts(
 ): Unsubscribe {
   // 1. Immediately emit cached posts if present for zero-latency instant rendering
   const initialCached = getStoredPosts();
-  onUpdate(initialCached.length > 0 ? initialCached : COMMUNITY_WELCOME_POSTS);
+  onUpdate(initialCached);
 
   const postsRef = collection(db, POSTS_COLLECTION);
 
@@ -310,12 +218,8 @@ export function subscribeToPosts(
         });
       });
 
-      // Merge Firestore posts with any local cached posts by this user that are still syncing
-      const cached = getStoredPosts();
-      const firestoreIds = new Set(firestorePosts.map((p) => p.id));
-      const localOnly = cached.filter((p) => !firestoreIds.has(p.id) && !deleted.has(p.id));
-
-      const merged = [...firestorePosts, ...localOnly];
+      // The live Firestore snapshot is authoritative; never merge unconfirmed local-only writes.
+      const merged = firestorePosts;
 
       // Sort client-side so latest posts appear at the top of the feed
       merged.sort((a, b) => {
@@ -333,14 +237,13 @@ export function subscribeToPosts(
       });
 
       // Update persistent local cache
-      const finalPosts = merged.length > 0 ? merged : COMMUNITY_WELCOME_POSTS;
-      saveStoredPosts(finalPosts);
-      onUpdate(finalPosts);
+      saveStoredPosts(merged);
+      onUpdate(merged);
     },
     (err) => {
       console.warn('Posts subscription notice (falling back to local cache):', err);
       const fallback = getStoredPosts();
-      onUpdate(fallback.length > 0 ? fallback : COMMUNITY_WELCOME_POSTS);
+      onUpdate(fallback);
       if (onError) onError(err);
     }
   );
@@ -366,7 +269,7 @@ export async function createNewPost(
   }
 ): Promise<Post> {
   const mediaUrls = extraOptions?.mediaUrls || (mediaUrl ? [mediaUrl] : []);
-  const newPostId = extraOptions?.explicitPostId || `post_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+  const newPostId = extraOptions?.explicitPostId || doc(collection(db, POSTS_COLLECTION)).id;
 
   const cleanAvatar = isMockOrEmptyAvatar(author.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : author.avatar;
   const authorData: User = {
@@ -410,14 +313,10 @@ export async function createNewPost(
     poll: poll || undefined,
     quotedPost: quotedPost || undefined,
     timestamp: 'Just now',
-    createdAt: { toMillis: () => Date.now() } as any,
+    createdAt: Date.now(),
   };
 
-  // 1. Immediately write to persistent local cache so post NEVER disappears on refresh
-  const currentStored = getStoredPosts().filter((p) => p.id !== newPostId);
-  saveStoredPosts([newPost, ...currentStored]);
-
-  // 2. Write to Firestore with identical ID
+  // Persist first. Local cache is updated only after Firestore confirms the write.
   try {
     const postRef = doc(db, POSTS_COLLECTION, newPostId);
     await setDoc(postRef, {
@@ -474,9 +373,12 @@ export async function createNewPost(
       ).catch(() => {});
     }
   } catch (err) {
-    console.warn('Firestore post sync notice (saved safely in local persistent cache):', err);
+    console.error('Post creation failed; no local-only post was retained:', err);
+    throw err;
   }
 
+  const currentStored = getStoredPosts().filter((post) => post.id !== newPostId);
+  saveStoredPosts([newPost, ...currentStored]);
   return newPost;
 }
 
@@ -484,391 +386,154 @@ export async function createNewPost(
  * Real Toggle like for a post in Firestore & notify author
  */
 export async function toggleLikePost(
-  postId: string,
-  currentUid: string,
-  hasLiked: boolean,
-  targetAuthorId?: string,
-  actor?: User
+  postId: string, currentUid: string, hasLiked: boolean, targetAuthorId?: string, actor?: User
 ): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    if (hasLiked) {
-      await updateDoc(postRef, {
-        likedBy: arrayRemove(currentUid),
-      });
-    } else {
-      await updateDoc(postRef, {
-        likedBy: arrayUnion(currentUid),
-      });
-      if (targetAuthorId && actor && targetAuthorId !== currentUid) {
-        await createNotification(targetAuthorId, actor, 'like', 'liked your post', postId);
-      }
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
+  if (!postId || !currentUid) throw new Error('A signed-in user and post are required.');
+  const postRef = doc(db, POSTS_COLLECTION, postId);
+  const didLike = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(postRef);
+    if (!snapshot.exists()) throw new Error('This post no longer exists.');
+    const likedBy: string[] = Array.isArray(snapshot.data().likedBy) ? snapshot.data().likedBy : [];
+    const alreadyLiked = likedBy.includes(currentUid);
+    const desired = !hasLiked;
+    if (alreadyLiked === desired) return false;
+    const next = desired ? [...likedBy, currentUid] : likedBy.filter((id) => id !== currentUid);
+    transaction.update(postRef, { likedBy: next, likesCount: next.length });
+    return desired;
+  });
+  if (didLike && targetAuthorId && actor && targetAuthorId !== currentUid) {
+    await createNotification(targetAuthorId, actor, 'like', 'liked your post', postId)
+      .catch((error) => console.warn('Like saved, but its notification could not be delivered:', error));
   }
 }
 
-/**
- * Real Toggle bookmark for a post in Firestore
- */
+
 export async function toggleBookmarkPost(
-  postId: string,
-  currentUid: string,
-  isBookmarked: boolean
+  postId: string, currentUid: string, isBookmarked: boolean
 ): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    if (isBookmarked) {
-      await updateDoc(postRef, {
-        bookmarkedBy: arrayRemove(currentUid),
-      });
-    } else {
-      await updateDoc(postRef, {
-        bookmarkedBy: arrayUnion(currentUid),
-      });
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
-  }
+  if (!postId || !currentUid) throw new Error('A signed-in user and post are required.');
+  const postRef = doc(db, POSTS_COLLECTION, postId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(postRef);
+    if (!snapshot.exists()) throw new Error('This post no longer exists.');
+    const bookmarkedBy: string[] = Array.isArray(snapshot.data().bookmarkedBy) ? snapshot.data().bookmarkedBy : [];
+    const desired = !isBookmarked;
+    const alreadySaved = bookmarkedBy.includes(currentUid);
+    if (alreadySaved === desired) return;
+    const next = desired ? [...bookmarkedBy, currentUid] : bookmarkedBy.filter((id) => id !== currentUid);
+    transaction.update(postRef, { bookmarkedBy: next, bookmarksCount: next.length });
+  });
 }
 
-/**
- * Real Repost action:
- * - If quick repost: toggles user's ID in post's repostedBy list
- * - If quote repost: creates a new post with the original post attached as `quotedPost`
- */
+
 export async function toggleRepostPost(
-  postId: string,
-  currentUser: User,
-  hasReposted: boolean,
-  targetAuthorId?: string,
-  quoteComment?: string,
-  originalPost?: Post
+  postId: string, currentUser: User, hasReposted: boolean, quoteComment?: string, targetAuthorId?: string, originalPost?: Post
 ): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-
-    if (quoteComment && quoteComment.trim() && originalPost) {
-      // Create quote post
-      await createNewPost(
-        currentUser,
-        quoteComment.trim(),
-        undefined,
-        'image',
-        originalPost.tags || [],
-        undefined,
-        originalPost
-      );
-      // Increment original repost count
-      await updateDoc(postRef, {
-        repostedBy: arrayUnion(currentUser.id),
-      });
-      return;
-    }
-
-    if (hasReposted) {
-      await updateDoc(postRef, {
-        repostedBy: arrayRemove(currentUser.id),
-      });
-    } else {
-      await updateDoc(postRef, {
-        repostedBy: arrayUnion(currentUser.id),
-      });
-      if (targetAuthorId && targetAuthorId !== currentUser.id) {
-        await createNotification(targetAuthorId, currentUser, 'repost', 'reposted your post', postId);
-      }
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
+  const isQuote = Boolean(quoteComment && quoteComment.trim() && originalPost);
+  if (isQuote && originalPost) {
+    await createNewPost(currentUser, quoteComment!.trim(), undefined, 'image', originalPost.tags || [], undefined, originalPost);
+  }
+  const postRef = doc(db, POSTS_COLLECTION, postId);
+  const didRepost = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(postRef);
+    if (!snapshot.exists()) throw new Error('This post no longer exists.');
+    const repostedBy: string[] = Array.isArray(snapshot.data().repostedBy) ? snapshot.data().repostedBy : [];
+    const desired = isQuote ? true : !hasReposted;
+    const alreadyReposted = repostedBy.includes(currentUser.id);
+    if (alreadyReposted === desired) return false;
+    const next = desired ? [...repostedBy, currentUser.id] : repostedBy.filter((id) => id !== currentUser.id);
+    transaction.update(postRef, { repostedBy: next, repostsCount: next.length });
+    return desired;
+  });
+  if (didRepost && targetAuthorId && targetAuthorId !== currentUser.id) {
+    await createNotification(targetAuthorId, currentUser, 'repost', 'reposted your post', postId)
+      .catch((error) => console.warn('Repost saved, but its notification could not be delivered:', error));
   }
 }
 
-/**
- * Increment real share counter in Firestore & notify the post author
- */
-export async function incrementPostShareCount(
-  postId: string,
-  actor?: User,
-  targetAuthorId?: string
-): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    const updates: Record<string, any> = {
-      sharesCount: increment(1),
-    };
-    if (actor?.id) {
-      updates.sharedBy = arrayUnion(actor.id);
-    }
-    await updateDoc(postRef, updates);
-
-    if (actor && targetAuthorId && targetAuthorId !== actor.id) {
-      await createNotification(
-        targetAuthorId,
-        actor,
-        'share',
-        'shared your reflection',
-        postId,
-        'post'
-      );
-    }
-  } catch (err) {
-    console.warn('Error incrementing share count:', err);
+export async function incrementPostShareCount(postId: string, actor?: User, targetAuthorId?: string): Promise<void> {
+  if (!postId || !actor?.id) throw new Error('Sign in to share a post.');
+  const record = httpsCallable<{ collectionName: 'posts'; contentId: string }, { success: boolean; recorded: boolean; sharesCount: number }>(
+    functions, 'recordContentShare'
+  );
+  const result = await record({ collectionName: 'posts', contentId: postId });
+  if (result.data.recorded && targetAuthorId && targetAuthorId !== actor.id) {
+    await createNotification(targetAuthorId, actor, 'share', 'shared your reflection', postId, 'post')
+      .catch((error) => console.warn('Post share saved, but its notification could not be delivered:', error));
   }
 }
 
-/**
- * Real Post View / Impression tracker in Firestore
- */
 export async function recordPostView(postId: string, viewerId: string): Promise<void> {
   if (!postId || !viewerId) return;
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    await updateDoc(postRef, {
-      viewedBy: arrayUnion(viewerId),
-      viewsCount: increment(1),
-    });
-  } catch (err) {
-    // Non-fatal, suppress permissions or network glitches during rapid scroll
-  }
+  const postRef = doc(db, POSTS_COLLECTION, postId);
+  await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(postRef);
+    if (!snapshot.exists()) return;
+    const viewedBy: string[] = Array.isArray(snapshot.data().viewedBy) ? snapshot.data().viewedBy : [];
+    if (viewedBy.includes(viewerId)) return;
+    const next = [...viewedBy, viewerId];
+    transaction.update(postRef, { viewedBy: next, viewsCount: next.length });
+  });
 }
 
-/**
- * Add a comment or reply to a post in Firestore & notify author
- */
+
 export async function addCommentToPost(
-  postId: string,
-  author: User,
-  content: string,
-  replyToCommentId?: string,
-  targetAuthorId?: string
+  postId: string, author: User, content: string, replyToCommentId?: string, targetAuthorId?: string
 ): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    const snap = await getDocs(query(collection(db, POSTS_COLLECTION)));
-    const target = snap.docs.find((d) => d.id === postId);
-    if (!target) return;
-
-    const data = target.data();
-    const existingComments: any[] = data.comments || [];
-
-    if (replyToCommentId) {
-      // Add nested reply to comment
-      const newReply = {
-        id: `cr_${Date.now()}`,
-        author: {
-          id: author.id,
-          name: author.name,
-          username: author.username,
-          avatar: author.avatar,
-          verified: author.verified || false,
-        },
-        content,
-        timestamp: 'Just now',
-        likesCount: 0,
-        likedBy: [],
-      };
-
-      const updated = existingComments.map((c) => {
-        if (c.id === replyToCommentId) {
-          const replies = c.replies || [];
-          return { ...c, replies: [...replies, newReply] };
-        }
-        return c;
-      });
-
-      await updateDoc(postRef, { comments: updated });
-    } else {
-      // Add top-level comment
-      const newComment = {
-        id: `c_${Date.now()}`,
-        author: {
-          id: author.id,
-          name: author.name,
-          username: author.username,
-          avatar: author.avatar,
-          verified: author.verified || false,
-        },
-        content,
-        timestamp: 'Just now',
-        likesCount: 0,
-        likedBy: [],
-        replies: [],
-      };
-
-      await updateDoc(postRef, {
-        comments: arrayUnion(newComment),
-      });
-    }
-
-    if (targetAuthorId && targetAuthorId !== author.id) {
-      await createNotification(
-        targetAuthorId,
-        author,
-        'comment',
-        `commented: "${content.slice(0, 30)}..."`,
-        postId
-      );
-    }
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
+  const cleanContent = content.trim();
+  if (!cleanContent || cleanContent.length > 2000) throw new Error('Comments must be between 1 and 2,000 characters.');
+  const updateComment = httpsCallable<
+    { collectionName: 'posts'; contentId: string; action: 'add' | 'reply'; commentId?: string; content: string },
+    { success: boolean; commentId: string }
+  >(functions, 'updateContentComment');
+  await updateComment({
+    collectionName: 'posts', contentId: postId,
+    action: replyToCommentId ? 'reply' : 'add', commentId: replyToCommentId, content: cleanContent,
+  });
+  if (!replyToCommentId && targetAuthorId && targetAuthorId !== author.id) {
+    await createNotification(targetAuthorId, author, 'comment', `commented: "${cleanContent.slice(0, 30)}..."`, postId)
+      .catch((error) => console.warn('Comment saved, but its notification could not be delivered:', error));
   }
 }
 
-/**
- * Toggle like for a comment or nested reply in Firestore
- */
-export async function toggleLikeComment(
-  postId: string,
-  commentId: string,
-  currentUid: string
-): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    const snap = await getDocs(query(collection(db, POSTS_COLLECTION)));
-    const target = snap.docs.find((d) => d.id === postId);
-    if (!target) return;
 
-    const comments: any[] = target.data().comments || [];
-    const updatedComments = comments.map((c) => {
-      if (c.id === commentId) {
-        const likedBy: string[] = c.likedBy || [];
-        const hasLiked = likedBy.includes(currentUid);
-        const newLikedBy = hasLiked
-          ? likedBy.filter((id) => id !== currentUid)
-          : [...likedBy, currentUid];
-        return {
-          ...c,
-          likedBy: newLikedBy,
-          likesCount: newLikedBy.length,
-        };
-      }
-      // Check replies
-      if (c.replies && c.replies.length > 0) {
-        const updatedReplies = c.replies.map((r: any) => {
-          if (r.id === commentId) {
-            const likedBy: string[] = r.likedBy || [];
-            const hasLiked = likedBy.includes(currentUid);
-            const newLikedBy = hasLiked
-              ? likedBy.filter((id) => id !== currentUid)
-              : [...likedBy, currentUid];
-            return {
-              ...r,
-              likedBy: newLikedBy,
-              likesCount: newLikedBy.length,
-            };
-          }
-          return r;
-        });
-        return { ...c, replies: updatedReplies };
-      }
-      return c;
-    });
-
-    await updateDoc(postRef, { comments: updatedComments });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
-  }
+export async function toggleLikeComment(postId: string, commentId: string, currentUid: string): Promise<void> {
+  if (!currentUid) throw new Error('Sign in before liking a comment.');
+  const updateComment = httpsCallable<
+    { collectionName: 'posts'; contentId: string; action: 'toggle_like'; commentId: string },
+    { success: boolean }
+  >(functions, 'updateContentComment');
+  await updateComment({ collectionName: 'posts', contentId: postId, action: 'toggle_like', commentId });
 }
 
-/**
- * Vote in a poll in Firestore
- */
+
 export async function voteInPoll(postId: string, optionId: string, currentUid: string): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    const snap = await getDocs(query(collection(db, POSTS_COLLECTION)));
-    const targetDoc = snap.docs.find((d) => d.id === postId);
-    if (!targetDoc) return;
-
-    const data = targetDoc.data();
-    const poll = data.poll;
-    if (!poll || !poll.options) return;
-
-    const voters = poll.voters || {};
-    if (voters[currentUid]) return; // already voted
-
-    const updatedOptions = poll.options.map((opt: { id: string; text: string; votes: number }) => {
-      if (opt.id === optionId) {
-        return { ...opt, votes: (opt.votes || 0) + 1 };
-      }
-      return opt;
-    });
-
-    await updateDoc(postRef, {
-      'poll.options': updatedOptions,
-      'poll.totalVotes': (poll.totalVotes || 0) + 1,
-      [`poll.voters.${currentUid}`]: optionId,
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
-  }
+  if (!currentUid) throw new Error('Sign in before voting in a poll.');
+  const vote = httpsCallable<{ postId: string; optionId: string }, { success: boolean; totalVotes: number; optionId: string }>(
+    functions, 'voteInPostPoll'
+  );
+  await vote({ postId, optionId });
 }
 
-/**
- * Delete a post from Firestore
- */
+
 export async function deletePostFromFirestore(postId: string): Promise<void> {
+  if (!postId) throw new Error('A post ID is required.');
+  await deleteDoc(doc(db, POSTS_COLLECTION, postId));
   markPostDeletedLocally(postId);
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    await deleteDoc(postRef);
-  } catch (err) {
-    handleFirestoreError(err, OperationType.DELETE, `${POSTS_COLLECTION}/${postId}`);
-  }
 }
 
-/**
- * Update post content (Edit post) in Firestore
- */
+
 export async function updatePostContent(postId: string, content: string): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    await updateDoc(postRef, {
-      content,
-      isEdited: true,
-      updatedAt: serverTimestamp(),
-    });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
-  }
+  const cleanContent = content.trim();
+  if (!postId || !cleanContent) throw new Error('A post and non-empty content are required.');
+  await updateDoc(doc(db, POSTS_COLLECTION, postId), { content: cleanContent, isEdited: true, updatedAt: serverTimestamp() });
 }
 
-/**
- * Delete a comment or reply from a post in Firestore
- */
-export async function deleteCommentFromPost(
-  postId: string,
-  commentId: string,
-  replyId?: string
-): Promise<void> {
-  try {
-    const postRef = doc(db, POSTS_COLLECTION, postId);
-    const snap = await getDocs(query(collection(db, POSTS_COLLECTION)));
-    const target = snap.docs.find((d) => d.id === postId);
-    if (!target) return;
 
-    const comments: any[] = target.data().comments || [];
-    let updatedComments: any[] = [];
-
-    if (replyId) {
-      // Remove reply inside comment
-      updatedComments = comments.map((c) => {
-        if (c.id === commentId && c.replies) {
-          return {
-            ...c,
-            replies: c.replies.filter((r: any) => r.id !== replyId),
-          };
-        }
-        return c;
-      });
-    } else {
-      // Remove top-level comment
-      updatedComments = comments.filter((c) => c.id !== commentId);
-    }
-
-    await updateDoc(postRef, { comments: updatedComments });
-  } catch (err) {
-    handleFirestoreError(err, OperationType.UPDATE, `${POSTS_COLLECTION}/${postId}`);
-  }
+export async function deleteCommentFromPost(postId: string, commentId: string, replyId?: string): Promise<void> {
+  const removeComment = httpsCallable<
+    { collectionName: 'posts'; contentId: string; action: 'delete'; commentId: string; replyId?: string },
+    { success: boolean }
+  >(functions, 'updateContentComment');
+  await removeComment({ collectionName: 'posts', contentId: postId, action: 'delete', commentId, replyId });
 }

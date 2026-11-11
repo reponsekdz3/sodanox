@@ -26,7 +26,7 @@ import {
   createSponsoredAd,
   markItemAsSold,
 } from '../../services/marketplaceService';
-import { compressImage } from '../../services/mediaCompressionService';
+import { compressImage, uploadMediaToFirebase } from '../../services/mediaCompressionService';
 import { auraAudio } from '../../utils/audioSynthesizer';
 import { searchWithML } from '../../services/mlSearchService';
 
@@ -59,6 +59,10 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   const [sellPhone, setSellPhone] = useState('');
   const [sellImageUrl, setSellImageUrl] = useState('');
   const [isSubmittingItem, setIsSubmittingItem] = useState(false);
+  const [isUploadingSellImage, setIsUploadingSellImage] = useState(false);
+  const [sellUploadProgress, setSellUploadProgress] = useState(0);
+  const [sellError, setSellError] = useState<string | null>(null);
+  const [marketplaceError, setMarketplaceError] = useState<string | null>(null);
 
   // Sponsored Ad Modal State
   const [isAdModalOpen, setIsAdModalOpen] = useState(false);
@@ -70,9 +74,16 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
   const [adBudget, setAdBudget] = useState('25000');
   const [isSubmittingAd, setIsSubmittingAd] = useState(false);
   const [adSuccessNotice, setAdSuccessNotice] = useState(false);
+  const [adError, setAdError] = useState<string | null>(null);
 
   useEffect(() => {
-    getMarketplaceItems().then(setItems);
+    let active = true;
+    getMarketplaceItems()
+      .then((listings) => { if (active) { setItems(listings); setMarketplaceError(null); } })
+      .catch((error) => {
+        if (active) setMarketplaceError(error instanceof Error ? error.message : 'Marketplace listings could not be loaded.');
+      });
+    return () => { active = false; };
   }, []);
 
   // Filter & ML search
@@ -88,68 +99,80 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
     return result;
   }, [items, selectedCategory, searchQuery]);
 
-  const handleCreateProduct = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!sellTitle.trim() || !sellPrice) return;
-    setIsSubmittingItem(true);
-    auraAudio.playClick(600, 0.05);
-
+  const handleSellImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setSellError(null);
+    if (!file.type.startsWith('image/')) { setSellError('Choose a supported image file.'); event.target.value = ''; return; }
+    if (file.size > 20 * 1024 * 1024) { setSellError('Product photos must be 20 MB or smaller.'); event.target.value = ''; return; }
+    setIsUploadingSellImage(true); setSellUploadProgress(1);
     try {
-      const parsedPrice = parseInt(sellPrice.replace(/[^0-9]/g, ''), 10) || 10000;
-      const fallbackImg =
-        sellImageUrl.trim() ||
-        'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=1000&q=80';
-
-      const newItem = await createMarketplaceItem(
-        {
-          title: sellTitle.trim(),
-          description: sellDesc.trim(),
-          price: parsedPrice,
-          currency: 'RWF',
-          category: sellCategory,
-          condition: sellCondition,
-          images: [fallbackImg],
-          location: sellLocation.trim(),
-          tags: [sellCategory.toLowerCase(), 'marketplace'],
-          contactPhone: sellPhone.trim(),
-        },
-        currentUser
-      );
-
-      setItems((prev) => [newItem, ...prev]);
-      setIsSellModalOpen(false);
-      setSellTitle('');
-      setSellDesc('');
-      setSellPrice('');
-      setSellImageUrl('');
-      auraAudio.playChime();
-    } catch (err) {
-      console.error('Error creating marketplace item:', err);
-    } finally {
-      setIsSubmittingItem(false);
-    }
+      const compressed = await compressImage(file, {
+        maxDimension: 1600, quality: 0.84, preferWebp: true,
+        onProgress: (percent) => setSellUploadProgress(Math.max(1, Math.round(percent * 0.35))),
+      });
+      const extension = compressed.mimeType === 'image/webp' ? 'webp' : 'jpg';
+      const path = `marketplace/${currentUser.id}/${crypto.randomUUID()}.${extension}`;
+      const uploaded = await uploadMediaToFirebase(compressed.blob, path, (percent) => {
+        setSellUploadProgress(Math.min(99, 35 + Math.round(percent * 0.64)));
+      });
+      setSellImageUrl(uploaded.url); setSellUploadProgress(100);
+    } catch (error) {
+      setSellError(error instanceof Error ? error.message : 'Product photo upload failed.');
+    } finally { setIsUploadingSellImage(false); event.target.value = ''; }
   };
 
+  const handleCreateProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!sellTitle.trim() || !sellPrice.trim() || !sellImageUrl.trim() || !sellLocation.trim()) {
+      setSellError('Add a title, price, location, and upload at least one product photo.'); return;
+    }
+    const parsedPrice = Number(sellPrice);
+    if (!Number.isSafeInteger(parsedPrice) || parsedPrice <= 0) { setSellError('Enter a valid price greater than zero.'); return; }
+    setIsSubmittingItem(true); setSellError(null);
+    auraAudio.playClick(600, 0.05);
+    try {
+      const newItem = await createMarketplaceItem({
+        title: sellTitle.trim(), description: sellDesc.trim(), price: parsedPrice, currency: 'RWF',
+        category: sellCategory, condition: sellCondition, images: [sellImageUrl.trim()],
+        location: sellLocation.trim(), tags: [sellCategory.toLowerCase(), 'marketplace'], contactPhone: sellPhone.trim(),
+      }, currentUser);
+      setItems((previous) => [newItem, ...previous.filter((item) => item.id !== newItem.id)]);
+      setIsSellModalOpen(false);
+      setSellTitle(''); setSellDesc(''); setSellPrice(''); setSellImageUrl(''); setSellUploadProgress(0);
+      auraAudio.playChime();
+    } catch (error) {
+      setSellError(error instanceof Error ? error.message : 'The listing could not be published.');
+    } finally { setIsSubmittingItem(false); }
+  };
+
+  const handleMarkItemAsSold = async (item: MarketplaceItem) => {
+    try {
+      await markItemAsSold(item.id);
+      setItems((previous) => previous.map((entry) => entry.id === item.id ? { ...entry, isSold: true } : entry));
+    } catch (error) {
+      setMarketplaceError(error instanceof Error ? error.message : 'The listing could not be marked as sold.');
+    }
+  };
   const handleCreateSponsoredAd = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!adTitle.trim()) return;
+    if (!adTitle.trim() || !adMediaUrl.trim()) { setAdError('Add an ad headline and a real campaign media URL.'); return; }
+    const campaignBudget = Number(adBudget);
+    if (!Number.isSafeInteger(campaignBudget) || campaignBudget <= 0) { setAdError('Enter a valid proposed campaign budget greater than zero.'); return; }
+    setAdError(null);
     setIsSubmittingAd(true);
     auraAudio.playClick(600, 0.05);
 
     try {
-      const fallbackMedia =
-        adMediaUrl.trim() ||
-        'https://images.unsplash.com/photo-1518495973542-4542c06a5843?auto=format&fit=crop&w=1000&q=80';
-
       await createSponsoredAd(
         {
           type: adPlacement,
           title: adTitle.trim(),
           description: adDesc.trim(),
-          mediaUrl: fallbackMedia,
+          mediaUrl: adMediaUrl.trim(),
           mediaType: 'image',
           ctaText: adCtaText.trim() || 'Learn More',
-          budget: parseInt(adBudget, 10) || 20000,
+          budget: campaignBudget,
           targetCategory: 'Tech',
         },
         currentUser
@@ -162,7 +185,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
       }, 1500);
       auraAudio.playChime();
     } catch (err) {
-      console.error('Error creating sponsored ad:', err);
+      setAdError(err instanceof Error ? err.message : 'The campaign could not be submitted for review.');
     } finally {
       setIsSubmittingAd(false);
     }
@@ -273,6 +296,8 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
         </div>
       </div>
 
+      {marketplaceError && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-3 text-xs text-red-800">{marketplaceError}</div>}
+
       {/* Product Grid */}
       {filteredItems.length === 0 ? (
         <div className="text-center py-16 bg-white rounded-3xl border border-[#D1E2D9] p-6 space-y-3">
@@ -369,7 +394,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     {item.seller.id === currentUser.id && !item.isSold && (
                       <button
                         type="button"
-                        onClick={() => markItemAsSold(item.id)}
+                        onClick={() => { void handleMarkItemAsSold(item); }}
                         className="py-2 px-3 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-[#064E3B] text-xs font-semibold transition-colors cursor-pointer"
                         title="Mark as Sold"
                       >
@@ -479,17 +504,21 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                 </div>
               </div>
 
-              <div>
-                <label className="block text-xs font-bold text-[#064E3B] mb-1">
-                  Product Image URL
-                </label>
-                <input
-                  type="url"
-                  value={sellImageUrl}
-                  onChange={(e) => setSellImageUrl(e.target.value)}
-                  placeholder="https://images.unsplash.com/photo-..."
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs sm:text-sm text-[#064E3B] focus:outline-none focus:border-[#059669]"
-                />
+              <div className="space-y-2">
+                <label className="block text-xs font-bold text-[#064E3B] mb-1">Product Photo *</label>
+                <input type="file" accept="image/jpeg,image/png,image/webp,image/avif"
+                  disabled={isUploadingSellImage || isSubmittingItem}
+                  onChange={(event) => { void handleSellImageUpload(event); }}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-[#D1E2D9] text-xs text-[#064E3B] file:mr-3 file:rounded-lg file:border-0 file:bg-emerald-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-emerald-800" />
+                {isUploadingSellImage && <div className="space-y-1">
+                  <div className="h-2 overflow-hidden rounded-full bg-emerald-100"><div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${sellUploadProgress}%` }} /></div>
+                  <p className="text-[11px] text-[#55635C]">Optimizing and uploading photo · {sellUploadProgress}%</p>
+                </div>}
+                {sellImageUrl && !isUploadingSellImage && <div className="flex items-center gap-3 rounded-xl border border-emerald-100 bg-emerald-50 p-2">
+                  <img src={sellImageUrl} alt="Uploaded product" className="h-14 w-14 rounded-lg object-cover" />
+                  <div className="min-w-0 flex-1 text-[11px] text-emerald-800">Photo saved to Sodanox media storage</div>
+                  <button type="button" onClick={() => setSellImageUrl('')} className="text-[11px] font-semibold text-red-700">Remove</button>
+                </div>}
               </div>
 
               <div>
@@ -505,10 +534,11 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                 />
               </div>
 
+              {sellError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">{sellError}</p>}
               <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={isSubmittingItem}
+                  disabled={isSubmittingItem || isUploadingSellImage}
                   className="w-full py-3 rounded-2xl bg-[#064E3B] hover:bg-[#059669] text-white text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
                 >
                   {isSubmittingItem ? 'Listing Item...' : 'Publish Product to Marketplace'}
@@ -541,8 +571,8 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
               {adSuccessNotice ? (
                 <div className="text-center py-8 space-y-2">
                   <CheckCircle2 size={40} className="text-emerald-600 mx-auto" />
-                  <p className="font-bold text-[#064E3B]">Ad Campaign Launched!</p>
-                  <p className="text-xs text-[#55635C]">Your ad is now active in feeds and stories.</p>
+                  <p className="font-bold text-[#064E3B]">Campaign submitted for review</p>
+                  <p className="text-xs text-[#55635C]">This campaign is pending moderation and is not live yet. No payment has been collected.</p>
                 </div>
               ) : (
                 <>
@@ -577,7 +607,7 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
 
                     <div>
                       <label className="block text-xs font-bold text-[#064E3B] mb-1">
-                        Campaign Budget (RWF)
+                        Proposed Budget (RWF) · not charged on submission
                       </label>
                       <input
                         type="number"
@@ -628,13 +658,14 @@ export const MarketplaceView: React.FC<MarketplaceViewProps> = ({
                     />
                   </div>
 
+                  {adError && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-2.5 text-xs text-red-800">{adError}</p>}
                   <div className="pt-2">
                     <button
                       type="submit"
                       disabled={isSubmittingAd}
                       className="w-full py-3 rounded-2xl bg-[#064E3B] hover:bg-[#059669] text-white text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer disabled:opacity-50"
                     >
-                      {isSubmittingAd ? 'Launching Ad...' : 'Launch Sponsored Campaign'}
+                      {isSubmittingAd ? 'Submitting Campaign...' : 'Submit Campaign for Review'}
                     </button>
                   </div>
                 </>

@@ -117,95 +117,63 @@ export async function getOrCreateConversation(
   currentUser: User,
   targetUser: User
 ): Promise<string> {
+  if (!currentUser.id || !targetUser.id || currentUser.id === targetUser.id) {
+    throw new Error('Choose another member to start a conversation.');
+  }
   const convId = getDeterministicConvId(currentUser.id, targetUser.id);
-  const now = new Date();
-  const timeFormatted = now.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  const convRef = doc(db, 'conversations', convId);
+  const existingSnapshot = await getDoc(convRef);
+  const timeFormatted = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const currentParticipant = {
+    id: currentUser.id, name: currentUser.name, username: currentUser.username,
+    avatar: currentUser.avatar, verified: currentUser.verified || false,
+  };
+  const targetParticipant = {
+    id: targetUser.id, name: targetUser.name, username: targetUser.username,
+    avatar: targetUser.avatar, verified: targetUser.verified || false,
+  };
 
+  if (!existingSnapshot.exists()) {
+    await setDoc(convRef, {
+      id: convId,
+      participantIds: [currentUser.id, targetUser.id],
+      participants: { [currentUser.id]: currentParticipant, [targetUser.id]: targetParticipant },
+      lastMessage: {
+        id: `init_${Date.now()}`, senderId: currentUser.id, timestamp: timeFormatted,
+        type: 'text', text: 'Conversation started', status: 'read',
+      },
+      unreadCounts: { [currentUser.id]: 0, [targetUser.id]: 0 },
+      typing: { [currentUser.id]: false, [targetUser.id]: false },
+      updatedAt: serverTimestamp(),
+    });
+  } else {
+    const participantIds: string[] = existingSnapshot.data().participantIds || [];
+    if (!participantIds.includes(currentUser.id) || !participantIds.includes(targetUser.id)) {
+      throw new Error('This conversation does not belong to the selected participants.');
+    }
+  }
+
+  // Cache only a conversation that has been confirmed by Firestore.
   const convObject: ChatConversation = {
     id: convId,
-    participant: {
-      ...targetUser,
-      isFollowing: targetUser.isFollowing || false,
-    },
-    lastMessage: {
-      id: `init_${Date.now()}`,
-      senderId: currentUser.id,
-      timestamp: timeFormatted,
-      type: 'text',
-      text: 'Conversation started',
-      status: 'read',
-    },
+    participant: { ...targetUser, isFollowing: targetUser.isFollowing || false },
+    lastMessage: existingSnapshot.exists()
+      ? (existingSnapshot.data().lastMessage as ChatConversation['lastMessage'])
+      : { id: `init_${Date.now()}`, senderId: currentUser.id, timestamp: timeFormatted, type: 'text', text: 'Conversation started', status: 'read' },
     unreadCount: 0,
     isOnline: true,
     isTyping: false,
     messages: getStoredMessages(convId),
   };
-
-  // 1. Update local cache immediately
   const existingConvs = getStoredConversations();
-  const existingIndex = existingConvs.findIndex((c) => c.id === convId);
+  const existingIndex = existingConvs.findIndex((conversation) => conversation.id === convId);
   if (existingIndex >= 0) {
-    existingConvs[existingIndex] = {
-      ...existingConvs[existingIndex],
-      participant: convObject.participant,
-    };
+    existingConvs[existingIndex] = { ...existingConvs[existingIndex], participant: convObject.participant };
   } else {
     existingConvs.unshift(convObject);
   }
   setStoredConversations(existingConvs);
   notifyConversationsChanged();
-
-  // 2. Sync to Firestore with merge: true so it never throws
-  try {
-    const convRef = doc(db, 'conversations', convId);
-    await setDoc(
-      convRef,
-      {
-        id: convId,
-        participantIds: [currentUser.id, targetUser.id],
-        participants: {
-          [currentUser.id]: {
-            id: currentUser.id,
-            name: currentUser.name,
-            username: currentUser.username,
-            avatar: currentUser.avatar,
-            verified: currentUser.verified || false,
-          },
-          [targetUser.id]: {
-            id: targetUser.id,
-            name: targetUser.name,
-            username: targetUser.username,
-            avatar: targetUser.avatar,
-            verified: targetUser.verified || false,
-          },
-        },
-        lastMessage: {
-          id: `init_${Date.now()}`,
-          senderId: currentUser.id,
-          timestamp: timeFormatted,
-          type: 'text',
-          text: 'Conversation started',
-          status: 'read',
-        },
-        unreadCounts: {
-          [currentUser.id]: 0,
-          [targetUser.id]: 0,
-        },
-        typing: {
-          [currentUser.id]: false,
-          [targetUser.id]: false,
-        },
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
-  } catch (err) {
-    console.warn('Firestore getOrCreateConversation note (persisted locally):', err);
-  }
-
   return convId;
 }
 
@@ -222,6 +190,8 @@ export function subscribeToUserConversations(
     return () => {};
   }
 
+  let serverSnapshotReady = false;
+
   // 1. Instantly deliver cached conversations
   const deliverLocal = () => {
     const allStored = getStoredConversations();
@@ -236,8 +206,9 @@ export function subscribeToUserConversations(
 
   deliverLocal();
 
-  // 2. Listen to local conversation updates (across windows or immediate sends)
-  const handleLocalEvent = () => deliverLocal();
+  // 2. Before the first server snapshot, local updates can keep a new offline
+  // conversation visible. Once Firestore responds, its list is authoritative.
+  const handleLocalEvent = () => { if (!serverSnapshotReady) deliverLocal(); };
   if (typeof window !== 'undefined') {
     window.addEventListener('aura_chat_convs_updated', handleLocalEvent);
   }
@@ -301,14 +272,10 @@ export function subscribeToUserConversations(
           });
         });
 
-        // Merge with local conversations to guarantee unsynced or newly created conversations aren't lost
-        const localList = getStoredConversations();
-        const mergedMap = new Map<string, ChatConversation>();
-
-        localList.forEach((c) => mergedMap.set(c.id, c));
-        firestoreList.forEach((c) => mergedMap.set(c.id, c));
-
-        const merged = Array.from(mergedMap.values());
+        // The successful server snapshot is authoritative: stale local-only
+        // conversations must not reappear after deletion or an earlier failed write.
+        serverSnapshotReady = true;
+        const merged = firestoreList;
         setStoredConversations(merged);
 
         merged.sort((a, b) => {
@@ -343,100 +310,105 @@ export function subscribeToUserConversations(
 export function subscribeToMessages(
   conversationId: string,
   onUpdate: (messages: Message[]) => void,
-  onError?: (err: unknown) => void
+  onError?: (err: unknown) => void,
+  currentUid?: string
 ): Unsubscribe {
-  if (!conversationId) {
-    return () => {};
-  }
-
-  // 1. Immediately deliver stored messages so UI is never blank
+  if (!conversationId) return () => {};
+  let clearedAtMs = 0;
+  let stateReady = !currentUid;
+  let pendingFirestoreMessages: Message[] | null = null;
+  const normalizedTime = (value: any): number => {
+    if (typeof value === 'number') return value;
+    if (value instanceof Date) return value.getTime();
+    if (typeof value?.toMillis === 'function') return value.toMillis();
+    if (typeof value?.seconds === 'number') return value.seconds * 1000;
+    return 0;
+  };
+  const visible = (messages: Message[]) => messages.filter((message) =>
+    !clearedAtMs || normalizedTime(message.createdAt) > clearedAtMs
+  );
   const deliverStored = () => {
-    const stored = getStoredMessages(conversationId);
-    onUpdate(stored);
+    if (!stateReady) { onUpdate([]); return; }
+    onUpdate(visible(getStoredMessages(conversationId)));
   };
 
-  deliverStored();
-
-  // 2. Listen to local message updates
-  const handleLocalMsgEvent = (e: Event) => {
-    const custom = e as CustomEvent<{ conversationId?: string }>;
-    if (!custom.detail?.conversationId || custom.detail.conversationId === conversationId) {
-      deliverStored();
-    }
+  let serverSnapshotReady = false;
+  const handleLocalMsgEvent = (event: Event) => {
+    const custom = event as CustomEvent<{ conversationId?: string }>;
+    if (!serverSnapshotReady && (!custom.detail?.conversationId || custom.detail.conversationId === conversationId)) deliverStored();
   };
+  if (typeof window !== 'undefined') window.addEventListener('aura_chat_msgs_updated', handleLocalMsgEvent);
 
-  if (typeof window !== 'undefined') {
-    window.addEventListener('aura_chat_msgs_updated', handleLocalMsgEvent);
-  }
-
-  // 3. Real-time Firestore query (sort client-side to prevent pending timestamp null issues)
-  let unsubscribeFirestore = () => {};
+  let unsubscribeFirestore: Unsubscribe = () => {};
+  let unsubscribeUserState: Unsubscribe = () => {};
+  const publishMessages = (firestoreMessages: Message[]) => {
+    if (!stateReady) { pendingFirestoreMessages = firestoreMessages; return; }
+    // A live server result replaces cache data; the cache is only an offline fallback.
+    const confirmed = visible(firestoreMessages);
+    confirmed.sort((a, b) => {
+      const first = normalizedTime(a.createdAt);
+      const second = normalizedTime(b.createdAt);
+      if (first && second && first !== second) return first - second;
+      return (a.timestamp || '').localeCompare(b.timestamp || '');
+    });
+    serverSnapshotReady = true;
+    setStoredMessages(conversationId, confirmed);
+    onUpdate(confirmed);
+  };
   try {
-    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-
-    unsubscribeFirestore = onSnapshot(
-      messagesRef,
-      (snapshot) => {
-        const firestoreMsgs: Message[] = [];
-        snapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          firestoreMsgs.push({
-            id: docSnap.id,
-            senderId: d.senderId,
-            senderName: d.senderName,
-            senderAvatar: d.senderAvatar,
-            timestamp: d.timestamp || 'Just now',
-            type: d.type || 'text',
-            text: d.text || '',
-            file: d.file || undefined,
-            voice: d.voice || undefined,
-            callMeta: d.callMeta || undefined,
-            sharedPost: d.sharedPost || undefined,
-            status: d.status || 'delivered',
-            reaction: d.reaction,
-            replyTo: d.replyTo || undefined,
-            readAt: d.readAt,
-            createdAt: d.createdAt,
-          });
-        });
-
-        // Merge with local messages
-        const localMsgs = getStoredMessages(conversationId);
-        const map = new Map<string, Message>();
-
-        localMsgs.forEach((m) => map.set(m.id, m));
-        firestoreMsgs.forEach((m) => map.set(m.id, m));
-
-        const merged = Array.from(map.values());
-
-        // Sort chronologically using normalized millisecond timestamps
-        merged.sort((a, b) => {
-          const tA = getNormalizedMillis(a.createdAt);
-          const tB = getNormalizedMillis(b.createdAt);
-          if (tA && tB && tA !== tB) return tA - tB;
-          return (a.timestamp || '').localeCompare(b.timestamp || '');
-        });
-
-        setStoredMessages(conversationId, merged);
-        onUpdate(merged);
-      },
-      (err) => {
-        console.warn('subscribeToMessages snapshot note (showing local messages):', err);
-        if (onError) onError(err);
-      }
-    );
-  } catch (err) {
-    console.warn('subscribeToMessages setup note:', err);
-  }
-
-  return () => {
-    if (typeof window !== 'undefined') {
-      window.removeEventListener('aura_chat_msgs_updated', handleLocalMsgEvent);
+    if (currentUid) {
+      const stateRef = doc(db, 'conversations', conversationId, 'userState', currentUid);
+      unsubscribeUserState = onSnapshot(stateRef, (snapshot) => {
+        clearedAtMs = snapshot.exists() ? normalizedTime(snapshot.data().clearedAt) : 0;
+        stateReady = true;
+        deliverStored();
+        if (pendingFirestoreMessages) {
+          publishMessages(pendingFirestoreMessages);
+          pendingFirestoreMessages = null;
+        }
+      }, (error) => {
+        console.warn('Private conversation state could not be read:', error);
+        onError?.(error);
+      });
     }
+    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+    unsubscribeFirestore = onSnapshot(messagesRef, (snapshot) => {
+      const firestoreMsgs: Message[] = snapshot.docs.map((docSnap) => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          senderId: data.senderId,
+          senderName: data.senderName,
+          senderAvatar: data.senderAvatar,
+          timestamp: data.timestamp || 'Just now',
+          type: data.type || 'text',
+          text: data.text || '',
+          file: data.file || undefined,
+          voice: data.voice || undefined,
+          callMeta: data.callMeta || undefined,
+          sharedPost: data.sharedPost || undefined,
+          status: data.status || 'delivered',
+          reaction: data.reaction,
+          replyTo: data.replyTo || undefined,
+          readAt: data.readAt,
+          createdAt: data.createdAt,
+        } as Message;
+      });
+      publishMessages(firestoreMsgs);
+    }, (error) => {
+      console.warn('Message subscription failed; cached messages remain available:', error);
+      onError?.(error);
+    });
+  } catch (error) {
+    console.error('Message subscription could not be initialized:', error);
+    onError?.(error);
+  }
+  return () => {
+    if (typeof window !== 'undefined') window.removeEventListener('aura_chat_msgs_updated', handleLocalMsgEvent);
+    unsubscribeUserState();
     unsubscribeFirestore();
   };
 }
-
 /**
  * Send a message with instant local persistence and Firestore sync
  */
@@ -447,31 +419,24 @@ export async function sendChatMessage(
   recipientId: string,
   replyTo?: MessageReplyInfo
 ): Promise<string> {
+  if (!conversationId || !currentUser.id || !recipientId) {
+    throw new Error('A signed-in sender, recipient, and conversation are required.');
+  }
   const now = new Date();
-  const timeFormatted = now.toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-
-  const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-
+  const timeFormatted = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const msgDocRef = doc(messagesRef);
+  const messageId = msgDocRef.id;
   const lastMessageSnippet =
     messageData.type === 'call'
-      ? (messageData.callMeta?.status === 'missed'
-          ? '📞 Missed call'
-          : messageData.callMeta?.status === 'declined'
-          ? '📞 Call declined'
-          : `${messageData.callMeta?.callType === 'video' ? '📹 Video' : '📞 Audio'} call${messageData.callMeta?.durationSeconds ? ` (${Math.floor(messageData.callMeta.durationSeconds / 60)}m ${messageData.callMeta.durationSeconds % 60}s)` : ''}`)
-      : messageData.type === 'voice'
-      ? '🎙️ Voice note'
-      : messageData.type === 'file'
-      ? `📎 ${messageData.file?.name || 'File'}`
-      : messageData.type === 'image'
-      ? '📷 Photo'
-      : messageData.type === 'post'
-      ? `📌 Post from @${messageData.sharedPost?.authorUsername || 'creator'}`
+      ? (messageData.callMeta?.status === 'missed' ? '📞 Missed call'
+        : messageData.callMeta?.status === 'declined' ? '📞 Call declined'
+        : `${messageData.callMeta?.callType === 'video' ? '📹 Video' : '📞 Audio'} call${messageData.callMeta?.durationSeconds ? ` (${Math.floor(messageData.callMeta.durationSeconds / 60)}m ${messageData.callMeta.durationSeconds % 60}s)` : ''}`)
+      : messageData.type === 'voice' ? '🎙️ Voice note'
+      : messageData.type === 'file' ? `📎 ${messageData.file?.name || 'File'}`
+      : messageData.type === 'image' ? '📷 Photo'
+      : messageData.type === 'post' ? `📌 Post from @${messageData.sharedPost?.authorUsername || 'creator'}`
       : messageData.text || '';
-
   const fullMessage: Message = {
     id: messageId,
     senderId: currentUser.id,
@@ -485,157 +450,99 @@ export async function sendChatMessage(
     voice: messageData.voice,
     callMeta: messageData.callMeta,
     sharedPost: messageData.sharedPost,
-    replyTo: replyTo
-      ? {
-          id: replyTo.id,
-          senderId: replyTo.senderId,
-          senderName: replyTo.senderName || 'Sender',
-          text: replyTo.text || '',
-          type: replyTo.type || 'text',
-        }
-      : undefined,
-    createdAt: Date.now(),
+    replyTo: replyTo ? {
+      id: replyTo.id, senderId: replyTo.senderId,
+      senderName: replyTo.senderName || 'Sender', text: replyTo.text || '', type: replyTo.type || 'text',
+    } : undefined,
+    createdAt: now.getTime(),
   };
+  const payload: Record<string, any> = {
+    id: messageId, conversationId, senderId: currentUser.id, senderName: currentUser.name,
+    senderAvatar: currentUser.avatar, timestamp: timeFormatted, type: fullMessage.type,
+    text: fullMessage.text, status: 'sent', createdAt: serverTimestamp(),
+  };
+  if (messageData.file) payload.file = messageData.file;
+  if (messageData.voice) payload.voice = messageData.voice;
+  if (messageData.callMeta) payload.callMeta = messageData.callMeta;
+  if (messageData.sharedPost) payload.sharedPost = messageData.sharedPost;
+  if (fullMessage.replyTo) payload.replyTo = fullMessage.replyTo;
 
-  // 1. Store locally first (0ms latency, guaranteed visibility)
-  const currentMessages = getStoredMessages(conversationId);
-  currentMessages.push(fullMessage);
-  setStoredMessages(conversationId, currentMessages);
+  const convRef = doc(db, 'conversations', conversationId);
+  const batch = writeBatch(db);
+  batch.set(msgDocRef, payload);
+  batch.set(convRef, {
+    id: conversationId,
+    participantIds: [currentUser.id, recipientId],
+    lastMessage: {
+      id: messageId, senderId: currentUser.id, timestamp: timeFormatted,
+      type: fullMessage.type, text: lastMessageSnippet, status: 'sent',
+    },
+    updatedAt: serverTimestamp(),
+    [`unreadCounts.${recipientId}`]: increment(1),
+    [`typing.${currentUser.id}`]: false,
+  }, { merge: true });
+  // Message and conversation preview commit together. If either fails, nothing is
+  // retained as a successful local-only message.
+  await batch.commit();
 
-  // 2. Update local conversation record
-  const currentConvs = getStoredConversations();
-  const convIdx = currentConvs.findIndex((c) => c.id === conversationId);
-  if (convIdx >= 0) {
-    currentConvs[convIdx] = {
-      ...currentConvs[convIdx],
+  const localMessages = getStoredMessages(conversationId).filter((message) => message.id !== messageId);
+  localMessages.push(fullMessage);
+  setStoredMessages(conversationId, localMessages);
+  const conversations = getStoredConversations();
+  const conversationIndex = conversations.findIndex((conversation) => conversation.id === conversationId);
+  if (conversationIndex >= 0) {
+    conversations[conversationIndex] = {
+      ...conversations[conversationIndex],
       lastMessage: {
-        id: messageId,
-        senderId: currentUser.id,
-        timestamp: timeFormatted,
-        type: messageData.type || 'text',
-        text: lastMessageSnippet,
-        status: 'sent',
+        id: messageId, senderId: currentUser.id, timestamp: timeFormatted,
+        type: fullMessage.type, text: lastMessageSnippet, status: 'sent',
       },
       unreadCount: 0,
     };
-    // Move to front
-    const updated = currentConvs.splice(convIdx, 1)[0];
-    currentConvs.unshift(updated);
+    const updated = conversations.splice(conversationIndex, 1)[0];
+    conversations.unshift(updated);
+    setStoredConversations(conversations);
   }
-  setStoredConversations(currentConvs);
-
-  // Notify active listeners
   notifyMessagesChanged(conversationId);
   notifyConversationsChanged();
-
-  // 3. Sync to Firestore in background
-  try {
-    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-    const msgDocRef = doc(messagesRef, messageId);
-    const convRef = doc(db, 'conversations', conversationId);
-
-    const payload: any = {
-      id: messageId,
-      conversationId,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      senderAvatar: currentUser.avatar,
-      timestamp: timeFormatted,
-      type: messageData.type || 'text',
-      text: messageData.text || '',
-      status: 'sent',
-      createdAt: serverTimestamp(),
-    };
-
-    if (messageData.file) payload.file = messageData.file;
-    if (messageData.voice) payload.voice = messageData.voice;
-    if (messageData.callMeta) payload.callMeta = messageData.callMeta;
-    if (messageData.sharedPost) payload.sharedPost = messageData.sharedPost;
-    if (fullMessage.replyTo) payload.replyTo = fullMessage.replyTo;
-
-    await setDoc(msgDocRef, payload);
-
-    await setDoc(
-      convRef,
-      {
-        id: conversationId,
-        participantIds: [currentUser.id, recipientId],
-        lastMessage: {
-          id: messageId,
-          senderId: currentUser.id,
-          timestamp: timeFormatted,
-          type: messageData.type || 'text',
-          text: lastMessageSnippet,
-          status: 'sent',
-        },
-        updatedAt: serverTimestamp(),
-        [`unreadCounts.${recipientId}`]: increment(1),
-        [`typing.${currentUser.id}`]: false,
-      },
-      { merge: true }
-    );
-  } catch (err) {
-    console.warn('sendChatMessage Firestore sync note (saved locally):', err);
-  }
-
   return messageId;
 }
 
 /**
  * Mark all incoming messages in a conversation as read
  */
-export async function markConversationAsRead(
-  conversationId: string,
-  currentUid: string
-): Promise<void> {
+export async function markConversationAsRead(conversationId: string, currentUid: string): Promise<void> {
   if (!conversationId || !currentUid) return;
-
-  // Local reset
-  const convs = getStoredConversations();
-  const target = convs.find((c) => c.id === conversationId);
+  const convRef = doc(db, 'conversations', conversationId);
+  const messagesRef = collection(db, 'conversations', conversationId, 'messages');
+  const unreadQuery = query(messagesRef, where('senderId', '!=', currentUid));
+  const snapshot = await getDocs(unreadQuery);
+  const unreadDocs = snapshot.docs.filter((docSnap) => docSnap.data().status !== 'read');
+  if (unreadDocs.length === 0) {
+    await updateDoc(convRef, { [`unreadCounts.${currentUid}`]: 0 });
+  } else {
+    for (let index = 0; index < unreadDocs.length; index += 450) {
+      const batch = writeBatch(db);
+      if (index === 0) batch.update(convRef, { [`unreadCounts.${currentUid}`]: 0 });
+      unreadDocs.slice(index, index + 450).forEach((docSnap) => {
+        batch.update(docSnap.ref, { status: 'read', readAt: serverTimestamp() });
+      });
+      await batch.commit();
+    }
+  }
+  // Only change local unread state after Firebase commits successfully.
+  const conversations = getStoredConversations();
+  const target = conversations.find((conversation) => conversation.id === conversationId);
   if (target) {
     target.unreadCount = 0;
-    setStoredConversations(convs);
+    setStoredConversations(conversations);
     notifyConversationsChanged();
   }
-
-  try {
-    const convRef = doc(db, 'conversations', conversationId);
-    await setDoc(
-      convRef,
-      {
-        [`unreadCounts.${currentUid}`]: 0,
-      },
-      { merge: true }
-    );
-
-    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-    const unreadQuery = query(
-      messagesRef,
-      where('senderId', '!=', currentUid)
-    );
-    const snap = await getDocs(unreadQuery);
-
-    if (!snap.empty) {
-      const batch = writeBatch(db);
-      let needsCommit = false;
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data.status !== 'read') {
-          batch.update(docSnap.ref, {
-            status: 'read',
-            readAt: serverTimestamp(),
-          });
-          needsCommit = true;
-        }
-      });
-      if (needsCommit) {
-        await batch.commit();
-      }
-    }
-  } catch (err) {
-    // Non-fatal
-  }
+  const messages = getStoredMessages(conversationId).map((message) =>
+    message.senderId !== currentUid ? { ...message, status: 'read' as const } : message
+  );
+  setStoredMessages(conversationId, messages);
+  notifyMessagesChanged(conversationId);
 }
 
 /**
@@ -664,77 +571,42 @@ export async function setTypingIndicator(
 /**
  * React to a message with emoji
  */
-export async function addMessageReaction(
-  conversationId: string,
-  messageId: string,
-  reaction: string
-): Promise<void> {
+export async function addMessageReaction(conversationId: string, messageId: string, reaction: string): Promise<void> {
   if (!conversationId || !messageId) return;
-
-  // Update locally
-  const msgs = getStoredMessages(conversationId);
-  const target = msgs.find((m) => m.id === messageId);
+  const msgRef = doc(db, 'conversations', conversationId, 'messages', messageId);
+  await updateDoc(msgRef, { reaction });
+  const messages = getStoredMessages(conversationId);
+  const target = messages.find((message) => message.id === messageId);
   if (target) {
     target.reaction = reaction;
-    setStoredMessages(conversationId, msgs);
+    setStoredMessages(conversationId, messages);
     notifyMessagesChanged(conversationId);
-  }
-
-  try {
-    const msgRef = doc(db, 'conversations', conversationId, 'messages', messageId);
-    await setDoc(
-      msgRef,
-      {
-        reaction,
-      },
-      { merge: true }
-    );
-  } catch (err) {
-    console.warn('addMessageReaction note:', err);
   }
 }
 
 /**
  * Delete a single chat message
  */
-export async function deleteChatMessage(
-  conversationId: string,
-  messageId: string
-): Promise<void> {
+export async function deleteChatMessage(conversationId: string, messageId: string): Promise<void> {
   if (!conversationId || !messageId) return;
-
-  // Delete from local cache
-  const msgs = getStoredMessages(conversationId);
-  const filtered = msgs.filter((m) => m.id !== messageId);
-  setStoredMessages(conversationId, filtered);
+  const msgRef = doc(db, 'conversations', conversationId, 'messages', messageId);
+  // Firestore only lets the author delete their message. Do not hide it locally
+  // until that owner-authorized server delete has succeeded.
+  await deleteDoc(msgRef);
+  const messages = getStoredMessages(conversationId).filter((message) => message.id !== messageId);
+  setStoredMessages(conversationId, messages);
   notifyMessagesChanged(conversationId);
-
-  try {
-    const msgRef = doc(db, 'conversations', conversationId, 'messages', messageId);
-    await deleteDoc(msgRef);
-  } catch (err) {
-    console.warn('deleteChatMessage Firestore note:', err);
-  }
 }
 
 /**
  * Clear all messages in a conversation
  */
-export async function clearConversationMessages(
-  conversationId: string
-): Promise<void> {
-  if (!conversationId) return;
-
+export async function clearConversationMessages(conversationId: string, currentUid: string): Promise<void> {
+  if (!conversationId || !currentUid) return;
+  const stateRef = doc(db, 'conversations', conversationId, 'userState', currentUid);
+  // A per-participant clear marker hides history only for this member; original
+  // message records remain available to the other participant and are not destroyed.
+  await setDoc(stateRef, { clearedAt: serverTimestamp(), updatedAt: serverTimestamp() }, { merge: true });
   setStoredMessages(conversationId, []);
   notifyMessagesChanged(conversationId);
-
-  try {
-    const messagesRef = collection(db, 'conversations', conversationId, 'messages');
-    const snap = await getDocs(messagesRef);
-    const batch = writeBatch(db);
-    snap.forEach((d) => batch.delete(d.ref));
-    await batch.commit();
-  } catch (err) {
-    console.warn('clearConversationMessages note:', err);
-  }
 }

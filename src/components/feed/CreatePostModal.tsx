@@ -31,7 +31,7 @@ import { UploadProgressBar } from '../common/UploadProgressBar';
 interface CreatePostModalProps {
   currentUser: User;
   onClose: () => void;
-  onCreatePost: (newPost: Partial<Post>) => void;
+  onCreatePost: (newPost: Partial<Post>) => Promise<void> | void;
   initialContent?: string;
 }
 
@@ -96,6 +96,8 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const [uploadStatusText, setUploadStatusText] = useState('Compressing & uploading media...');
   const [bytesTransferred, setBytesTransferred] = useState<number | undefined>(undefined);
   const [totalBytes, setTotalBytes] = useState<number | undefined>(undefined);
+  const [isPublishingPost, setIsPublishingPost] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [compressionSavings, setCompressionSavings] = useState<{
     original: number;
     compressed: number;
@@ -227,49 +229,34 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
     setPollOptions(updated);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!content.trim() && mediaUrls.length === 0) return;
-
+    const validPollOptions = pollOptions.filter((option) => option.trim().length > 0);
+    const hasPoll = activeStudioTool === 'poll' && pollQuestion.trim().length > 0 && validPollOptions.length >= 2;
+    if (!content.trim() && mediaUrls.length === 0 && !hasPoll) return;
+    if (isPublishingPost || isCompressing) return;
     auraAudio.setAmbient('off');
-
-    let pollData: Poll | undefined = undefined;
-    if (activeStudioTool === 'poll' && pollQuestion.trim()) {
-      const validOptions = pollOptions.filter((opt) => opt.trim().length > 0);
-      if (validOptions.length >= 2) {
-        pollData = {
-          id: `poll_${Date.now()}`,
-          question: pollQuestion.trim(),
-          options: validOptions.map((text, i) => ({
-            id: `opt_${i + 1}`,
-            text: text.trim(),
-            votes: 0,
-          })),
-          totalVotes: 0,
-        };
-      }
-    }
-
-    onCreatePost({
-      content: content.trim(),
-      mediaUrl: mediaUrls.length > 0 ? mediaUrls[0] : undefined,
-      mediaUrls: mediaUrls.length > 0 ? mediaUrls : undefined,
-      mediaType: mediaUrls.length > 0 ? 'image' : undefined,
-      location: location.trim() || undefined,
-      audience,
-      commentsDisabled,
-      tags,
-      poll: pollData,
-      fontStyle,
-      filter: activeFilter !== 'none' ? activeFilter : undefined,
-      audioTrack: selectedTrack ? { title: selectedTrack.title, artist: selectedTrack.artist } : undefined,
-      resolution,
-      aspectRatio,
-    });
-
-    onClose();
+    const pollData: Poll | undefined = hasPoll ? {
+      id: `poll_${crypto.randomUUID()}`, question: pollQuestion.trim(),
+      options: validPollOptions.map((text, index) => ({ id: `opt_${index + 1}`, text: text.trim(), votes: 0 })),
+      totalVotes: 0,
+    } : undefined;
+    setIsPublishingPost(true); setPublishError(null);
+    try {
+      await onCreatePost({
+        content: content.trim(),
+        mediaUrl: mediaUrls[0], mediaUrls: mediaUrls.length ? mediaUrls : undefined,
+        mediaType: mediaUrls.length ? 'image' : undefined,
+        location: location.trim() || undefined, audience, commentsDisabled, tags, poll: pollData,
+        fontStyle, filter: activeFilter !== 'none' ? activeFilter : undefined,
+        audioTrack: selectedTrack ? { title: selectedTrack.title, artist: selectedTrack.artist } : undefined,
+        resolution, aspectRatio,
+      });
+      onClose();
+    } catch (error) {
+      setPublishError(error instanceof Error ? error.message : 'The post could not be published. Check your connection and retry.');
+    } finally { setIsPublishingPost(false); }
   };
-
   const getContentFontStyle = () => {
     switch (fontStyle) {
       case 'serif':
@@ -418,6 +405,7 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
               errorText={uploadError || undefined}
             />
           )}
+          {publishError && <div role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">{publishError}</div>}
           {uploadError && !isCompressing && (
             <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
               {uploadError}
@@ -928,10 +916,10 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
             </button>
             <button
               type="submit"
-              disabled={(!content.trim() && mediaUrls.length === 0) || isCompressing}
+              disabled={(!content.trim() && mediaUrls.length === 0 && !(activeStudioTool === 'poll' && pollQuestion.trim() && pollOptions.filter((option) => option.trim()).length >= 2)) || isCompressing || isPublishingPost}
               className="px-6 py-2.5 rounded-2xl bg-[#2D3732] text-white text-xs sm:text-sm font-medium hover:bg-[#3d4a43] disabled:opacity-40 transition-all shadow-md active:scale-[0.98] cursor-pointer flex items-center gap-1.5"
             >
-              <span>Publish Post</span>
+              <span>{isPublishingPost ? 'Publishing to Sodanox...' : 'Publish Post'}</span>
               <Check size={16} />
             </button>
           </div>

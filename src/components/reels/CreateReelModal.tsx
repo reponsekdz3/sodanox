@@ -43,13 +43,7 @@ interface CreateReelModalProps {
   }) => Promise<void> | void;
 }
 
-const AMBIENT_AUDIO_PRESETS = [
-  { title: 'Quiet Wheel Ambience', artist: 'Aura Soundscapes' },
-  { title: 'Morning Coffee Acoustic', artist: 'Nordic Series' },
-  { title: 'Ocean & Stone Reverberation', artist: 'Field Archives' },
-  { title: 'Analog Tape Drift', artist: 'Slow Craft' },
-  { title: 'Felt & Acoustic Wood', artist: 'Quiet Resonance' },
-];
+
 
 function generateModernPosterSvg(title: string, authorName: string): string {
   const cleanTitle = (title || 'Aura Reel').slice(0, 32);
@@ -112,7 +106,6 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
   // Content details
   const [caption, setCaption] = useState('');
   const [customTags, setCustomTags] = useState('');
-  const [audioSourceType, setAudioSourceType] = useState<'video' | 'ambient' | 'custom'>('video');
   const [audioTitle, setAudioTitle] = useState('Original Sound');
   const [audioArtist, setAudioArtist] = useState(currentUser.name);
 
@@ -421,6 +414,8 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
           maxWidth: 720,
           maxHeight: 1280,
           bitrate: 1800000,
+          maxDurationSeconds: 180,
+          onProgress: (percent) => setUploadProgress(Math.max(1, Math.min(48, Math.round(percent * 0.48)))),
         });
 
         if (compressed.savingsPercent > 0) {
@@ -432,11 +427,12 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
         }
 
         // 2. Upload compressed video to Firebase Storage
-        const videoStoragePath = `reels/${currentUser.id}/${Date.now()}_reel.webm`;
+        const videoExtension = compressed.blob.type.includes('mp4') ? 'mp4' : compressed.blob.type.includes('quicktime') ? 'mov' : 'webm';
+        const videoStoragePath = `reels/${currentUser.id}/${Date.now()}_reel.${videoExtension}`;
         const videoUploadRes = await uploadMediaToFirebase(
           compressed.blob,
           videoStoragePath,
-          (percent) => setUploadProgress(percent)
+          (percent) => setUploadProgress(Math.max(49, Math.min(98, 48 + Math.round(percent * 0.5))))
         );
         finalVideoUrl = videoUploadRes.url;
 
@@ -453,10 +449,16 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
           const posterUploadRes = await uploadMediaToFirebase(finalPoster, posterStoragePath);
           finalPoster = posterUploadRes.url;
         } catch {
-          // Poster upload fallback
+          throw new Error('The reel video uploaded, but its cover image did not. Please retry publishing.');
         }
       }
 
+      if (!finalPoster || !finalPoster.startsWith('https://')) {
+        throw new Error('A real uploaded reel cover image is required before publishing.');
+      }
+      if (!finalVideoUrl || (!finalVideoUrl.startsWith('https://') && !finalVideoUrl.startsWith('http://'))) {
+        throw new Error('Choose a valid video URL or upload a reel file before publishing.');
+      }
       await onSubmitReel({
         videoUrl: finalVideoUrl,
         posterUrl: finalPoster,
@@ -466,6 +468,7 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
         audioArtist: audioArtist.trim() || currentUser.name,
       });
 
+      setUploadProgress(100);
       auraAudio.playChime();
       onClose();
     } catch (err: unknown) {
@@ -810,80 +813,20 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
                 />
               </div>
 
-              {/* Soundtrack & Audio Attribution */}
+              {/* The upload's own audio is preserved. These fields are attribution only. */}
               <div className="p-3.5 rounded-2xl bg-[#F1F5F2] border border-[#2D3732]/10 space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-xs font-semibold text-[#2D3732] flex items-center gap-1.5">
-                    <Music size={13} className="text-[#8FA89B]" />
-                    <span>Soundtrack Selection</span>
-                  </label>
-                  <div className="flex items-center gap-1 text-[11px]">
-                    <button
-                      type="button"
-                      onClick={() => setAudioSourceType('video')}
-                      className={`px-2 py-0.5 rounded-lg cursor-pointer ${
-                        audioSourceType === 'video'
-                          ? 'bg-[#2D3732] text-white font-medium'
-                          : 'text-[#7A8A82] hover:text-[#2D3732]'
-                      }`}
-                    >
-                      Original
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setAudioSourceType('ambient')}
-                      className={`px-2 py-0.5 rounded-lg cursor-pointer ${
-                        audioSourceType === 'ambient'
-                          ? 'bg-[#2D3732] text-white font-medium'
-                          : 'text-[#7A8A82] hover:text-[#2D3732]'
-                      }`}
-                    >
-                      Soundscapes
-                    </button>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Music size={13} className="text-[#8FA89B]" />
+                  <label className="text-xs font-semibold text-[#2D3732]">Original audio attribution</label>
                 </div>
-
-                {audioSourceType === 'ambient' && (
-                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-                    {AMBIENT_AUDIO_PRESETS.map((t) => (
-                      <button
-                        key={t.title}
-                        type="button"
-                        onClick={() => {
-                          setAudioTitle(t.title);
-                          setAudioArtist(t.artist);
-                        }}
-                        className={`px-2.5 py-1 rounded-xl text-[11px] whitespace-nowrap border transition-colors cursor-pointer ${
-                          audioTitle === t.title
-                            ? 'bg-[#8FA89B] text-white border-transparent'
-                            : 'bg-white text-[#55635C] border-[#2D3732]/10 hover:border-[#8FA89B]'
-                        }`}
-                      >
-                        {t.title}
-                      </button>
-                    ))}
-                  </div>
-                )}
-
+                <p className="text-[11px] leading-relaxed text-[#7A8A82]">Audio from your uploaded or recorded video is retained. Add accurate credits below; these fields do not mix in or claim a separate music track.</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  <div>
-                    <input
-                      type="text"
-                      value={audioTitle}
-                      onChange={(e) => setAudioTitle(e.target.value)}
-                      placeholder="Audio title"
-                      className="w-full bg-white rounded-xl px-3 py-2 text-xs text-[#2D3732] border border-[#2D3732]/15 focus:outline-none focus:border-[#8FA89B]"
-                    />
-                  </div>
-                  <div>
-                    <input
-                      type="text"
-                      value={audioArtist}
-                      onChange={(e) => setAudioArtist(e.target.value)}
-                      placeholder="Audio artist"
-                      className="w-full bg-white rounded-xl px-3 py-2 text-xs text-[#2D3732] border border-[#2D3732]/15 focus:outline-none focus:border-[#8FA89B]"
-                    />
-                  </div>
+                  <input type="text" value={audioTitle} onChange={(e) => setAudioTitle(e.target.value)}
+                    placeholder="Audio title / Original sound" maxLength={120}
+                    className="w-full bg-white rounded-xl px-3 py-2 text-xs text-[#2D3732] border border-[#2D3732]/15 focus:outline-none focus:border-[#8FA89B]" />
+                  <input type="text" value={audioArtist} onChange={(e) => setAudioArtist(e.target.value)}
+                    placeholder="Artist / Creator" maxLength={120}
+                    className="w-full bg-white rounded-xl px-3 py-2 text-xs text-[#2D3732] border border-[#2D3732]/15 focus:outline-none focus:border-[#8FA89B]" />
                 </div>
               </div>
 
@@ -905,6 +848,14 @@ export const CreateReelModal: React.FC<CreateReelModalProps> = ({
           </div>
 
           {/* Footer Submit Buttons */}
+          {isSubmitting && (
+            <div className="space-y-1.5 pt-3">
+              <div className="h-2 w-full overflow-hidden rounded-full bg-[#E6EDE9]">
+                <div className="h-full rounded-full bg-[#059669] transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
+              </div>
+              <p className="text-[11px] text-[#55635C]">Optimizing video and uploading original audio · {uploadProgress}%</p>
+            </div>
+          )}
           <div className="flex items-center justify-end gap-3 pt-4 border-t border-[#2D3732]/10">
             <button
               type="button"

@@ -64,7 +64,14 @@ export const Feed: React.FC<FeedProps> = ({
   const [feedAds, setFeedAds] = useState<SponsoredAd[]>([]);
 
   useEffect(() => {
-    getActiveAds('feed_post').then(setFeedAds).catch(() => {});
+    let active = true;
+    getActiveAds('feed_post')
+      .then((ads) => { if (active) setFeedAds(ads); })
+      .catch((error) => {
+        console.warn('Sponsored feed placements are unavailable:', error);
+        if (active) setFeedAds([]);
+      });
+    return () => { active = false; };
   }, []);
 
   const trendingTopics = useMemo(() => calculateTrendingTopics(posts), [posts]);

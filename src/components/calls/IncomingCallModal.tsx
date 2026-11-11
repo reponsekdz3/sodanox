@@ -44,7 +44,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
           <AuraLogo size="sm" showWordmark={true} variant="white" />
           <div className="flex items-center gap-1 bg-white/10 px-2.5 py-1 rounded-full text-[10px]">
             <ShieldCheck size={12} className="text-[#34D399]" />
-            <span>Encrypted</span>
+            <span>Live WebRTC call request</span>
           </div>
         </div>
 
@@ -79,7 +79,7 @@ export const IncomingCallModal: React.FC<IncomingCallModalProps> = ({
           ) : (
             <>
               <Phone size={14} className="text-emerald-400" />
-              <span>Incoming Spatial Voice Call...</span>
+              <span>Incoming Audio Call...</span>
             </>
           )}
         </div>

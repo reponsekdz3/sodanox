@@ -135,6 +135,8 @@ export default function App() {
   // Calling state
   const [activeCall, setActiveCall] = useState<ActiveCall | null>(null);
   const [incomingCall, setIncomingCall] = useState<CallSession | null>(null);
+  const activeCallRef = React.useRef<ActiveCall | null>(null);
+  activeCallRef.current = activeCall;
 
   // Modals state
   const [isStoryViewerOpen, setIsStoryViewerOpen] = useState(false);
@@ -601,7 +603,8 @@ export default function App() {
         currentUser,
         post.hasReposted,
         quoteComment,
-        post.author.id
+        post.author.id,
+        post
       );
     } catch (err) {
       console.error('Error reposting:', err);
@@ -769,7 +772,9 @@ export default function App() {
         }
       );
     } catch (err) {
-      console.error('Error creating post in Firestore:', err);
+      setPosts((previous) => previous.filter((post) => post.id !== optimisticPostId));
+      console.error('Post creation failed; the optimistic post was removed:', err);
+      throw err;
     }
   };
 
@@ -828,37 +833,15 @@ export default function App() {
     audioTitle: string;
     audioArtist: string;
   }) => {
-    if (!currentUser) return;
-    const optimisticReelId = `reel_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-    const optimisticReel: Reel = {
-      id: optimisticReelId,
-      author: currentUser,
-      videoUrl: data.videoUrl,
-      posterUrl: data.posterUrl,
-      caption: data.caption,
-      tags: data.tags,
-      audioTrack: {
-        title: data.audioTitle || 'Original Sound',
-        artist: data.audioArtist || currentUser.name,
-      },
-      likesCount: 0,
-      likedBy: [],
-      hasLiked: false,
-      commentsCount: 0,
-      comments: [],
-      sharesCount: 0,
-      isSaved: false,
-    };
-
-    setReels((prev) => [optimisticReel, ...prev.filter((r) => r.id !== optimisticReelId)]);
-
+    if (!currentUser) throw new Error('Sign in before publishing a reel.');
     try {
-      await createNewReel(currentUser, data);
-    } catch (err) {
-      console.error('Error creating reel in Firestore:', err);
+      const createdReel = await createNewReel(currentUser, data);
+      setReels((previous) => [createdReel, ...previous.filter((reel) => reel.id !== createdReel.id)]);
+    } catch (error) {
+      console.error('Reel creation failed; no local-only reel was retained:', error);
+      throw error;
     }
   };
-
   // ---------------- Handlers for Following & Profile ----------------
   const handleToggleFollow = async (userId: string) => {
     if (!currentUser || userId === currentUser.id) return;
@@ -971,8 +954,9 @@ export default function App() {
   };
 
   const handleDeleteNotification = async (notificationId: string) => {
+    if (!currentUser?.id) return;
     try {
-      await deleteNotification(notificationId);
+      await deleteNotification(notificationId, currentUser.id);
     } catch (err) {
       console.error('Error deleting notification:', err);
     }
@@ -992,7 +976,7 @@ export default function App() {
   useEffect(() => {
     if (!currentUser?.id) return;
     const unsub = subscribeToIncomingCalls(currentUser.id, (incoming) => {
-      if (incoming && (!activeCall || activeCall.status !== 'connected')) {
+      if (incoming && !activeCallRef.current) {
         setIncomingCall(incoming);
         const callerName = incoming.caller?.name || 'Someone';
         const callerAvatar = incoming.caller?.avatar || '/pwa-192x192.png';
@@ -1011,10 +995,14 @@ export default function App() {
       }
     });
     return () => unsub();
-  }, [currentUser?.id, activeCall]);
+  }, [currentUser?.id]);
 
   const handleStartCall = async (participant: User, type: 'audio' | 'video') => {
     if (!currentUser) return;
+    if (activeCall) {
+      window.alert('End your current call before starting another one.');
+      return;
+    }
     try {
       const signalingId = await initiateCallSession(currentUser, participant, type);
       setActiveCall({
@@ -1031,74 +1019,90 @@ export default function App() {
         isMinimized: false,
       });
     } catch (err) {
-      console.warn('Call signaling fallback to direct session:', err);
+      console.error('Call could not be created:', err);
+      window.alert(err instanceof Error ? err.message : 'The call could not be started. Check your connection and sign-in status.');
+    }
+  };
+  const handleAcceptIncomingCall = async (session: CallSession) => {
+    if (activeCall) {
+      window.alert('You are already on another call.');
+      return;
+    }
+    try {
+      // The session becomes accepted here, but is not considered connected
+      // until the WebRTC answer and ICE negotiation succeed.
+      await acceptCallSession(session.id);
+      setIncomingCall(null);
       setActiveCall({
-        id: `call_${Date.now()}`,
-        participant,
-        type,
+        id: session.id,
+        callSignalingId: session.id,
+        participant: {
+          id: session.caller.id,
+          name: session.caller.name,
+          username: session.caller.username,
+          avatar: session.caller.avatar,
+          bio: '',
+          joinedDate: '',
+          followersCount: 0,
+          followingCount: 0,
+        },
+        type: session.type,
         status: 'ringing',
-        direction: 'outgoing',
+        direction: 'incoming',
         durationSeconds: 0,
         isMuted: false,
         isCameraOff: false,
         isSpeakerOn: true,
         isMinimized: false,
       });
+    } catch (err) {
+      console.error('Could not accept the incoming call:', err);
+      window.alert(err instanceof Error ? err.message : 'The call could not be accepted. Please try again.');
     }
   };
-
-  const handleAcceptIncomingCall = async (session: CallSession) => {
-    setIncomingCall(null);
-    await acceptCallSession(session.id).catch(() => {});
-    setActiveCall({
-      id: session.id,
-      callSignalingId: session.id,
-      participant: {
-        id: session.caller.id,
-        name: session.caller.name,
-        username: session.caller.username,
-        avatar: session.caller.avatar,
-        bio: '',
-        joinedDate: '',
-        followersCount: 0,
-        followingCount: 0,
-      },
-      type: session.type,
-      status: 'connected',
-      direction: 'incoming',
-      durationSeconds: 0,
-      isMuted: false,
-      isCameraOff: false,
-      isSpeakerOn: true,
-      isMinimized: false,
-    });
-  };
-
   const handleDeclineIncomingCall = async (session: CallSession) => {
-    setIncomingCall(null);
-    await declineCallSession(session.id).catch(() => {});
-    if (currentUser) {
-      const callerUser: User = {
-        id: session.caller.id,
-        name: session.caller.name,
-        username: session.caller.username,
-        avatar: session.caller.avatar,
-        bio: '',
-        joinedDate: '',
-        followersCount: 0,
-        followingCount: 0,
-      };
-      await recordCallLogToChat(callerUser, currentUser, session.type, 'declined', 0).catch(() => {});
+    try {
+      await declineCallSession(session.id);
+      setIncomingCall(null);
+      if (currentUser) {
+        const callerUser: User = {
+          id: session.caller.id,
+          name: session.caller.name,
+          username: session.caller.username,
+          avatar: session.caller.avatar,
+          bio: '',
+          joinedDate: '',
+          followersCount: 0,
+          followingCount: 0,
+        };
+        await recordCallLogToChat(callerUser, currentUser, session.type, 'declined', 0);
+      }
+    } catch (err) {
+      console.error('Could not decline the incoming call:', err);
+      window.alert(err instanceof Error ? err.message : 'The call could not be declined.');
     }
   };
-
-  const handleEndCall = () => {
-    if (activeCall?.callSignalingId) {
-      endCallSession(activeCall.callSignalingId).catch(() => {});
+  const handleEndCall = (overrideStatus?: 'missed' | 'declined' | 'ended') => {
+    const finishedCall = activeCall;
+    if (finishedCall?.callSignalingId && overrideStatus !== 'declined') {
+      void endCallSession(finishedCall.callSignalingId).catch((err) => {
+        console.warn('Call end signal could not be delivered:', err);
+      });
+    }
+    if (finishedCall && currentUser) {
+      const callerUser = finishedCall.direction === 'incoming' ? finishedCall.participant : currentUser;
+      const recipientUser = finishedCall.direction === 'incoming' ? currentUser : finishedCall.participant;
+      const finalStatus: 'completed' | 'missed' | 'declined' = overrideStatus === 'declined'
+        ? 'declined'
+        : overrideStatus === 'missed' || (finishedCall.status === 'ringing' && finishedCall.durationSeconds === 0)
+          ? 'missed'
+          : 'completed';
+      void recordCallLogToChat(
+        callerUser, recipientUser, finishedCall.type, finalStatus, finishedCall.durationSeconds
+      ).catch((err) => console.warn('Call log could not be saved:', err));
     }
     setActiveCall(null);
   };
-
   const handleToggleMute = () => {
     if (!activeCall) return;
     setActiveCall({ ...activeCall, isMuted: !activeCall.isMuted });
@@ -1526,12 +1530,16 @@ export default function App() {
         />
       )}
 
-      {/* Active Call Modal (when maximized) */}
-      {activeCall && !activeCall.isMinimized && (
+      {/* Keep the WebRTC session mounted while minimized; unmounting releases media tracks. */}
+      {activeCall && (
         <ActiveCallModal
           call={activeCall}
           currentUser={currentUser}
+          isMinimized={activeCall.isMinimized}
           onEndCall={handleEndCall}
+          onDurationChange={(durationSeconds) =>
+            setActiveCall((prev) => prev ? { ...prev, durationSeconds } : null)
+          }
           onToggleMute={handleToggleMute}
           onToggleCamera={handleToggleCamera}
           onToggleSpeaker={handleToggleSpeaker}

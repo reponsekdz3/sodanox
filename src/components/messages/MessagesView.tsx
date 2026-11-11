@@ -132,6 +132,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const [inputText, setInputText] = useState('');
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
 
   // Message Interaction States
@@ -274,7 +275,8 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           });
         }
       },
-      (err) => console.error('Messages subscription error:', err)
+      (err) => console.error('Messages subscription error:', err),
+      currentUser.id
     );
 
     return () => unsubscribe();
@@ -435,18 +437,26 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   const handleDeleteMessage = async (msgId: string) => {
     if (!activeConvId) return;
     auraAudio.playClick(400, 0.04);
-    setMessages((prev) => prev.filter((m) => m.id !== msgId));
-    await deleteChatMessage(activeConvId, msgId);
+    try {
+      await deleteChatMessage(activeConvId, msgId);
+    } catch (error) {
+      console.error('Message could not be deleted:', error);
+      window.alert(error instanceof Error ? error.message : 'This message could not be deleted.');
+    }
   };
 
   const handleClearHistory = async () => {
-    if (!activeConvId) return;
+    if (!activeConvId || !currentUser.id) return;
     auraAudio.playClick(400, 0.04);
-    setMessages([]);
-    setConfirmClearChat(false);
-    await clearConversationMessages(activeConvId);
+    try {
+      await clearConversationMessages(activeConvId, currentUser.id);
+      setMessages([]);
+      setConfirmClearChat(false);
+    } catch (error) {
+      console.error('Conversation history could not be cleared:', error);
+      window.alert(error instanceof Error ? error.message : 'Conversation history could not be cleared.');
+    }
   };
-
   const handleSendText = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !activeConvId || !activeConv || isSending) return;
@@ -517,7 +527,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
       try {
         auraAudio.playSentSound();
-        await sendChatMessage(
+        const persistedMessageId = await sendChatMessage(
           activeConvId,
           {
             type: msgType,
@@ -533,7 +543,14 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
           activeConv.participant.id,
           replyPayload
         );
+        setMessages((previous) => previous.map((message) =>
+          message.id === tempMsgId ? { ...message, id: persistedMessageId } : message
+        ));
       } catch (err) {
+        setMessages((previous) => previous.filter((message) => message.id !== tempMsgId));
+        setStagedAttachment(fileToSend);
+        setInputText(caption);
+        setMessageError(err instanceof Error ? err.message : 'The attachment message could not be sent.');
         console.error('Error sending file/image/video message:', err);
       } finally {
         setIsSending(false);
@@ -563,7 +580,7 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
 
     try {
       auraAudio.playSentSound();
-      await sendChatMessage(
+      const persistedMessageId = await sendChatMessage(
         activeConvId,
         {
           type: 'text',
@@ -573,7 +590,13 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
         activeConv.participant.id,
         replyPayload
       );
+      setMessages((previous) => previous.map((message) =>
+        message.id === tempMsgId ? { ...message, id: persistedMessageId } : message
+      ));
     } catch (err) {
+      setMessages((previous) => previous.filter((message) => message.id !== tempMsgId));
+      setInputText(textToSend);
+      setMessageError(err instanceof Error ? err.message : 'The message could not be sent. Check your connection and retry.');
       console.error('Error sending message:', err);
     } finally {
       setIsSending(false);
@@ -584,68 +607,42 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
     if (!file || !activeConvId || !activeConv) return;
     const isImage = file.type.startsWith('image/');
     const isVideo = file.type.startsWith('video/');
-    auraAudio.playClick(580, 0.04);
-
-    if (isImage) {
-      try {
-        const compressed = await compressImage(file, {
-          maxDimension: 1200,
-          quality: 0.82,
-          preferWebp: true,
-        });
-        const storagePath = `messages/${activeConvId}/${Date.now()}_${file.name.replace(/\.[^/.]+$/, '.webp')}`;
-        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath);
-
-        setStagedAttachment({
-          file: compressed.file,
-          name: file.name,
-          size: `${formatBytes(compressed.compressedSize)} (saved ${compressed.savingsPercent}%)`,
-          type: 'image/webp',
-          dataUrl: uploadRes.url,
-          isImage: true,
-          isVideo: false,
-        });
-        return;
-      } catch (err) {
-        console.warn('Image staging compression note:', err);
-      }
+    if (file.size > 25 * 1024 * 1024) {
+      setMessageError('Attachments must be 25 MB or smaller.');
+      return;
     }
-
-    const sizeInMb = (file.size / (1024 * 1024)).toFixed(1);
-    const sizeStr = `${sizeInMb} MB`;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const dataUrl = event.target?.result as string;
-      if (!dataUrl) return;
-
-      try {
-        const storagePath = `messages/${activeConvId}/${Date.now()}_${file.name}`;
-        const uploadRes = await uploadMediaToFirebase(file, storagePath);
-        setStagedAttachment({
-          file,
-          name: file.name,
-          size: sizeStr,
-          type: file.type,
-          dataUrl: uploadRes.url,
-          isImage,
-          isVideo,
-        });
-      } catch {
-        setStagedAttachment({
-          file,
-          name: file.name,
-          size: sizeStr,
-          type: file.type,
-          dataUrl,
-          isImage,
-          isVideo,
-        });
+    setMessageError(null);
+    setIsSending(true);
+    auraAudio.playClick(580, 0.04);
+    try {
+      let uploadBlob: Blob = file;
+      let uploadName = file.name;
+      let uploadType = file.type || 'application/octet-stream';
+      if (isImage) {
+        const compressed = await compressImage(file, { maxDimension: 1600, quality: 0.84, preferWebp: true });
+        uploadBlob = compressed.blob;
+        uploadName = compressed.file.name;
+        uploadType = compressed.mimeType;
       }
-    };
-    reader.readAsDataURL(file);
+      const safeName = uploadName.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const storagePath = `chat/${currentUser.id}/${activeConvId}/${crypto.randomUUID()}_${safeName}`;
+      const uploadRes = await uploadMediaToFirebase(uploadBlob, storagePath);
+      setStagedAttachment({
+        file,
+        name: file.name,
+        size: formatBytes(uploadBlob.size),
+        type: uploadType,
+        dataUrl: uploadRes.url,
+        isImage,
+        isVideo,
+      });
+    } catch (error) {
+      setMessageError(error instanceof Error ? error.message : 'Attachment upload failed. The file was not added to this message.');
+      setStagedAttachment(null);
+    } finally {
+      setIsSending(false);
+    }
   };
-
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -696,73 +693,62 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
   };
 
   const handleSendVoiceNote = async (voiceMeta: VoiceNoteMeta) => {
-    if (!activeConvId || !activeConv) return;
+    if (!activeConvId || !activeConv || isSending) return;
     setIsRecordingVoice(false);
-
+    setIsSending(true);
+    setMessageError(null);
     let finalVoice = voiceMeta;
-    if (voiceMeta.audioBlob) {
-      try {
-        const compressed = await compressAudio(voiceMeta.audioBlob);
-        const storagePath = `messages/${activeConvId}/${Date.now()}_voice.wav`;
-        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath);
-        finalVoice = {
-          ...voiceMeta,
-          audioUrl: uploadRes.url,
-        };
-      } catch (err) {
-        console.warn('Voice compression fallback note:', err);
-      }
-    }
-
-    const replyPayload: MessageReplyInfo | undefined = replyingTo
-      ? {
-          id: replyingTo.id,
-          senderId: replyingTo.senderId,
-          senderName:
-            replyingTo.senderId === currentUser.id
-              ? 'You'
-              : replyingTo.senderName || activeConv.participant.name,
-          text: replyingTo.text,
-          type: replyingTo.type,
-        }
-      : undefined;
-
-    setReplyingTo(null);
-
-    const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
-    const optimisticMsg: Message = {
-      id: tempMsgId,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      senderAvatar: currentUser.avatar,
-      timestamp: nowTime,
-      type: 'voice',
-      voice: finalVoice,
-      status: 'sent',
-      replyTo: replyPayload,
-    };
-
-    setMessages((prev) => [...prev, optimisticMsg]);
-    setTimeout(() => scrollToBottom('smooth'), 40);
-
+    let optimisticVoiceId: string | null = null;
     try {
-      auraAudio.playClick(640, 0.05);
-      await sendChatMessage(
+      if (voiceMeta.audioBlob) {
+        const compressed = await compressAudio(voiceMeta.audioBlob);
+        const storagePath = `chat/${currentUser.id}/${activeConvId}/${crypto.randomUUID()}_voice`;
+        const uploadRes = await uploadMediaToFirebase(compressed.blob, storagePath);
+        finalVoice = { ...voiceMeta, audioUrl: uploadRes.url };
+      }
+      if (!finalVoice.audioUrl) {
+        throw new Error('The voice recording has no uploaded audio URL. Record it again and retry.');
+      }
+      const { audioBlob: _audioBlob, ...persistedVoice } = finalVoice;
+      const replyPayload: MessageReplyInfo | undefined = replyingTo ? {
+        id: replyingTo.id, senderId: replyingTo.senderId,
+        senderName: replyingTo.senderId === currentUser.id ? 'You' : replyingTo.senderName || activeConv.participant.name,
+        text: replyingTo.text, type: replyingTo.type,
+      } : undefined;
+      setReplyingTo(null);
+      const nowTime = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      const tempMsgId = `msg_opt_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      optimisticVoiceId = tempMsgId;
+      const optimisticMsg: Message = {
+        id: tempMsgId, senderId: currentUser.id, senderName: currentUser.name,
+        senderAvatar: currentUser.avatar, timestamp: nowTime, type: 'voice',
+        voice: persistedVoice, status: 'sent', replyTo: replyPayload,
+      };
+      setMessages((previous) => [...previous, optimisticMsg]);
+      setTimeout(() => scrollToBottom('smooth'), 40);
+      const persistedMessageId = await sendChatMessage(
         activeConvId,
-        {
-          type: 'voice',
-          voice: voiceMeta,
-        },
+        { type: 'voice', voice: persistedVoice },
         currentUser,
         activeConv.participant.id,
         replyPayload
       );
-    } catch (err) {
-      console.error('Error sending voice note:', err);
+      if (optimisticVoiceId) {
+        setMessages((previous) => previous.map((message) =>
+          message.id === optimisticVoiceId ? { ...message, id: persistedMessageId } : message
+        ));
+      }
+      auraAudio.playClick(640, 0.05);
+    } catch (error) {
+      if (optimisticVoiceId) {
+        setMessages((previous) => previous.filter((message) => message.id !== optimisticVoiceId));
+      }
+      setMessageError(error instanceof Error ? error.message : 'Voice note could not be uploaded and sent.');
+      console.error('Error sending voice note:', error);
+    } finally {
+      setIsSending(false);
     }
   };
-
   const handleStartChatWithUser = async (targetUser: User) => {
     setIsNewChatModalOpen(false);
     setTargetParticipant(targetUser);
@@ -2005,6 +1991,12 @@ export const MessagesView: React.FC<MessagesViewProps> = ({
                   </div>
                 )}
 
+                {messageError && (
+                  <div role="alert" className="mb-2 flex items-start justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-800">
+                    <span>{messageError}</span>
+                    <button type="button" onClick={() => setMessageError(null)} className="shrink-0 font-semibold text-red-900">Dismiss</button>
+                  </div>
+                )}
                 {isRecordingVoice ? (
                   <VoiceRecorderBar
                     onCancel={() => setIsRecordingVoice(false)}

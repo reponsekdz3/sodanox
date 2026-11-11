@@ -95,8 +95,93 @@ export async function compressImage(
   const preferWebp = options?.preferWebp !== false;
   const aspectRatio = options?.aspectRatio || 'original';
   const onProgress = options?.onProgress;
+  // Fast path: decode File/Blob inputs through createImageBitmap and use
+  // OffscreenCanvas when available. This avoids the Image element's extra
+  // layout lifecycle and keeps large-file encoding asynchronous.
+  if (typeof input !== 'string' && typeof createImageBitmap === 'function') {
+    try {
+      report(8, 'Decoding image in the browser bitmap pipeline...');
+      const bitmap = await createImageBitmap(input);
+      try {
+        report(34, 'Calculating resize and crop dimensions...');
+        let sourceX = 0;
+        let sourceY = 0;
+        let sourceWidth = bitmap.width;
+        let sourceHeight = bitmap.height;
+        if (aspectRatio !== 'original') {
+          const targetRatio = aspectRatio === '4:5' ? 4 / 5 : aspectRatio === '16:9' ? 16 / 9 : aspectRatio === '9:16' ? 9 / 16 : 1;
+          const currentRatio = sourceWidth / sourceHeight;
+          if (currentRatio > targetRatio) {
+            const cropWidth = sourceHeight * targetRatio;
+            sourceX = (sourceWidth - cropWidth) / 2;
+            sourceWidth = cropWidth;
+          } else if (currentRatio < targetRatio) {
+            const cropHeight = sourceWidth / targetRatio;
+            sourceY = (sourceHeight - cropHeight) / 2;
+            sourceHeight = cropHeight;
+          }
+        }
+        const scale = Math.min(1, maxDim / Math.max(sourceWidth, sourceHeight));
+        const outputWidth = Math.max(1, Math.round(sourceWidth * scale));
+        const outputHeight = Math.max(1, Math.round(sourceHeight * scale));
+        report(62, 'Rendering optimized image...');
+        const useOffscreen = typeof OffscreenCanvas !== 'undefined';
+        const canvas: HTMLCanvasElement | OffscreenCanvas = useOffscreen
+          ? new OffscreenCanvas(outputWidth, outputHeight)
+          : Object.assign(document.createElement('canvas'), { width: outputWidth, height: outputHeight });
+        const context = canvas.getContext('2d', { alpha: false } as any) as CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null;
+        if (!context) throw new Error('Canvas 2D context is unavailable.');
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        context.drawImage(bitmap, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, outputWidth, outputHeight);
+        report(82, 'Encoding optimized WebP / JPEG...');
+        const targetMime = preferWebp ? 'image/webp' : 'image/jpeg';
+        const blob = useOffscreen
+          ? await (canvas as OffscreenCanvas).convertToBlob({ type: targetMime, quality })
+          : await new Promise<Blob>((resolve, reject) => {
+              (canvas as HTMLCanvasElement).toBlob((result) => result ? resolve(result) : reject(new Error('The browser could not encode this image.')), targetMime, quality);
+            });
+        const actualMimeType = blob.type || targetMime;
+        const compressedSize = blob.size;
+        const originalSize = input.size;
+        // Don't replace a compact original with a larger output unless resizing
+        // changed the pixel dimensions.
+        const dimensionsChanged = outputWidth !== bitmap.width || outputHeight !== bitmap.height || aspectRatio !== 'original';
+        if (compressedSize >= originalSize && !dimensionsChanged) {
+          const originalBlob = input;
+          const originalName = 'name' in input ? input.name : fileName;
+          const file = new File([originalBlob], originalName, { type: input.type || actualMimeType });
+          report(100, 'Original image retained; compression would not reduce its size.');
+          return {
+            file, blob: originalBlob, originalSize, compressedSize: originalSize, savingsPercent: 0,
+            mimeType: input.type || actualMimeType, width: bitmap.width, height: bitmap.height,
+          };
+        }
+        const extension = actualMimeType === 'image/webp' ? '.webp' : actualMimeType === 'image/png' ? '.png' : '.jpg';
+        const originalName = 'name' in input ? input.name : fileName;
+        const cleanName = originalName.replace(/\.[^/.]+$/, extension);
+        const file = new File([blob], cleanName, { type: actualMimeType });
+        report(100, 'Image optimized successfully.');
+        return {
+          file, blob, originalSize, compressedSize,
+          savingsPercent: originalSize > 0 ? Math.max(0, Math.round(((originalSize - compressedSize) / originalSize) * 100)) : 0,
+          mimeType: actualMimeType, width: outputWidth, height: outputHeight,
+        };
+      } finally {
+        bitmap.close();
+      }
+    } catch (error) {
+      console.warn('Fast image bitmap path failed; retrying with the compatible decoder:', error);
+    }
+  }
+  let lastReportedProgress = 0;
+  const report = (value: number, status: string) => {
+    const progress = Math.max(lastReportedProgress, Math.max(1, Math.min(100, Math.round(value))));
+    lastReportedProgress = progress;
+    onProgress?.(progress, status);
+  };
 
-  onProgress?.(15, 'Reading media stream...');
+  report(1, 'Preparing image decoder...');
 
   let originalSize = 0;
   let sourceUrl = '';
@@ -121,7 +206,7 @@ export async function compressImage(
           URL.revokeObjectURL(sourceUrl);
         }
 
-        onProgress?.(35, 'Calculating aspect ratio & dimensions...');
+        report(35, 'Calculating aspect ratio & dimensions...');
 
         let sourceX = 0;
         let sourceY = 0;
@@ -165,7 +250,7 @@ export async function compressImage(
           }
         }
 
-        onProgress?.(60, 'Encoding high-fidelity canvas frame...');
+        report(60, 'Encoding high-fidelity canvas frame...');
 
         const canvas = document.createElement('canvas');
         canvas.width = outputWidth;
@@ -191,7 +276,7 @@ export async function compressImage(
           outputHeight
         );
 
-        onProgress?.(80, 'Compressing WebP / JPEG buffer...');
+        report(80, 'Compressing WebP / JPEG buffer...');
 
         // Check WebP support
         const targetMime = preferWebp ? 'image/webp' : 'image/jpeg';
@@ -209,7 +294,7 @@ export async function compressImage(
             const cleanName = fileName.replace(/\.[^/.]+$/, extension);
             const file = new File([blob], cleanName, { type: actualMimeType });
 
-            onProgress?.(100, 'Compression completed!');
+            report(100, 'Compression completed!');
 
             resolve({
               file,
@@ -251,161 +336,192 @@ export async function compressVideo(
     maxHeight?: number;
     bitrate?: number;
     maxDurationSeconds?: number;
+    onProgress?: (progress: number, status: string) => void;
   }
 ): Promise<VideoCompressionResult> {
   const originalSize = videoFile.size;
   const maxWidth = options?.maxWidth || 720;
   const maxHeight = options?.maxHeight || 1280;
-  const targetBitrate = options?.bitrate || 1800000; // 1.8 Mbps
-
+  const targetBitrate = options?.bitrate || 1800000;
+  let lastProgress = 0;
+  const report = (value: number, status: string) => {
+    const progress = Math.max(lastProgress, Math.max(1, Math.min(100, Math.round(value))));
+    lastProgress = progress;
+    options?.onProgress?.(progress, status);
+  };
   const videoUrl = URL.createObjectURL(videoFile);
 
-  return new Promise<VideoCompressionResult>((resolve) => {
+  return new Promise<VideoCompressionResult>((resolve, reject) => {
     const video = document.createElement('video');
-    video.src = videoUrl;
-    video.crossOrigin = 'anonymous';
-    video.muted = true;
-    video.playsInline = true;
+    let settled = false;
+    let processingStarted = false;
+    let audioContext: AudioContext | null = null;
+    let outputStream: MediaStream | null = null;
+    let recorder: MediaRecorder | null = null;
+    let animationFrame = 0;
+    let safetyTimer: ReturnType<typeof setTimeout> | null = null;
 
-    // Helper to generate poster from canvas
+    const cleanup = () => {
+      if (animationFrame) cancelAnimationFrame(animationFrame);
+      if (safetyTimer) clearTimeout(safetyTimer);
+      outputStream?.getTracks().forEach((track) => track.stop());
+      if (audioContext && audioContext.state !== 'closed') void audioContext.close().catch(() => {});
+      video.pause();
+      video.removeAttribute('src');
+      video.load();
+      URL.revokeObjectURL(videoUrl);
+    };
+    const finish = (result: VideoCompressionResult, status: string) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      report(100, status);
+      resolve(result);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const originalResult = (posterDataUrl: string, durationSeconds?: number): VideoCompressionResult => ({
+      blob: videoFile, url: URL.createObjectURL(videoFile), posterDataUrl,
+      originalSize, compressedSize: originalSize, savingsPercent: 0, durationSeconds,
+    });
     const extractPoster = (): string => {
       try {
         const posterCanvas = document.createElement('canvas');
         posterCanvas.width = video.videoWidth || 720;
         posterCanvas.height = video.videoHeight || 1280;
-        const pCtx = posterCanvas.getContext('2d');
-        if (pCtx) {
-          pCtx.drawImage(video, 0, 0, posterCanvas.width, posterCanvas.height);
-          return posterCanvas.toDataURL('image/jpeg', 0.85);
-        }
-      } catch {
-        // Fallback
+        const context = posterCanvas.getContext('2d');
+        if (!context) return '';
+        context.drawImage(video, 0, 0, posterCanvas.width, posterCanvas.height);
+        return posterCanvas.toDataURL('image/jpeg', 0.85);
+      } catch { return ''; }
+    };
+
+    report(2, 'Reading video metadata...');
+    video.preload = 'auto';
+    video.playsInline = true;
+    video.muted = false;
+    video.volume = 1;
+    video.src = videoUrl;
+
+    video.onloadedmetadata = () => {
+      const duration = Number.isFinite(video.duration) ? video.duration : 0;
+      if (options?.maxDurationSeconds && duration > options.maxDurationSeconds) {
+        fail(new Error(`This reel is longer than the maximum allowed duration of ${options.maxDurationSeconds} seconds.`));
+        return;
       }
-      return '';
+      if (!duration || !video.videoWidth || !video.videoHeight) {
+        finish(originalResult(''), 'Original video retained; dimensions or duration were unavailable.');
+        return;
+      }
+      report(8, 'Extracting cover frame...');
+      video.currentTime = Math.min(1, duration / 2);
     };
 
-    video.onloadedmetadata = async () => {
-      const duration = video.duration || 10;
-      video.currentTime = Math.min(1.0, duration / 2);
-
-      video.onseeked = async () => {
-        const poster = extractPoster();
-
-        // If file is already small (< 3.5MB), avoid slow transcode overhead and use original
-        if (originalSize < 3.5 * 1024 * 1024 || typeof window === 'undefined' || !(window as any).MediaRecorder) {
-          URL.revokeObjectURL(videoUrl);
-          return resolve({
-            blob: videoFile,
-            url: URL.createObjectURL(videoFile),
-            posterDataUrl: poster,
-            originalSize,
-            compressedSize: originalSize,
-            savingsPercent: 0,
-            durationSeconds: duration,
-          });
+    video.onseeked = async () => {
+      if (processingStarted || settled) return;
+      processingStarted = true;
+      const poster = extractPoster();
+      if (originalSize < 3.5 * 1024 * 1024 || typeof window === 'undefined' || typeof MediaRecorder === 'undefined') {
+        finish(originalResult(poster, video.duration), 'Original video retained; transcoding skipped.');
+        return;
+      }
+      try {
+        report(15, 'Preparing video encoder and original audio track...');
+        let width = video.videoWidth || 720;
+        let height = video.videoHeight || 1280;
+        const scale = Math.min(maxWidth / width, maxHeight / height, 1);
+        width = Math.max(2, Math.floor((width * scale) / 2) * 2);
+        height = Math.max(2, Math.floor((height * scale) / 2) * 2);
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const context = canvas.getContext('2d', { alpha: false });
+        if (!context || typeof canvas.captureStream !== 'function') {
+          finish(originalResult(poster, video.duration), 'Original video retained; video encoding is unavailable.');
+          return;
         }
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = 'high';
+        const stream = canvas.captureStream(30);
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioContextClass) {
+          finish(originalResult(poster, video.duration), 'Original video retained; audio-preserving transcoding is unavailable.');
+          return;
+        }
+        audioContext = new AudioContextClass();
+        const source = audioContext.createMediaElementSource(video);
+        const audioDestination = audioContext.createMediaStreamDestination();
+        const silentMonitor = audioContext.createGain();
+        silentMonitor.gain.value = 0;
+        source.connect(audioDestination);
+        source.connect(silentMonitor);
+        silentMonitor.connect(audioContext.destination);
+        await audioContext.resume();
+        const sourceAudioTracks = audioDestination.stream.getAudioTracks();
+        sourceAudioTracks.forEach((track) => stream.addTrack(track));
+        outputStream = stream;
 
-        // Transcode & compress video via Canvas & MediaRecorder
-        try {
-          let w = video.videoWidth || 720;
-          let h = video.videoHeight || 1280;
-          const ratio = Math.min(maxWidth / w, maxHeight / h, 1.0);
-          w = Math.round((w * ratio) / 2) * 2;
-          h = Math.round((h * ratio) / 2) * 2;
-
-          const canvas = document.createElement('canvas');
-          canvas.width = w;
-          canvas.height = h;
-          const ctx = canvas.getContext('2d');
-
-          if (!ctx) {
-            throw new Error('Canvas context not available');
+        const mimeCandidates = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm'];
+        const mimeType = mimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate));
+        if (!mimeType) {
+          finish(originalResult(poster, video.duration), 'Original video retained; no compatible audio/video encoder was found.');
+          return;
+        }
+        recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: targetBitrate });
+        const chunks: Blob[] = [];
+        recorder.ondataavailable = (event) => { if (event.data?.size) chunks.push(event.data); };
+        recorder.onerror = () => finish(originalResult(poster, video.duration), 'Original video retained after an encoder error.');
+        recorder.onstop = () => {
+          if (!chunks.length) { finish(originalResult(poster, video.duration), 'Original video retained; encoder returned no media data.'); return; }
+          const compressed = new Blob(chunks, { type: recorder?.mimeType || mimeType });
+          if (compressed.size >= originalSize) {
+            finish(originalResult(poster, video.duration), 'Original video retained because compression would not reduce its size.');
+            return;
           }
-
-          const stream = canvas.captureStream(30);
-          const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
-            ? 'video/webm;codecs=vp9'
-            : MediaRecorder.isTypeSupported('video/webm')
-            ? 'video/webm'
-            : 'video/mp4';
-
-          const recorder = new MediaRecorder(stream, {
-            mimeType,
-            videoBitsPerSecond: targetBitrate,
-          });
-
-          const chunks: Blob[] = [];
-          recorder.ondataavailable = (e) => {
-            if (e.data && e.data.size > 0) chunks.push(e.data);
-          };
-
-          recorder.onstop = () => {
-            const compressedBlob = new Blob(chunks, { type: mimeType });
-            const compressedSize = compressedBlob.size;
-            const savingsPercent = Math.max(0, Math.round(((originalSize - compressedSize) / originalSize) * 100));
-            URL.revokeObjectURL(videoUrl);
-
-            resolve({
-              blob: compressedBlob.size < originalSize ? compressedBlob : videoFile,
-              url: URL.createObjectURL(compressedBlob.size < originalSize ? compressedBlob : videoFile),
-              posterDataUrl: poster,
-              originalSize,
-              compressedSize: Math.min(compressedSize, originalSize),
-              savingsPercent,
-              durationSeconds: duration,
-            });
-          };
-
-          // Play video in background to record compressed stream
-          video.currentTime = 0;
-          video.play().catch(() => {});
-          recorder.start();
-
-          const drawFrame = () => {
-            if (video.paused || video.ended) {
-              if (recorder.state === 'recording') recorder.stop();
-              return;
-            }
-            ctx.drawImage(video, 0, 0, w, h);
-            requestAnimationFrame(drawFrame);
-          };
-
-          drawFrame();
-
-          // Safety timeout
-          setTimeout(() => {
-            if (recorder.state === 'recording') recorder.stop();
-          }, (duration + 2) * 1000);
-        } catch (err) {
-          console.warn('Video transcode fallback note:', err);
-          URL.revokeObjectURL(videoUrl);
+          const compressedUrl = URL.createObjectURL(compressed);
+          settled = true;
+          cleanup();
+          report(100, 'Video optimized with original audio preserved.');
           resolve({
-            blob: videoFile,
-            url: URL.createObjectURL(videoFile),
-            posterDataUrl: poster,
-            originalSize,
-            compressedSize: originalSize,
-            savingsPercent: 0,
-            durationSeconds: duration,
+            blob: compressed, url: compressedUrl, posterDataUrl: poster,
+            originalSize, compressedSize: compressed.size,
+            savingsPercent: Math.max(0, Math.round(((originalSize - compressed.size) / originalSize) * 100)),
+            durationSeconds: video.duration,
           });
-        }
-      };
+        };
+        recorder.start(1000);
+        report(20, sourceAudioTracks.length ? 'Encoding video with its original audio...' : 'Encoding video; source has no audio track...');
+        video.currentTime = 0;
+        const playPromise = video.play();
+        if (playPromise) await playPromise;
+        const drawFrame = () => {
+          if (settled || !recorder || recorder.state !== 'recording') return;
+          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            context.drawImage(video, 0, 0, width, height);
+            report(20 + Math.min(74, (video.currentTime / video.duration) * 74), 'Encoding video and preserving source audio...');
+          }
+          if (!video.ended && !video.paused) animationFrame = requestAnimationFrame(drawFrame);
+        };
+        animationFrame = requestAnimationFrame(drawFrame);
+        video.onended = () => {
+          report(96, 'Finalizing optimized video...');
+          if (recorder?.state === 'recording') recorder.stop();
+        };
+        safetyTimer = setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, Math.ceil(video.duration * 1000) + 10000);
+      } catch (error) {
+        console.warn('Audio-preserving transcode was unavailable; original file will be kept:', error);
+        finish(originalResult(poster, video.duration), 'Original video retained because safe audio-preserving transcoding was unavailable.');
+      }
     };
-
     video.onerror = () => {
-      URL.revokeObjectURL(videoUrl);
-      resolve({
-        blob: videoFile,
-        url: URL.createObjectURL(videoFile),
-        posterDataUrl: '',
-        originalSize,
-        compressedSize: originalSize,
-        savingsPercent: 0,
-      });
+      if (!settled) finish(originalResult(''), 'Original video retained; metadata could not be decoded.');
     };
   });
 }
-
 /**
  * Audio / Voice Note Compression:
  * Downsamples speech and voice notes to lightweight 24kHz mono audio

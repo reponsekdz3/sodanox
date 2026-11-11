@@ -60,6 +60,14 @@ service firebase.storage {
          request.resource.contentType.matches('image/.*'));
     }
 
+    // Marketplace listing images: stored under the authenticated seller's UID.
+    match /marketplace/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isOwner(userId) &&
+        request.resource.size < 20 * 1024 * 1024 &&
+        request.resource.contentType.matches('image/.*');
+    }
+
     // Direct chat files, attachments, and voice notes: Max 25MB
     match /chat/{userId}/{allPaths=**} {
       allow read: if isSignedIn();

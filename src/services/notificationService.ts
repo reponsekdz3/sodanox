@@ -1,16 +1,6 @@
 import {
-  collection,
-  doc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  onSnapshot,
-  serverTimestamp,
-  writeBatch,
-  Unsubscribe,
-  getDocs,
+  addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, serverTimestamp,
+  updateDoc, where, writeBatch, Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '../firebase/config';
 import { NotificationItem, User } from '../types';
@@ -22,115 +12,71 @@ const LOCAL_NOTIF_PREFIX = 'aura_cached_notifs_';
 function getLocalNotifications(uid: string): NotificationItem[] {
   try {
     const raw = localStorage.getItem(`${LOCAL_NOTIF_PREFIX}${uid}`);
-    return raw ? JSON.parse(raw) : [];
+    return raw ? JSON.parse(raw) as NotificationItem[] : [];
   } catch {
     return [];
   }
 }
 
 function saveLocalNotifications(uid: string, items: NotificationItem[]): void {
-  try {
-    localStorage.setItem(`${LOCAL_NOTIF_PREFIX}${uid}`, JSON.stringify(items));
-  } catch {
-    // Quota safe
-  }
+  try { localStorage.setItem(`${LOCAL_NOTIF_PREFIX}${uid}`, JSON.stringify(items)); }
+  catch (error) { console.warn('Notification cache could not be updated:', error); }
 }
 
-/**
- * Subscribe to real-time notifications for the current user
- * Resilient to Firestore composite index & unauthenticated states
- */
+function mapNotification(id: string, data: Record<string, any>): NotificationItem {
+  const actor = data.actor || {
+    id: data.actorId || 'unknown',
+    name: data.actorName || 'Member',
+    username: data.actorUsername || 'member',
+    avatar: data.actorAvatar || MODERN_EMPTY_AVATAR_DATA_URI,
+    bio: '', joinedDate: '', followersCount: 0, followingCount: 0, isFollowing: false,
+  };
+  return {
+    id,
+    recipientId: data.recipientId,
+    user: { ...actor, avatar: isMockOrEmptyAvatar(actor.avatar) ? MODERN_EMPTY_AVATAR_DATA_URI : actor.avatar },
+    type: data.type || 'like',
+    targetTitle: data.targetTitle || '',
+    targetId: data.targetId || undefined,
+    targetType: data.targetType || 'post',
+    actionSnippet: data.actionSnippet || '',
+    timestamp: data.timestamp || 'Just now',
+    read: data.read === true,
+    createdAt: data.createdAt,
+  } as NotificationItem;
+}
+
+function updateLocal(uid: string, updater: (items: NotificationItem[]) => NotificationItem[]): void {
+  saveLocalNotifications(uid, updater(getLocalNotifications(uid)));
+}
+
+/** Live subscription. Firestore is authoritative; localStorage is an offline read fallback only. */
 export function subscribeToNotifications(
   currentUid: string,
   onUpdate: (notifications: NotificationItem[]) => void,
-  onError?: (err: unknown) => void
+  onError?: (error: unknown) => void
 ): Unsubscribe {
-  if (!currentUid || currentUid === 'guest_user' || currentUid === 'user_fallback') {
-    return () => {};
-  }
-
-  // Broadcast cached notifications immediately
+  if (!currentUid || currentUid === 'guest_user' || currentUid === 'user_fallback') return () => {};
   const cached = getLocalNotifications(currentUid);
-  if (cached.length > 0) {
-    onUpdate(cached);
-  }
-
-  try {
-    const notifRef = collection(db, NOTIFICATIONS_COLLECTION);
-    // Use single-field where to avoid composite index requirements
-    const q = query(
-      notifRef,
-      where('recipientId', '==', currentUid)
-    );
-
-    return onSnapshot(
-      q,
-      (snapshot) => {
-        const items: NotificationItem[] = [];
-        snapshot.forEach((docSnap) => {
-          const d = docSnap.data();
-          items.push({
-            id: docSnap.id,
-            recipientId: d.recipientId,
-            user: d.actor || {
-              id: d.actorId || 'someone',
-              name: d.actorName || 'Aura Member',
-              username: d.actorUsername || 'user',
-              avatar: isMockOrEmptyAvatar(d.actorAvatar)
-                ? MODERN_EMPTY_AVATAR_DATA_URI
-                : (d.actorAvatar || MODERN_EMPTY_AVATAR_DATA_URI),
-              bio: '',
-              joinedDate: '',
-              followersCount: 0,
-              followingCount: 0,
-              isFollowing: false,
-            },
-            type: d.type || 'like',
-            targetTitle: d.targetTitle || '',
-            targetId: d.targetId || undefined,
-            targetType: d.targetType || 'post',
-            actionSnippet: d.actionSnippet || '',
-            timestamp: d.timestamp || 'Just now',
-            read: d.read ?? false,
-            createdAt: d.createdAt,
-          });
-        });
-
-        // Merge with local fallback notifications
-        const currentCached = getLocalNotifications(currentUid);
-        for (const loc of currentCached) {
-          if (!items.some((i) => i.id === loc.id)) {
-            items.push(loc);
-          }
-        }
-
-        // Sort in memory by time descending
-        items.sort((a, b) => {
-          const timeA = a.createdAt?.seconds || 0;
-          const timeB = b.createdAt?.seconds || 0;
-          return timeB - timeA;
-        });
-
-        saveLocalNotifications(currentUid, items);
-        onUpdate(items);
-      },
-      (err) => {
-        console.warn('Notifications fallback to local cache:', err);
-        const fallback = getLocalNotifications(currentUid);
-        onUpdate(fallback);
-        if (onError) onError(err);
-      }
-    );
-  } catch (err) {
-    console.warn('Notifications subscription setup note:', err);
+  if (cached.length) onUpdate(cached);
+  const q = query(collection(db, NOTIFICATIONS_COLLECTION), where('recipientId', '==', currentUid));
+  return onSnapshot(q, (snapshot) => {
+    const notifications = snapshot.docs.map((item) => mapNotification(item.id, item.data()));
+    notifications.sort((a, b) => {
+      const first = a.createdAt?.seconds || 0;
+      const second = b.createdAt?.seconds || 0;
+      return second - first;
+    });
+    saveLocalNotifications(currentUid, notifications);
+    onUpdate(notifications);
+  }, (error) => {
+    console.error('Notifications could not be synchronized; showing cached records:', error);
     onUpdate(getLocalNotifications(currentUid));
-    return () => {};
-  }
+    onError?.(error);
+  });
 }
 
-/**
- * Create a real notification with local instant cache and Firestore broadcast
- */
+/** Persist notification first; only then mirror the confirmed record into the local cache. */
 export async function createNotification(
   recipientId: string,
   actor: User,
@@ -140,129 +86,58 @@ export async function createNotification(
   targetType: NotificationItem['targetType'] = 'post',
   actionSnippet?: string
 ): Promise<void> {
-  // Avoid sending notifications to oneself
   if (!recipientId || recipientId === actor.id) return;
-
-  const localItem: NotificationItem = {
-    id: `notif_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+  const payload = {
     recipientId,
-    user: actor,
-    type,
-    targetTitle,
-    targetId,
-    targetType,
-    actionSnippet,
-    timestamp: 'Just now',
-    read: false,
+    actorId: actor.id, actorName: actor.name, actorUsername: actor.username, actorAvatar: actor.avatar,
+    actor: {
+      id: actor.id, name: actor.name, username: actor.username, avatar: actor.avatar,
+      verified: actor.verified || false, bio: actor.bio || '',
+      followersCount: actor.followersCount || 0, followingCount: actor.followingCount || 0,
+    },
+    type, targetId: targetId || null, targetType: targetType || 'post',
+    targetTitle: targetTitle || null, actionSnippet: actionSnippet || null,
+    timestamp: 'Just now', read: false, createdAt: serverTimestamp(),
   };
-
-  // 1. Immediately cache for recipient
-  const existing = getLocalNotifications(recipientId);
-  saveLocalNotifications(recipientId, [localItem, ...existing]);
-
-  // 2. Persist to Firestore
-  try {
-    const notifRef = collection(db, NOTIFICATIONS_COLLECTION);
-    await addDoc(notifRef, {
-      recipientId,
-      actorId: actor.id,
-      actorName: actor.name,
-      actorUsername: actor.username,
-      actorAvatar: actor.avatar,
-      actor: {
-        id: actor.id,
-        name: actor.name,
-        username: actor.username,
-        avatar: actor.avatar,
-        verified: actor.verified || false,
-        bio: actor.bio || '',
-        followersCount: actor.followersCount || 0,
-        followingCount: actor.followingCount || 0,
-      },
-      type,
-      targetId: targetId || null,
-      targetType: targetType || 'post',
-      targetTitle: targetTitle || null,
-      actionSnippet: actionSnippet || null,
-      timestamp: 'Just now',
-      read: false,
-      createdAt: serverTimestamp(),
-    });
-  } catch (err) {
-    console.warn('Firestore notification note (saved locally):', err);
-  }
+  const created = await addDoc(collection(db, NOTIFICATIONS_COLLECTION), payload);
+  const local = mapNotification(created.id, { ...payload, createdAt: { seconds: Math.floor(Date.now() / 1000) } });
+  updateLocal(recipientId, (items) => [local, ...items.filter((item) => item.id !== created.id)]);
 }
 
-/**
- * Mark all notifications as read for current user
- */
+/** Mark unread notifications as read in bounded batches before changing the local cache. */
 export async function markAllNotificationsAsRead(currentUid: string): Promise<void> {
-  // Update local cache
-  const existing = getLocalNotifications(currentUid);
-  const updated = existing.map((item) => ({ ...item, read: true }));
-  saveLocalNotifications(currentUid, updated);
-
-  try {
-    const notifRef = collection(db, NOTIFICATIONS_COLLECTION);
-    const q = query(notifRef, where('recipientId', '==', currentUid), where('read', '==', false));
-    const snap = await getDocs(q);
-
-    if (snap.empty) return;
-
+  if (!currentUid) throw new Error('A signed-in user is required.');
+  const q = query(collection(db, NOTIFICATIONS_COLLECTION), where('recipientId', '==', currentUid), where('read', '==', false));
+  const snapshot = await getDocs(q);
+  for (let index = 0; index < snapshot.docs.length; index += 450) {
     const batch = writeBatch(db);
-    snap.docs.forEach((docSnap) => {
-      batch.update(docSnap.ref, { read: true });
-    });
+    snapshot.docs.slice(index, index + 450).forEach((item) => batch.update(item.ref, { read: true }));
     await batch.commit();
-  } catch (err) {
-    console.warn('Mark all notifications read note:', err);
   }
+  updateLocal(currentUid, (items) => items.map((item) => ({ ...item, read: true })));
 }
 
-/**
- * Clear/delete all notifications for current user
- */
+/** Delete all notifications from the server in bounded batches, then clear the local cache. */
 export async function clearAllNotifications(currentUid: string): Promise<void> {
-  // Clear local cache
-  saveLocalNotifications(currentUid, []);
-
-  try {
-    const notifRef = collection(db, NOTIFICATIONS_COLLECTION);
-    const q = query(notifRef, where('recipientId', '==', currentUid));
-    const snap = await getDocs(q);
-
-    if (snap.empty) return;
-
+  if (!currentUid) throw new Error('A signed-in user is required.');
+  const q = query(collection(db, NOTIFICATIONS_COLLECTION), where('recipientId', '==', currentUid));
+  const snapshot = await getDocs(q);
+  for (let index = 0; index < snapshot.docs.length; index += 450) {
     const batch = writeBatch(db);
-    snap.docs.forEach((docSnap) => {
-      batch.delete(docSnap.ref);
-    });
+    snapshot.docs.slice(index, index + 450).forEach((item) => batch.delete(item.ref));
     await batch.commit();
-  } catch (err) {
-    console.warn('Clear notifications note:', err);
   }
+  saveLocalNotifications(currentUid, []);
 }
 
-/**
- * Mark a single notification as read
- */
-export async function markNotificationAsRead(notificationId: string): Promise<void> {
-  try {
-    const docRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
-    await updateDoc(docRef, { read: true });
-  } catch (err) {
-    console.warn('Mark notification read note:', err);
-  }
+export async function markNotificationAsRead(notificationId: string, currentUid: string): Promise<void> {
+  if (!notificationId || !currentUid) throw new Error('A notification and signed-in user are required.');
+  await updateDoc(doc(db, NOTIFICATIONS_COLLECTION, notificationId), { read: true });
+  updateLocal(currentUid, (items) => items.map((item) => item.id === notificationId ? { ...item, read: true } : item));
 }
 
-/**
- * Delete a single notification
- */
-export async function deleteNotification(notificationId: string): Promise<void> {
-  try {
-    const docRef = doc(db, NOTIFICATIONS_COLLECTION, notificationId);
-    await deleteDoc(docRef);
-  } catch (err) {
-    console.warn('Delete notification note:', err);
-  }
+export async function deleteNotification(notificationId: string, currentUid: string): Promise<void> {
+  if (!notificationId || !currentUid) throw new Error('A notification and signed-in user are required.');
+  await deleteDoc(doc(db, NOTIFICATIONS_COLLECTION, notificationId));
+  updateLocal(currentUid, (items) => items.filter((item) => item.id !== notificationId));
 }
